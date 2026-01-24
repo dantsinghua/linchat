@@ -1,5 +1,6 @@
-# Specification folders
-.specify/
+# Specification folders (保留 .specify/memory/ 用于宪法版本控制)
+.specify/cache/
+.specify/scripts/
 .spec/
 
 # Claude Code
@@ -15,6 +16,7 @@ config.yaml
 # Python virtual environment
 venv/
 .venv/
+linchat/
 
 # Python cache
 __pycache__/

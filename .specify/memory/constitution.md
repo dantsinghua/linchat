@@ -1,50 +1,392 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# 项目宪法文件
 
-## Core Principles
+> 大模型聊天平台 - 规范驱动开发治理文件
+>
+> **技术栈**: Django REST Framework + Next.js + MySQL/Elasticsearch/Redis
+> **架构模式**: 前后端分离 Monorepo
+> **版本**: 1.2.0
+> **批准日期**: 2026-01-23
+> **最后更新**: 2026-01-25
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+---
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+## 前言
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+本宪法文件定义了本项目不可违背的原则、架构约束、代码质量标准和测试要求。所有由 AI 代理生成的规范、计划和代码必须遵守这些原则。本宪法旨在确保生成的代码具有生产级质量，避免带 bug 上线。
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+**强制参考文档**：编写代码时必须参考 [代码示例文档](../../docs/constitution-examples.md)
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+---
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## 第一条：架构原则
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### 1.1 关注点分离 - **不可违背**
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+项目结构必须遵循以下分层架构:
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+```
+backend/                          # Django REST Framework 后端
+├── apps/                         # Django 业务模块
+│   ├── chat/                     # 聊天核心模块
+│   │   ├── models.py             # 数据模型
+│   │   ├── serializers.py        # DRF 序列化器
+│   │   ├── views.py              # API 视图（仅处理 HTTP 请求响应）
+│   │   ├── services.py           # 业务逻辑层 ★核心
+│   │   ├── repositories.py       # 数据访问层
+│   │   ├── consumers.py          # WebSocket 消费者
+│   │   └── tasks.py              # Celery 异步任务
+│   ├── users/                    # 用户认证模块
+│   └── common/                   # 共享组件
+├── core/                         # 项目配置
+└── tests/                        # 测试目录（镜像 apps 结构）
 
-## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+frontend/                         # Next.js 前端
+├── src/
+│   ├── app/                      # App Router 路由
+│   ├── components/               # React 组件（ui/chat/layout）
+│   ├── hooks/                    # 自定义 Hooks
+│   ├── services/                 # API 调用层
+│   ├── stores/                   # 状态管理（Zustand）
+│   ├── types/                    # TypeScript 类型定义
+│   └── utils/                    # 工具函数
+└── tests/                        # 前端测试
+```
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+**规则说明：**
+- 视图层禁止包含业务逻辑，仅负责请求解析和响应格式化
+- 服务层封装所有业务逻辑，确保可测试性
+- 数据仓库层封装数据访问，隔离 ORM/ES/Redis 操作
+- 前端组件遵循单一职责原则，UI 组件与业务组件分离
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+### 1.2 接口设计标准
+
+```yaml
+RESTful API 规范:
+  基础路径: /api/v1/
+  认证方式: JWT（访问令牌 + 刷新令牌）
+  数据格式: application/json
+  响应格式:
+    成功: { "code": 0, "data": {...}, "message": "success" }
+    失败: { "code": <错误码>, "data": null, "message": "<错误信息>" }
+
+WebSocket 规范（用于流式响应）:
+  端点: /ws/chat/{conversation_id}/
+  消息类型: user_message / assistant_chunk / assistant_complete / error
+
+接口版本控制:
+  - 使用 URL 路径版本化（/api/v1/、/api/v2/）
+  - 破坏性变更必须升级版本号
+  - 旧版本至少支持 6 个月后才可废弃
+```
+
+### 1.3 数据库策略与数据一致性 - **不可违背**
+
+**存储职责划分：**
+
+| 存储 | 职责 | 核心规范 |
+|------|------|----------|
+| MySQL | 主存储（唯一可信来源） | Django ORM、禁止原生SQL、事务保护、软删除 |
+| Elasticsearch | 搜索引擎（只读副本） | 数据来源于MySQL、通过同步机制写入 |
+| Redis | 缓存与实时通信 | 所有键设置TTL、键命名规范、可重建数据 |
+
+**数据一致性核心原则：**
+- 写操作必须保证原子性，失败必须回滚
+- 强一致性场景：同步写入 MySQL → ES → Redis，任一失败全部回滚
+- 最终一致性场景：MySQL 先写，ES/Redis 通过 Celery 异步同步
+- 必须实现数据一致性检查与补偿机制
+
+> **编码参考**: [代码示例文档 - 第1、2节](../../docs/constitution-examples.md#1-数据一致性保障示例)
+
+---
+
+## 第二条：代码质量标准 - **不可违背**
+
+### 2.1 Python/Django 后端规范
+
+| 规范项 | 要求 |
+|--------|------|
+| 代码风格 | PEP 8 + Black（行宽88字符） |
+| 导入排序 | isort（标准库、第三方库、本地模块） |
+| 类型注解 | 所有公共函数必须添加 |
+| 文档字符串 | Google 风格，公共接口必须编写 |
+| 命名规范 | 类名大驼峰、函数下划线、常量全大写、私有成员单下划线前缀 |
+| 错误处理 | 自定义异常类层级结构，业务异常继承 BusinessException |
+
+### 2.2 TypeScript/Next.js 前端规范
+
+| 规范项 | 要求 |
+|--------|------|
+| 代码风格 | ESLint + Prettier |
+| 类型模式 | TypeScript 严格模式 |
+| 组件规范 | 函数式组件 + Hooks，Props 必须定义 interface |
+| 状态管理 | 全局状态用 Zustand，服务端状态用 React Query/SWR |
+| 命名规范 | 组件大驼峰、Hooks use前缀、工具函数小驼峰 |
+
+### 2.3 代码提交规范
+
+```
+格式: <类型>(<范围>): <描述>
+
+类型: feat / fix / docs / style / refactor / perf / test / chore
+示例: feat(chat): 添加流式响应支持
+```
+
+---
+
+## 第三条：测试要求 - **不可违背**
+
+### 3.1 测试覆盖率要求
+
+| 层级 | 覆盖率要求 |
+|------|------------|
+| 总体 | 80% 以上 |
+| 关键路径（认证、核心聊天） | 95% 以上 |
+| 服务层 | 95% |
+| 数据模型层 | 90% |
+| 工具函数 | 90% |
+| 数据仓库层 | 85% |
+| 前端 Hooks | 85% |
+| API 视图层 | 80% |
+| 前端组件 | 75% |
+
+### 3.2 测试分类
+
+| 类型 | 说明 | 工具 |
+|------|------|------|
+| 单元测试 | 隔离执行，mock 外部依赖 | pytest / Jest |
+| 集成测试 | 真实数据库，mock 外部服务 | pytest-django / MSW |
+| 端到端测试 | 完整用户流程 | Playwright |
+
+> **编码参考**: [代码示例文档 - 第4、5、6节](../../docs/constitution-examples.md#4-后端测试代码示例)
+
+---
+
+## 第四条：安全要求 - **不可违背**
+
+### 4.1 身份认证与授权
+
+| 机制 | 要求 |
+|------|------|
+| 认证方式 | JWT（访问令牌15分钟 + 刷新令牌7天滑动过期） |
+| 令牌存储 | httpOnly Cookie（禁止 localStorage） |
+| 令牌轮换 | 每次刷新后旧令牌立即失效 |
+| 权限控制 | 对象级权限，验证资源所有权 |
+| 频率限制 | 匿名100次/时，认证1000次/时，大模型60次/分 |
+
+### 4.2 数据保护
+
+| 类型 | 措施 |
+|------|------|
+| 密码存储 | Argon2 哈希算法 |
+| API 密钥 | Fernet 加密存储 |
+| 输入验证 | 序列化器验证、ORM 防 SQL 注入 |
+| XSS/CSRF | React 自动转义 + CSP + Django 中间件 |
+| 密钥管理 | 环境变量，禁止提交版本控制 |
+
+### 4.3 大模型服务异常处理 - **不可违背**
+
+必须实现以下异常类型的统一处理：
+
+| 异常类型 | 用户提示 | 处理策略 |
+|----------|----------|----------|
+| LLMConnectionError | AI 服务暂时无法连接 | 重试3次 |
+| LLMTimeoutError | AI 响应超时 | 重试3次 |
+| LLMRateLimitError | 请求过于频繁 | 不重试，返回等待时间 |
+| LLMContentFilterError | 消息包含敏感内容 | 不重试，允许用户修改 |
+| LLMInvalidResponseError | AI 响应异常 | 重试3次 |
+| LLMQuotaExceededError | 服务配额用尽 | 不重试，联系管理员 |
+
+> **编码参考**: [代码示例文档 - 第3节](../../docs/constitution-examples.md#3-大模型服务异常处理示例)
+
+---
+
+## 第五条：性能要求
+
+### 5.1 响应时间指标
+
+| 场景 | 指标 |
+|------|------|
+| 简单 GET 请求 | p95 < 100ms |
+| 带数据库查询 GET | p95 < 200ms |
+| POST 创建请求 | p95 < 300ms |
+| ES 搜索 | p95 < 500ms |
+| WebSocket 连接 | < 500ms |
+| 大模型首令牌（TTFT） | < 2秒 |
+| 前端 FCP | < 1.5秒 |
+
+### 5.2 资源使用约束
+
+| 资源 | 约束 |
+|------|------|
+| 数据库查询 | 避免 N+1，使用 select_related/prefetch_related |
+| Redis 内存 | 最大 4GB，volatile-lru 淘汰策略 |
+| 前端打包 | 首次加载 < 200KB (gzip) |
+
+### 5.3 SLA 监控指标
+
+| 类别 | 指标 | 告警阈值 |
+|------|------|----------|
+| 可用性 | 整体 | 99.9% |
+| 请求成功率 | API | < 99% |
+| 错误率 | 5xx | > 1% |
+| 响应时间 | 平均 | > 500ms |
+| 大模型 | 响应成功率 | < 95% |
+
+---
+
+## 第六条：错误处理与日志
+
+### 6.1 异常分类体系
+
+| 异常类 | HTTP状态码 | 说明 |
+|--------|------------|------|
+| ValidationError | 400 | 输入验证错误 |
+| AuthenticationError | 401 | 身份认证错误 |
+| PermissionDeniedError | 403 | 权限不足 |
+| NotFoundError | 404 | 资源不存在 |
+| RateLimitError | 429 | 频率限制 |
+| DataSyncError | 500 | 数据同步错误 |
+| ExternalServiceError | 503 | 外部服务错误 |
+
+### 6.2 日志记录规范
+
+| 级别 | 使用场景 |
+|------|----------|
+| DEBUG | 详细调试信息（仅开发环境） |
+| INFO | 业务流程关键节点 |
+| WARNING | 可恢复的异常情况 |
+| ERROR | 需要关注的错误 |
+| CRITICAL | 系统级故障 |
+
+**必须记录**：API 请求/响应、认证事件、业务关键操作、外部服务调用、所有异常
+
+---
+
+## 第七条：文档要求
+
+| 类型 | 要求 |
+|------|------|
+| Python 代码 | Google 风格文档字符串 + 类型注解 |
+| TypeScript 代码 | TSDoc 注释 + Props 文档 |
+| 模块文档 | 每个模块目录必须有 README.md |
+| API 文档 | OpenAPI/Swagger 自动生成 |
+
+---
+
+## 第八条：依赖管理
+
+### 8.1 核心依赖版本
+
+| 后端 | 版本 | 前端 | 版本 |
+|------|------|------|------|
+| Python | 3.11+ | Node.js | 18+ |
+| Django | 4.2+ | Next.js | 14+ |
+| DRF | 3.14+ | React | 18+ |
+| Celery | 5.3+ | TypeScript | 5.0+ |
+
+### 8.2 版本锁定策略
+
+- 锁文件固定精确版本（poetry.lock、package-lock.json）
+- 每月更新依赖，安全补丁立即更新
+- 启用 Dependabot 自动安全更新
+
+---
+
+## 第九条：部署与基础设施
+
+### 9.1 环境配置
+
+| 环境 | 说明 |
+|------|------|
+| development | 本地开发环境 |
+| staging | 预发布测试环境 |
+| production | 生产环境 |
+
+**配置管理**：遵循 12-Factor 原则，所有配置通过环境变量管理
+
+### 9.2 健康检查接口
+
+| 端点 | 用途 |
+|------|------|
+| /health/live | 存活探针，进程运行即返回 200 |
+| /health/ready | 就绪探针，检查所有依赖连接状态 |
+| /health/detailed | 完整系统状态（需认证） |
+
+---
+
+## 治理条款
+
+### 版本控制规范
+
+| 版本类型 | 定义 | 示例 |
+|----------|------|------|
+| MAJOR | 大型完整功能 | 聊天功能、记忆功能、文档解析 |
+| MINOR | 功能增强 | 聊天历史搜索、UI 美化 |
+| PATCH | Bug 修复、优化 | 边界情况修复、性能优化 |
+
+### 修订流程
+
+1. 明确记录变更理由和影响范围
+2. 项目负责人审核批准
+3. 完成向后兼容性评估
+4. 更新本文件并记录变更历史
+
+### 违规处理
+
+- `/speckit.analyze` 命令验证宪法合规性
+- 违反"不可违背"条款的代码禁止合并
+- 技术债务需记录在 TECH_DEBT.md
+
+---
+
+## 变更记录
+
+| 版本 | 日期 | 作者 | 变更内容 |
+|------|------|------|----------|
+| 1.2.0 | 2026-01-25 | Claude | 精简宪法，代码示例移至独立文档 |
+| 1.1.0 | 2026-01-24 | Claude | 新增版本控制规范、SLA 监控指标 |
+| 1.0.0 | 2026-01-23 | 初始版本 | 大模型聊天平台项目宪法初版（批准） |
+
+---
+
+## 速查卡片
+
+```
++------------------+----------------------------------------+
+| 分类              | 核心要求                                |
++------------------+----------------------------------------+
+| 架构设计          | 服务层处理业务逻辑                        |
+|                  | 数据仓库层封装数据访问                    |
+|                  | WebSocket 实现流式响应                   |
++------------------+----------------------------------------+
+| 代码质量          | 类型注解强制要求（Python/TS）             |
+|                  | 测试覆盖率最低 80%                       |
+|                  | Black + isort + ESLint + Prettier       |
++------------------+----------------------------------------+
+| 测试策略          | 单元测试：隔离执行，mock 依赖             |
+|                  | 集成测试：真实数据库，mock 外部服务        |
+|                  | 端到端测试：完整用户流程                  |
++------------------+----------------------------------------+
+| 数据一致性        | 写操作原子性，失败必须回滚                 |
+|                  | MySQL 为唯一数据源                       |
+|                  | ES/Redis 同步失败需补偿机制              |
++------------------+----------------------------------------+
+| 安全要求          | JWT 存储在 httpOnly Cookie              |
+|                  | Redis 实现接口频率限制                   |
+|                  | 大模型异常需优雅处理                      |
++------------------+----------------------------------------+
+| 性能指标          | API 响应 p95 < 200ms                    |
+|                  | 大模型首令牌 < 2秒                       |
+|                  | 前端打包 < 200KB（gzip）                 |
++------------------+----------------------------------------+
+| SLA 监控          | 可用性目标 99.9%                         |
+|                  | 请求成功率 > 99%                         |
+|                  | 链路追踪：INFO 日志 + Request ID         |
++------------------+----------------------------------------+
+| 版本控制          | MAJOR: 完整功能（聊天/记忆/文档解析）      |
+|                  | MINOR: 功能增强（搜索/UI 美化）           |
+|                  | PATCH: Bug 修复、代码优化                |
++------------------+----------------------------------------+
+```
+
+**编码时必须参考**: [docs/constitution-examples.md](../../docs/constitution-examples.md)
