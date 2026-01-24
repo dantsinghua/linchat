@@ -32,7 +32,7 @@
 **Project Type**: Web应用（前后端分离Monorepo）
 **Performance Goals**:
 - API响应 p95 < 200ms
-- 大模型首令牌 < 3秒
+- 大模型首令牌 < 2秒（符合宪法5.1要求）
 - 流式字符延迟 < 100ms
 - 并发用户 ≥ 100
 

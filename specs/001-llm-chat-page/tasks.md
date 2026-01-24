@@ -51,9 +51,10 @@
 - [ ] T012 [P] 创建自定义异常类 `backend/apps/common/exceptions.py`（AuthFailedException、TokenExpiredException 等）
 - [ ] T013 [P] 创建统一响应格式 `backend/apps/common/responses.py`（code/data/message 结构）
 - [ ] T014 [P] 创建国密算法封装 `backend/apps/users/crypto.py`（SM3哈希、SM4加密/解密）
-- [ ] T015 创建 Token 鉴权中间件 `backend/apps/common/middleware.py`（双重过期机制：24小时绝对过期 + 1小时无操作过期，用户有操作时刷新1小时TTL但不超过24小时绝对边界）
+- [ ] T015 创建 Token 鉴权中间件 `backend/apps/common/middleware.py`（实现R_TOKEN_003双重过期规则：24小时绝对过期 + 1小时无操作过期）
 - [ ] T015a [P] 创建频率限制中间件 `backend/apps/common/middleware.py`（匿名100次/时，认证1000次/时，LLM 60次/分）
 - [ ] T015b [US1] 实现单点登录机制（新登录使旧Token失效）
+- [ ] T015c [P] [US1] 实现单点登录前端处理 `frontend/src/hooks/useAuth.ts`（检测Token失效时显示"您已在其他设备登录"提示并跳转登录页）
 
 ### 2.3 前端基础
 
@@ -85,7 +86,7 @@
 
 - [ ] T026 [P] [US1] 创建认证服务 `frontend/src/services/authService.ts`（getCaptcha、login、logout）
 - [ ] T027 [P] [US1] 创建认证 Hook `frontend/src/hooks/useAuth.ts`（登录状态管理、Token 刷新事件监听）
-- [ ] T028 [P] [US1] 创建验证码组件 `frontend/src/components/auth/CaptchaImage.tsx`（自动刷新）
+- [ ] T028 [P] [US1] 创建验证码组件 `frontend/src/components/auth/CaptchaImage.tsx`（实现R_CAPTCHA_003规则：110秒自动刷新间隔）
 - [ ] T029 [US1] 创建登录表单组件 `frontend/src/components/auth/LoginForm.tsx`（用户名、密码、验证码）
 - [ ] T030 [US1] 创建登录页面 `frontend/src/app/login/page.tsx`
 - [ ] T031 [US1] 实现路由保护中间件 `frontend/src/middleware.ts`（未登录跳转登录页）
@@ -103,7 +104,7 @@
 
 ### 后端实现
 
-- [ ] T033 [US2] 创建消息仓库层 `backend/apps/chat/repositories.py`（消息保存、历史查询、用户数据隔离）
+- [ ] T033 [US2] 创建消息仓库层 `backend/apps/chat/repositories.py`（消息保存、历史查询、用户数据隔离；排序规则：用户消息按Agent接收时间、AI回复按首token生成时间，见spec.md US2场景6）
 - [ ] T034 [US2] 创建 LangGraph Agent 定义 `backend/apps/chat/agent.py`（ReAct Agent、Redis Checkpointer）
 - [ ] T035 [US2] 创建聊天服务 `backend/apps/chat/services.py`（消息处理、Agent 执行、流式响应生成）
 - [ ] T036 [P] [US2] 创建聊天序列化器 `backend/apps/chat/serializers.py`（ChatRequest含maxLength=4000验证、MessageVO）
@@ -115,13 +116,13 @@
 
 - [ ] T040 [P] [US2] 创建聊天状态管理 `frontend/src/stores/chatStore.ts`（Zustand：消息列表、加载状态）
 - [ ] T041 [P] [US2] 创建聊天服务 `frontend/src/services/chatService.ts`（sendMessage、getMessages、stopGeneration）
-- [ ] T042 [US2] 创建 SSE 流式聊天 Hook `frontend/src/hooks/useChatStream.ts`（流式接收、实时更新）
+- [ ] T042 [US2] 创建 SSE 流式聊天 Hook `frontend/src/hooks/useChatStream.ts`（流式接收、实时更新；刷新页面时检测status=2消息并自动重连SSE继续接收，见spec.md US2场景5）
 - [ ] T043 [P] [US2] 创建 Markdown 渲染组件 `frontend/src/components/chat/MarkdownRenderer.tsx`（react-markdown、代码高亮）
 - [ ] T044 [P] [US2] 创建 Mermaid 渲染组件 `frontend/src/components/chat/MermaidRenderer.tsx`（流式完成后渲染）
 - [ ] T045 [US2] 创建消息列表组件 `frontend/src/components/chat/MessageList.tsx`（历史消息、滚动锚定）
 - [ ] T046 [US2] 创建消息输入组件 `frontend/src/components/chat/MessageInput.tsx`（发送/停止按钮切换）
 - [ ] T047 [US2] 创建聊天页面 `frontend/src/app/chat/page.tsx`（集成所有聊天组件）
-- [ ] T048 [US2] 实现消息发送失败处理（失败时保留输入框内容，不存储消息）
+- [ ] T048 [US2] 实现消息发送失败处理（失败时：1.保留用户输入在输入框内 2.不在聊天列表生成用户消息框 3.不存储消息到数据库 4.记录失败日志 5.用户可重新点击发送，见spec.md US2场景10）
 - [ ] T049 [US2] 实现历史消息分页加载（游标分页、向上滚动加载更多）
 - [ ] T049a [US2] 实现LLM服务异常处理（连接失败、超时、频率限制等，见宪法4.3）
 - [ ] T049b [P] [US2] 实现网络中断错误提示组件 `frontend/src/components/chat/NetworkError.tsx`
@@ -183,7 +184,7 @@
 - **Phase 1 (Setup)**: 无依赖，可立即开始
 - **Phase 2 (Foundational)**: 依赖 Phase 1 完成 - **阻塞所有用户故事**
 - **Phase 3 (US1)**: 依赖 Phase 2 完成
-- **Phase 4 (US2)**: 依赖 Phase 2 完成，可与 Phase 3 并行（但建议先完成 US1）
+- **Phase 4 (US2)**: 依赖 Phase 2 完成；后端可与 Phase 3 并行开发，前端需登录态故建议先完成 US1
 - **Phase 5 (US3)**: 依赖 Phase 2 完成，可与 Phase 3/4 并行
 - **Phase 6 (US4)**: 依赖 Phase 4 (US2) 完成（需要 Agent 执行基础）
 - **Phase 7 (Polish)**: 依赖所有用户故事完成
@@ -270,17 +271,17 @@ Task: T044 创建 Mermaid 渲染组件 frontend/src/components/chat/MermaidRende
 | 阶段 | 任务数 | 关键产出 |
 |------|--------|----------|
 | Phase 1: Setup | 6 | 项目结构、依赖配置 |
-| Phase 2: Foundational | 14 | 数据库模型、通用组件、中间件、频率限制 |
+| Phase 2: Foundational | 15 | 数据库模型、通用组件、中间件、频率限制、单点登录 |
 | Phase 3: US1 登录认证 | 14 | 验证码、登录、Token 机制 |
 | Phase 4: US2 聊天功能 | 19 | Agent、流式响应、Markdown 渲染、异常处理 |
 | Phase 5: US3 配置管理 | 4 | 配置模块化 |
 | Phase 6: US4 监控 | 4 | Langfuse 集成 |
 | Phase 7: Polish | 9 | 测试、安全加固、文档 |
-| **总计** | **70** | |
+| **总计** | **71** | |
 
 ### MVP Scope (推荐)
 
-- Phase 1 + Phase 2 + Phase 3 + Phase 4 = **53 任务**
+- Phase 1 + Phase 2 + Phase 3 + Phase 4 = **54 任务**
 - 涵盖登录认证 + 聊天核心功能
 - 可独立部署和演示
 
