@@ -2,7 +2,7 @@
 
 > 大模型聊天平台 - 规范驱动开发治理文件
 >
-> **技术栈**: Django REST Framework + Next.js + MySQL/Elasticsearch/Redis
+> **技术栈**: Django REST Framework + Next.js + PostgreSQL/Elasticsearch/Redis
 > **架构模式**: 前后端分离 Monorepo
 > **版本**: 1.2.0
 > **批准日期**: 2026-01-23
@@ -85,14 +85,14 @@ WebSocket 规范（用于流式响应）:
 
 | 存储 | 职责 | 核心规范 |
 |------|------|----------|
-| MySQL | 主存储（唯一可信来源） | Django ORM、禁止原生SQL、事务保护、软删除 |
-| Elasticsearch | 搜索引擎（只读副本） | 数据来源于MySQL、通过同步机制写入 |
+| PostgreSQL | 主存储（唯一可信来源） | Django ORM、禁止原生SQL、事务保护、软删除 |
+| Elasticsearch | 搜索引擎（只读副本） | 数据来源于PostgreSQL、通过同步机制写入 |
 | Redis | 缓存与实时通信 | 所有键设置TTL、键命名规范、可重建数据 |
 
 **数据一致性核心原则：**
 - 写操作必须保证原子性，失败必须回滚
-- 强一致性场景：同步写入 MySQL → ES → Redis，任一失败全部回滚
-- 最终一致性场景：MySQL 先写，ES/Redis 通过 Celery 异步同步
+- 强一致性场景：同步写入 PostgreSQL → ES → Redis，任一失败全部回滚
+- 最终一致性场景：PostgreSQL 先写，ES/Redis 通过 Celery 异步同步
 - 必须实现数据一致性检查与补偿机制
 
 > **编码参考**: [代码示例文档 - 第1、2节](../../docs/constitution-examples.md#1-数据一致性保障示例)
@@ -368,7 +368,7 @@ WebSocket 规范（用于流式响应）:
 |                  | 端到端测试：完整用户流程                  |
 +------------------+----------------------------------------+
 | 数据一致性        | 写操作原子性，失败必须回滚                 |
-|                  | MySQL 为唯一数据源                       |
+|                  | PostgreSQL 为唯一数据源                       |
 |                  | ES/Redis 同步失败需补偿机制              |
 +------------------+----------------------------------------+
 | 安全要求          | JWT 存储在 httpOnly Cookie              |

@@ -23,7 +23,7 @@
 
 ### 1.1 强一致性写入（同步方案）
 
-适用场景：关键业务数据，必须保证 MySQL、ES、Redis 数据一致性
+适用场景：关键业务数据，必须保证 PostgreSQL、ES、Redis 数据一致性
 
 ```python
 # 核心原则：写操作原子性，失败必须回滚
@@ -37,20 +37,20 @@ class MessageService:
 
     def create_message(self, conversation_id: str, content: str, role: str) -> Message:
         """
-        创建消息 - 确保 MySQL、ES、Redis 数据一致性
+        创建消息 - 确保 PostgreSQL、ES、Redis 数据一致性
 
         事务流程：
-        1. 开启 MySQL 事务
-        2. 写入 MySQL
-        3. 同步写入 ES（失败则回滚 MySQL）
-        4. 更新 Redis 缓存（失败则回滚 MySQL 和 ES）
+        1. 开启 PostgreSQL 事务
+        2. 写入 PostgreSQL
+        3. 同步写入 ES（失败则回滚 PostgreSQL）
+        4. 更新 Redis 缓存（失败则回滚 PostgreSQL 和 ES）
         5. 全部成功后提交事务
         """
         es_doc_id = None
 
         try:
             with transaction.atomic():
-                # 步骤1：写入 MySQL（事务保护）
+                # 步骤1：写入 PostgreSQL（事务保护）
                 message = Message.objects.create(
                     conversation_id=conversation_id,
                     content=content,
@@ -73,8 +73,8 @@ class MessageService:
                     )
                     es_doc_id = es_result['_id']
                 except ElasticsearchException as e:
-                    # ES 写入失败，抛出异常触发 MySQL 回滚
-                    logger.error(f"ES写入失败，回滚MySQL事务: {e}")
+                    # ES 写入失败，抛出异常触发 PostgreSQL 回滚
+                    logger.error(f"ES写入失败，回滚PostgreSQL事务: {e}")
                     raise DataSyncError(f"Elasticsearch同步失败: {e}")
 
                 # 步骤3：更新 Redis 缓存
@@ -89,8 +89,8 @@ class MessageService:
                         message.created_at.isoformat()
                     )
                 except RedisError as e:
-                    # Redis 失败，需要回滚 ES 和 MySQL
-                    logger.error(f"Redis更新失败，回滚ES和MySQL: {e}")
+                    # Redis 失败，需要回滚 ES 和 PostgreSQL
+                    logger.error(f"Redis更新失败，回滚ES和PostgreSQL: {e}")
                     self._rollback_es_document('messages', es_doc_id)
                     raise DataSyncError(f"Redis同步失败: {e}")
 
@@ -128,7 +128,7 @@ class MessageServiceAsync:
 
     def create_message_async(self, conversation_id: str, content: str, role: str) -> Message:
         """
-        创建消息 - MySQL 先写，ES/Redis 异步同步
+        创建消息 - PostgreSQL 先写，ES/Redis 异步同步
 
         适用场景：对实时搜索要求不高的数据
         """
@@ -177,14 +177,14 @@ def check_data_consistency():
     定时数据一致性检查任务（建议每小时执行）
 
     检查内容：
-    1. MySQL 和 ES 数据是否一致
+    1. PostgreSQL 和 ES 数据是否一致
     2. 是否存在孤立的 ES 文档
-    3. 是否存在未同步到 ES 的 MySQL 记录
+    3. 是否存在未同步到 ES 的 PostgreSQL 记录
     """
     # 检查最近1小时的数据
     one_hour_ago = timezone.now() - timedelta(hours=1)
 
-    # 获取 MySQL 中的消息 ID
+    # 获取 PostgreSQL 中的消息 ID
     mysql_ids = set(
         Message.objects.filter(created_at__gte=one_hour_ago)
         .values_list('id', flat=True)
@@ -199,8 +199,8 @@ def check_data_consistency():
     es_ids = set(hit['_id'] for hit in es_result['hits']['hits'])
 
     # 找出不一致的数据
-    missing_in_es = mysql_ids - es_ids  # MySQL有但ES没有
-    orphan_in_es = es_ids - mysql_ids   # ES有但MySQL没有
+    missing_in_es = mysql_ids - es_ids  # PostgreSQL有但ES没有
+    orphan_in_es = es_ids - mysql_ids   # ES有但PostgreSQL没有
 
     # 修复缺失的 ES 文档
     for msg_id in missing_in_es:
@@ -282,7 +282,7 @@ class ConversationRepository:
         删除会话 - 级联删除所有相关数据
         """
         with transaction.atomic():
-            # 1. 软删除 MySQL 数据
+            # 1. 软删除 PostgreSQL 数据
             Conversation.objects.filter(id=conversation_id).update(
                 is_deleted=True,
                 deleted_at=timezone.now()
