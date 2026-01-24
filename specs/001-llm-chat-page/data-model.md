@@ -5,13 +5,27 @@
 
 ---
 
+## 术语定义
+
+| 术语 | 含义 | 示例 |
+|------|------|------|
+| token | 原始Token字符串（SM4加密后的凭证） | `eyJhbGciOiJTTTQi...` |
+| token_hash | Token的SHA256哈希值（用作Redis键） | `a1b2c3d4e5f6...` |
+| token_data | Redis中存储的完整Token信息（JSON对象） | `{"user_id": 1, "login_time": "..."}` |
+| token_key | Redis键名 | `auth:token:{token_hash}` |
+
+> 注意：前端仅持有token（存储在httpOnly Cookie中），后端通过token_hash查询token_data。
+
+---
+
 ## 一、存储架构概览
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Redis                                   │
 ├─────────────────────────────────────────────────────────────────┤
-│  auth:token:{hash}        → 用户Token（1小时TTL）               │
+│  auth:token:{token_hash}  → 用户Token（1小时TTL，见3.1节）      │
+│  auth:user_token:{user_id}→ 用户当前Token索引（单点登录，24小时）│
 │  auth:captcha:{id}        → 验证码（2分钟TTL）                  │
 │  auth:fail:{username}     → 登录失败计数（15分钟TTL）           │
 │  langgraph:checkpoint:*   → LangGraph对话状态（RedisSaver管理） │
@@ -108,7 +122,11 @@
   
   // ========== 审计字段 ==========
   @字段(created_time, DATETIME, 非空, 默认(当前时间))
-  
+  // ⚠️ created_time 语义说明（用于消息排序，见spec.md US2场景6）：
+  //   - role=user 时：后端LangGraph对话Agent接收消息的时间
+  //   - role=assistant 时：后端生成首个token的时间（流式响应开始时间）
+  // 整体按 created_time 正序展示（升序）
+
   // ========== 索引 ==========
   @索引(uk_message_uuid, [message_uuid], 唯一索引)
   @索引(idx_user_sequence, [user_id, sequence], 联合索引)
@@ -196,6 +214,12 @@
 @键: "auth:fail:{username}"
 @值: 3
 @TTL: 900秒（15分钟）
+
+// ===== 单点登录Token索引（R_SSO_001）=====
+@键: "auth:user_token:{user_id}"
+@值: "{token_hash}"  // 当前活跃Token的哈希值
+@TTL: 86400秒（24小时，与Token绝对过期一致）
+@用途: 新登录时查询并删除旧Token，实现单点登录
 ```
 
 ### 3.2 LangGraph Checkpoint（由RedisSaver管理）
@@ -344,30 +368,39 @@ Checkpoint (Redis)          Message (PostgreSQL)
 
 ## 七、配置参数汇总
 
+> 📖 **权威来源**: 业务规则参数的完整定义见 [rule-model.md#九、配置参数汇总](./rule-model.md#九配置参数汇总)，本节仅列出数据存储相关配置。
+
 ```yaml
 # 数据库配置 (统一使用 PostgreSQL，与 Langfuse 共用)
 database:
-  # PostgreSQL (开发/生产环境统一)
   url: "postgresql+asyncpg://user:pass@localhost:5432/linchat"
 
 # Redis配置
 redis:
   url: "redis://localhost:6379"
-  
-  # 认证相关TTL
+
+  # 认证相关TTL（详见 rule-model.md）
   auth:
-    token_ttl: 3600          # Token: 1小时
-    captcha_ttl: 120         # 验证码: 2分钟
-    fail_count_ttl: 900      # 失败计数: 15分钟
-  
+    token_idle_ttl: 3600     # Token无操作过期: 1小时（见R_TOKEN_003）
+    token_absolute_ttl: 86400 # Token绝对过期: 24小时（见R_TOKEN_003）
+    captcha_ttl: 120         # 验证码: 2分钟（见R_CAPTCHA_001）
+    fail_count_ttl: 900      # 失败计数: 15分钟（见R_LOGIN_001）
+
   # LangGraph Checkpoint TTL
   checkpoint:
-    default_ttl: 1440        # 24小时
+    default_ttl: 1440        # 24小时（分钟）
     refresh_on_read: true
 
 # LangGraph配置
 langgraph:
   thread_id_prefix: "user_"  # thread_id = "user_{user_id}"
+
+# LLM重试配置（见rule-model.md R_LLM_RETRY_001）
+llm_retry:
+  max_retries: 3
+  initial_delay_seconds: 1
+  max_delay_seconds: 8
+  backoff_multiplier: 2
 ```
 
 ---
@@ -394,6 +427,6 @@ langgraph:
 
 依赖包:
   - langgraph-checkpoint-redis
-  - redis / aioredis
-  - sqlalchemy / databases
+  - redis / django-redis
+  - Django ORM (psycopg2-binary)
 ```

@@ -19,7 +19,7 @@
 
 **Language/Version**: Python 3.11+ (后端) / TypeScript 5.0+ (前端)
 **Primary Dependencies**:
-- 后端: Django REST Framework 4.2+, LangGraph, langgraph-checkpoint-redis, gmssl (国密), Langfuse
+- 后端: Django 4.2+, DRF 3.14+, LangGraph, langgraph-checkpoint-redis, gmssl (国密), Langfuse
 - 前端: Next.js 14+, React 18+, Zustand, react-markdown, mermaid
 
 **Storage**:
@@ -38,9 +38,11 @@
 
 **Constraints**:
 - Token存储在httpOnly Cookie（禁止localStorage）
-- 密码使用国密SM3哈希
-- 所有用户操作需刷新Token有效期
+- Token生成：SM4加密({username}|{password}|{captcha}|{timestamp})
+- 密码存储：SM3哈希
+- Token双重过期：24小时绝对过期 + 1小时无操作过期（用户活动刷新）
 - 数据隔离：用户只能访问自己的消息
+- API版本：所有接口使用 `/api/v1/` 前缀（符合宪法1.2）
 
 **Scale/Scope**: 初期 < 100并发用户，单机部署
 
@@ -55,7 +57,7 @@
 | 1.1 关注点分离 | 视图层禁止业务逻辑 | ✅ PASS | 服务层封装所有业务逻辑（见behavior-model.md） |
 | 1.1 关注点分离 | 数据仓库层封装数据访问 | ✅ PASS | Repository模式隔离ORM/Redis操作 |
 | 1.2 接口设计 | RESTful API规范 | ✅ PASS | /api/v1/ 路径，统一响应格式 |
-| 1.2 接口设计 | WebSocket流式响应 | ⚠️ DEVIATION | 使用SSE替代WebSocket（见偏离说明） |
+| 1.2 接口设计 | 流式响应规范 | ✅ PASS | 使用SSE（宪法1.2已更新支持SSE/WebSocket） |
 | 1.3 数据一致性 | PostgreSQL为主存储 | ✅ PASS | 消息持久化到PostgreSQL |
 | 1.3 数据一致性 | 写操作原子性 | ✅ PASS | 事务保护，失败回滚（见behavior-model.md） |
 | 2.1 Python规范 | 类型注解 | ✅ PASS | 所有公共函数添加类型注解 |
@@ -65,9 +67,6 @@
 | 4.2 数据保护 | 密码国密SM3哈希 | ✅ PASS | 符合宪法国密算法要求 |
 | 4.3 大模型异常 | 统一异常处理 | ✅ PASS | 见behavior-model.md B_CHAT_002 |
 | 5.1 响应时间 | API p95 < 200ms | ⏳ PENDING | 实施阶段验证 |
-
-**偏离说明**:
-- **流式响应协议**: 宪法规定WebSocket端点，本特性使用SSE (Server-Sent Events)。理由：SSE为单向流式、HTTP原生、配置更简单，符合AI响应场景需求（见research.md#4）
 
 ---
 
