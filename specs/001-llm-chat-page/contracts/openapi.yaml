@@ -1,0 +1,392 @@
+openapi: 3.0.3
+info:
+  title: LinChat API
+  description: 大模型聊天平台 API 契约
+  version: 1.0.0
+  contact:
+    name: LinChat Team
+
+servers:
+  - url: /api/v1
+    description: API v1
+
+tags:
+  - name: auth
+    description: 用户认证
+  - name: chat
+    description: 聊天功能
+
+paths:
+  # ==================== 认证模块 ====================
+  /auth/captcha:
+    get:
+      tags: [auth]
+      summary: 获取验证码
+      operationId: getCaptcha
+      description: |
+        生成图形验证码，有效期 2 分钟。
+
+        **对应行为**: B_AUTH_001
+        **对应规则**: R_CAPTCHA_001
+      responses:
+        '200':
+          description: 验证码生成成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaptchaResponse'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 用户登录
+      operationId: login
+      description: |
+        验证用户名、密码和验证码，成功后返回 Token（通过 httpOnly Cookie 设置）。
+
+        **对应行为**: B_AUTH_002
+        **对应规则**: R_LOGIN_001, R_TOKEN_001, R_TOKEN_003
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          headers:
+            Set-Cookie:
+              description: httpOnly Cookie 包含 access_token
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: 验证码错误或已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 用户名或密码错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '423':
+          description: 账户已锁定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: 用户登出
+      operationId: logout
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: 登出成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # ==================== 聊天模块 ====================
+  /chat:
+    post:
+      tags: [chat]
+      summary: 发送消息并获取流式响应
+      operationId: sendMessage
+      description: |
+        发送用户消息，返回 SSE 流式响应。
+
+        **对应行为**: B_CHAT_001, B_CHAT_002
+        **对应规则**: R_MSG_001, R_MSG_002, R_DATA_001
+
+        响应格式为 Server-Sent Events (SSE):
+        - `data: {"type": "content", "content": "..."}`
+        - `data: {"type": "done", "content": ""}`
+        - `data: {"type": "error", "content": "..."}`
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: 流式响应
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE 格式的流式响应
+        '400':
+          description: 消息内容无效（空消息或超长）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Token 无效或已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat/messages:
+    get:
+      tags: [chat]
+      summary: 加载历史消息
+      operationId: getMessages
+      description: |
+        加载用户的历史聊天记录，支持游标分页。
+
+        **对应行为**: B_CHAT_003
+        **对应规则**: R_DATA_001
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: 返回消息数量（最大 100）
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+        - name: before_sequence
+          in: query
+          description: 游标分页，返回此 sequence 之前的消息
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: 消息列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagesResponse'
+        '401':
+          description: Token 无效或已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /chat/stop:
+    post:
+      tags: [chat]
+      summary: 停止 AI 响应生成
+      operationId: stopGeneration
+      description: |
+        停止当前正在进行的 AI 响应生成，生成 checkpoint。
+
+        **对应场景**: User Story 2 - 场景 9
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: 停止成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          description: Token 无效或已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: httpOnly Cookie 中的 access_token
+
+  schemas:
+    # ==================== 通用响应 ====================
+    SuccessResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        data:
+          type: object
+          nullable: true
+        message:
+          type: string
+          example: success
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: 错误码
+        data:
+          type: object
+          nullable: true
+        message:
+          type: string
+          description: 错误信息
+
+    # ==================== 认证模块 ====================
+    CaptchaResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        data:
+          type: object
+          properties:
+            captcha_id:
+              type: string
+              format: uuid
+              description: 验证码 ID
+            captcha_image:
+              type: string
+              description: Base64 编码的验证码图片 (data:image/png;base64,...)
+        message:
+          type: string
+          example: success
+
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+        - captcha_id
+        - captcha_code
+      properties:
+        username:
+          type: string
+          description: 用户名
+          example: admin
+        password:
+          type: string
+          description: SM4 加密后的密码
+        captcha_id:
+          type: string
+          format: uuid
+          description: 验证码 ID
+        captcha_code:
+          type: string
+          description: 用户输入的验证码
+          minLength: 4
+          maxLength: 4
+        timestamp:
+          type: integer
+          format: int64
+          description: 客户端时间戳
+
+    LoginResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        data:
+          type: object
+          properties:
+            user_id:
+              type: integer
+              description: 用户 ID
+            username:
+              type: string
+              description: 用户名
+            expire_time:
+              type: string
+              format: date-time
+              description: Token 过期时间
+        message:
+          type: string
+          example: success
+
+    # ==================== 聊天模块 ====================
+    ChatRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          description: 消息内容
+          minLength: 1
+          maxLength: 4000
+
+    MessageVO:
+      type: object
+      properties:
+        message_id:
+          type: integer
+          description: 消息 ID
+        message_uuid:
+          type: string
+          format: uuid
+          description: 消息 UUID
+        role:
+          type: string
+          enum: [user, assistant, system]
+          description: 消息角色
+        content:
+          type: string
+          description: 消息内容
+        sequence:
+          type: integer
+          description: 消息序号（用于分页）
+        created_time:
+          type: string
+          format: date-time
+          description: 创建时间
+        response_time_ms:
+          type: integer
+          description: 响应耗时（毫秒，仅 assistant 消息）
+        model_name:
+          type: string
+          description: 模型名称（仅 assistant 消息）
+
+    MessagesResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        data:
+          type: object
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/MessageVO'
+            has_more:
+              type: boolean
+              description: 是否有更多历史消息
+        message:
+          type: string
+          example: success
+
+    StreamChunk:
+      type: object
+      description: SSE 流式响应块
+      properties:
+        type:
+          type: string
+          enum: [content, done, error]
+          description: 块类型
+        content:
+          type: string
+          description: 内容

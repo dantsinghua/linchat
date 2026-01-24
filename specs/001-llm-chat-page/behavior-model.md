@@ -217,13 +217,13 @@ async def verify_token(token: str) -> dict:
   @设计说明:
     - 合并发送和响应为一个流程
     - Redis Checkpoint自动管理对话历史
-    - MySQL双写用于持久化
+    - PostgreSQL双写用于持久化
   
   @处理逻辑:
     1. 校验消息长度（≤4000）和非空
     2. 生成request_id和thread_id
     3. 调用Agent执行并流式返回
-    4. 消息持久化到MySQL（在Agent执行中完成）
+    4. 消息持久化到PostgreSQL（在Agent执行中完成）
 
 @代码模板(Python):
 ```python
@@ -269,7 +269,7 @@ async def send_message(user_id: int, content: str) -> AsyncGenerator[StreamChunk
   
   @关键设计:
     - Redis Checkpoint: 自动管理对话历史，无需手动加载
-    - 双写策略: Checkpoint管理状态 + MySQL持久化记录
+    - 双写策略: Checkpoint管理状态 + PostgreSQL持久化记录
   
   @处理逻辑:
     1. 创建执行记录（用于监控）
@@ -277,7 +277,7 @@ async def send_message(user_id: int, content: str) -> AsyncGenerator[StreamChunk
     3. 使用Redis Checkpointer编译Graph
     4. 调用Agent（Checkpoint自动加载历史）
     5. 流式执行并记录节点详情
-    6. 保存消息到MySQL（持久化）
+    6. 保存消息到PostgreSQL（持久化）
     7. 更新执行记录和用户统计
 
 @代码模板(Python):
@@ -303,7 +303,7 @@ async def execute_agent(
     execution_uuid = str(uuid.uuid4())
     start_time = datetime.now()
     
-    # 1. 创建执行记录（MySQL，用于监控）
+    # 1. 创建执行记录（PostgreSQL，用于监控）
     execution = LangGraphExecution(
         execution_uuid=execution_uuid,
         request_id=request_id,
@@ -378,7 +378,7 @@ async def execute_agent(
         
         yield StreamChunk(type="done", content="")
         
-        # 6. 保存消息到MySQL（持久化，用于审计和历史查询）
+        # 6. 保存消息到PostgreSQL（持久化，用于审计和历史查询）
         end_time = datetime.now()
         duration_ms = int((end_time - start_time).total_seconds() * 1000)
         
@@ -438,7 +438,7 @@ async def execute_agent(
 **关键点说明：**
 
 1. **无需手动加载历史**：Redis Checkpoint自动管理，调用时只需传当前消息
-2. **双写策略**：Checkpoint管理实时状态，MySQL持久化用于审计
+2. **双写策略**：Checkpoint管理实时状态，PostgreSQL持久化用于审计
 3. **thread_id**：使用`user_{user_id}`，确保用户数据隔离
 4. **TTL配置**：24小时无活动自动清理对话状态
 
@@ -502,7 +502,7 @@ async def load_history_messages(
 | B_AUTH_003 | Token鉴权验证 | FR-004,005 | Redis TTL刷新 |
 | B_CHAT_001 | 发送消息并获取响应 | FR-010,011,016 | 消息校验, 触发Agent |
 | B_CHAT_002 | 执行LangGraph Agent | FR-011,017-020 | **Redis Checkpoint**, Langfuse |
-| B_CHAT_003 | 加载历史消息 | FR-015,016 | MySQL查询, 数据隔离 |
+| B_CHAT_003 | 加载历史消息 | FR-015,016 | PostgreSQL查询, 数据隔离 |
 
 ---
 
@@ -512,17 +512,17 @@ async def load_history_messages(
 
 ```
 传统方式：
-1. 从MySQL加载历史消息
+1. 从PostgreSQL加载历史消息
 2. 构建messages数组
 3. 发送给LLM
-4. 保存响应到MySQL
+4. 保存响应到PostgreSQL
 
 Redis Checkpoint方式：
 1. 调用Agent（传入thread_id）
 2. Checkpoint自动加载该thread的历史
 3. LLM响应
 4. Checkpoint自动保存新状态
-5. （可选）双写到MySQL用于持久化
+5. （可选）双写到PostgreSQL用于持久化
 ```
 
 ### 双写策略
@@ -530,6 +530,6 @@ Redis Checkpoint方式：
 | 存储 | 用途 | 管理方式 |
 |-----|------|---------|
 | Redis Checkpoint | 对话状态、上下文 | LangGraph自动管理 |
-| MySQL message表 | 持久化、审计、历史查询 | 代码显式写入 |
+| PostgreSQL message表 | 持久化、审计、历史查询 | 代码显式写入 |
 
 **已移除**：原conversation相关操作已删除，message直接关联user，对话状态由Redis Checkpoint管理。

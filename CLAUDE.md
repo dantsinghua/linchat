@@ -149,8 +149,8 @@
 | 类别 | 要求 |
 |------|------|
 | 令牌存储 | httpOnly Cookie (禁止 localStorage) |
-| 密码哈希 | Argon2 算法 |
-| API 密钥 | Fernet 加密存储 |
+| 密码哈希 | 国密SM3算法 |
+| API 密钥 | 国密SM4加密存储 |
 | 频率限制 | 匿名100次/时，认证1000次/时，LLM 60次/分 |
 
 ---
@@ -199,7 +199,7 @@
 
 1. **禁止**在视图层编写业务逻辑
 2. **禁止**直接写原生 SQL (必须使用 ORM)
-3. **禁止**将 JWT 存储在 localStorage
+3. **禁止**将 Token 存储在 localStorage（必须使用 httpOnly Cookie）
 4. **禁止**提交敏感信息到版本控制
 5. **禁止**合并违反"不可违背"条款的代码
 6. **禁止**跳过测试直接部署
@@ -225,3 +225,9 @@
 ---
 
 *本文件随项目演进持续更新，版本与宪法文件同步。*
+
+## Active Technologies
+- Python 3.11+ (后端) / TypeScript 5.0+ (前端) (001-llm-chat-page)
+
+## Recent Changes
+- 001-llm-chat-page: Added Python 3.11+ (后端) / TypeScript 5.0+ (前端)

@@ -127,7 +127,7 @@ axios.interceptors.response.use(null, error => {
  │           │─────────────────>│                │                  │              │
  │           │                  │                │                  │              │
  │           │                  │ 5.创建执行记录 │                  │              │
- │           │                  │    (MySQL)     │                  │              │
+ │           │                  │    (PostgreSQL)     │                  │              │
  │           │                  │                │                  │              │
  │           │                  │ 6.调用Agent(thread_id)            │              │
  │           │                  │───────────────────────────────────>│              │
@@ -153,7 +153,7 @@ axios.interceptors.response.use(null, error => {
  │           │                  │                │<─────────────────│              │
  │           │                  │                │  (自动保存状态)   │              │
  │           │                  │                │                  │              │
- │           │                  │ 13.保存消息到MySQL（双写）         │              │
+ │           │                  │ 13.保存消息到PostgreSQL（双写）         │              │
  │           │                  │                │                  │              │
  │           │                  │ 14.更新执行记录│                  │              │
  │           │ 15.完成标记      │                │                  │              │
@@ -166,10 +166,10 @@ axios.interceptors.response.use(null, error => {
 
 | 步骤 | 传统方式 | Redis Checkpoint方式 |
 |-----|---------|---------------------|
-| 加载历史 | 从MySQL查询最近N条消息 | **自动**：RedisSaver加载thread状态 |
+| 加载历史 | 从PostgreSQL查询最近N条消息 | **自动**：RedisSaver加载thread状态 |
 | 构建上下文 | 手动拼接messages数组 | **自动**：LangGraph处理 |
-| 保存状态 | 手动保存到MySQL | **自动**：RedisSaver保存checkpoint |
-| 持久化 | 仅MySQL | MySQL双写（用于审计和历史查询） |
+| 保存状态 | 手动保存到PostgreSQL | **自动**：RedisSaver保存checkpoint |
+| 持久化 | 仅PostgreSQL | PostgreSQL双写（用于审计和历史查询） |
 
 ### 核心代码
 
@@ -410,7 +410,7 @@ async def get_messages(
 1. **无conversation表**：单用户单会话场景下冗余，message直接关联user
 2. **thread_id派生**：`f"user_{user_id}"`，无需额外查询
 3. **Redis Checkpoint**：LangGraph对话状态由RedisSaver自动管理
-4. **双写策略**：Checkpoint管理运行时状态，MySQL持久化聊天记录
+4. **双写策略**：Checkpoint管理运行时状态，PostgreSQL持久化聊天记录
 5. **数据隔离**：所有查询通过user_id过滤，user_id从认证上下文获取
 6. **SSE流式响应**：实现打字机效果，支持Markdown/Mermaid实时渲染
 
@@ -418,11 +418,11 @@ async def get_messages(
 
 ## 八、Checkpoint故障恢复策略
 
-当Redis Checkpoint数据丢失时（如Redis重启、TTL过期），系统可从MySQL恢复：
+当Redis Checkpoint数据丢失时（如Redis重启、TTL过期），系统可从PostgreSQL恢复：
 
 ```python
 async def rebuild_checkpoint_if_needed(user_id: int, checkpointer: RedisSaver):
-    """如果Checkpoint不存在，从MySQL重建"""
+    """如果Checkpoint不存在，从PostgreSQL重建"""
     thread_id = f"user_{user_id}"
     config = {"configurable": {"thread_id": thread_id}}
     
@@ -431,7 +431,7 @@ async def rebuild_checkpoint_if_needed(user_id: int, checkpointer: RedisSaver):
     if existing:
         return  # 已存在，无需重建
     
-    # 从MySQL加载历史消息
+    # 从PostgreSQL加载历史消息
     messages = await message_repo.find_by_user_id(user_id, limit=20)
     if not messages:
         return  # 无历史，无需重建
@@ -447,5 +447,5 @@ async def rebuild_checkpoint_if_needed(user_id: int, checkpointer: RedisSaver):
     
     # 通过运行一次空调用来初始化Checkpoint
     # 或者直接使用checkpointer.put()保存初始状态
-    logger.info(f"Rebuilt checkpoint for user {user_id} from MySQL")
+    logger.info(f"Rebuilt checkpoint for user {user_id} from PostgreSQL")
 ```

@@ -314,7 +314,7 @@ def get_thread_id(user_id: int) -> str:
 ```
 1. 用户发送消息
    │
-   ├─→ MySQL: 保存用户消息到message表 (role=user)
+   ├─→ PostgreSQL: 保存用户消息到message表 (role=user)
    │
    ├─→ Redis: RedisSaver读取checkpoint获取对话历史
    │
@@ -322,13 +322,13 @@ def get_thread_id(user_id: int) -> str:
    │
    ├─→ Redis: RedisSaver保存新checkpoint（包含本轮对话）
    │
-   └─→ MySQL: 保存AI响应到message表 (role=assistant)
+   └─→ PostgreSQL: 保存AI响应到message表 (role=assistant)
 ```
 
 ### 数据一致性策略
 
 ```
-Checkpoint (Redis)          Message (MySQL)
+Checkpoint (Redis)          Message (PostgreSQL)
      │                           │
      │  运行时状态                │  持久化记录
      │  可能丢失                  │  不可丢失
@@ -337,7 +337,7 @@ Checkpoint (Redis)          Message (MySQL)
                  │
                  ▼
          如果Checkpoint丢失：
-         从MySQL的message表重建对话历史
+         从PostgreSQL的message表重建对话历史
 ```
 
 ---
@@ -389,7 +389,7 @@ langgraph:
 
 核心决策:
   - Checkpoint用Redis: 高性能，支持TTL
-  - Message用MySQL: 持久化，支持复杂查询
+  - Message用PostgreSQL: 持久化，支持复杂查询
   - 两者解耦: Checkpoint丢失可从Message重建
 
 依赖包:
