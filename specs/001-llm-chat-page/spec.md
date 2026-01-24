@@ -3,7 +3,19 @@
 **Feature Branch**: `001-llm-chat-page`
 **Created**: 2026-01-25
 **Status**: Draft
-**Input**: 搭建一个简单的大模型聊天页面，包含多租户用户登录、聊天记录存储、LangGraph Agent、配置服务和流式响应前端
+
+---
+
+## ⚠️ 强制参考文档
+
+> **开发/实施前必须阅读以下文档，本规范仅包含验收场景和需求索引。**
+
+| 文档 | 路径 | 内容简介 |
+|------|------|----------|
+| **数据模型** | `specs/001-llm-chat-page/data-model.md` | PostgreSQL表结构（sys_user、message、langgraph_execution）、Redis缓存设计、LangGraph RedisSaver配置、实体关系图 |
+| **流程模型** | `specs/001-llm-chat-page/process-model.md` | 登录流程P_AUTH_001、Token鉴权P_AUTH_002、消息发送P_CHAT_001、历史加载P_CHAT_002的完整时序图和代码示例 |
+| **行为模型** | `specs/001-llm-chat-page/behavior-model.md` | 6个原子行为的完整实现：验证码生成、用户登录、Token验证、消息发送、Agent执行、历史加载，含Python代码模板 |
+| **规则模型** | `specs/001-llm-chat-page/rule-model.md` | 12条业务规则：验证码有效期、登录锁定、Token双重过期、消息长度限制、数据隔离、Agent超时等，含配置参数 |
 
 ---
 
@@ -38,6 +50,8 @@
 5. **Given** 用户已登录且 token 在 1 小时内有效, **When** 用户进行任何操作, **Then** 操作正常执行且 token 有效期刷新，但是即使这样，有效期积累到24小时后也强制失效
 6. **Given** 用户已登录但 1 小时内无操作, **When** 用户尝试发送消息或做任何其他操作、请求, **Then** 系统提示登录已过期并跳转到登录页面
 
+> 📖 **详细实现**: 登录流程见 `process-model.md#P_AUTH_001`，Token规则见 `rule-model.md#R_TOKEN_003`
+
 ---
 
 ### User Story 2 - 发送消息并获取 AI 流式响应 (Priority: P1)
@@ -61,6 +75,8 @@
 9. **Given** 用户成功发送聊天数据, **When** langgraph agent如果成功返回了，**Then** 此时的聊天框发送按钮变更为停止按钮，点击停止按钮则终止langgraph agent继续生成并生成一个checkpoint
 10. **Given** 用户成功发送聊天数据, **When** langgraph agent如果失败了，**Then** 则用户问依然停留在输入框内，不在聊天记录列表生成用户问的对话框，聊天记录数据不存储该数据，但是该数据将会计入日志，用户可以点击发送按钮再次进行尝试，直到正常返回
 
+> 📖 **详细实现**: 消息流程见 `process-model.md#P_CHAT_001`，Agent执行见 `behavior-model.md#B_CHAT_002`
+
 ---
 
 ### User Story 3 - 系统配置管理 (Priority: P2)
@@ -77,6 +93,8 @@
 2. **Given** 配置文件包含 LLM 接口地址, **When** 用户发送消息, **Then** 请求发送到配置的 LLM 服务地址
 3. **Given** 配置文件包含 Redis 缓存配置, **When** 系统运行, **Then** 缓存服务正常工作
 
+> 📖 **详细实现**: 配置参数见 `data-model.md#七、配置参数汇总`
+
 ---
 
 ### User Story 4 - LangGraph Agent 监控 (Priority: P3)
@@ -92,130 +110,97 @@
 1. **Given** 用户发送消息触发 LangGraph Agent, **When** 查看 LangGraph Dev 界面, **Then** 可以看到 Agent 的执行流程和节点状态
 2. **Given** LLM 调用发生, **When** 查看 Langfuse 监控面板, **Then** 可以看到调用延迟、token 用量等指标
 
+> 📖 **详细实现**: 执行监控表见 `data-model.md#langgraph_execution`，Langfuse集成见 `behavior-model.md#B_CHAT_002`
+
 ---
 
 ### Edge Cases
 
-- **网络中断时发送消息**: 例如大模型没响应、langgraph无响应，则系统应提示网络错误，请稍后重新发送并保留用户输入内容在输入框内。
-- **LLM 服务不可用**: 系统应显示友好的错误提示，建议用户稍后重试
-- **流式响应中断**: 已接收的内容应保留显示，已生成内容正常显示在前端页面，但是后端消息表因为没有完整assistant回复，不记录该数据，因此用户如果刷新当前页面已生成内容会消失，除提示网络错误之外，也要提示已生成内容如果有用请另存其他地方，刷新后内容会清空。
-- **验证码过期**: 用户点击刷新验证码，生成新的验证码图片
-- **Token 过期但页面未关闭**: 任何 API 调用返回 401 (请设计一个统一的401页面，同chat和login页面一样的蓝白风格)时自动跳转登录页login
-- **超长消息**: 系统应限制单条消息最大用户输入长度（ 4000 字符以内）
-- **并发登录**: 单点登录，同一用户在多设备登录时，采用最新登录有效策略，其余自动登出
-- **空消息发送**: 前端阻止发送空消息或仅包含空白字符的消息，前端应该trim()掉用户输入文本的首尾空格符号，count真实输入字数并判断是否超限
+| 场景 | 处理策略 |
+|------|----------|
+| 网络中断时发送消息 | 提示网络错误，保留用户输入内容在输入框内 |
+| LLM 服务不可用 | 显示友好错误提示，建议用户稍后重试 |
+| 流式响应中断 | 已接收内容保留显示，后端不记录不完整消息，提示用户另存有用内容 |
+| 验证码过期 | 用户点击刷新验证码，生成新图片 |
+| Token 过期但页面未关闭 | 任何 API 返回 401 时跳转登录页（统一401页面，蓝白风格） |
+| 超长消息 | 限制单条消息最大 4000 字符 |
+| 并发登录 | 单点登录，最新登录有效，其余自动登出 |
+| 空消息发送 | 前端阻止，trim()首尾空格后校验 |
+
+> 📖 **详细规则**: 见 `rule-model.md#R_MSG_001`、`R_STREAM_001`
 
 ---
 
 ## Requirements *(mandatory)*
 
-### Functional Requirements
+### Functional Requirements 索引
 
-#### 用户认证模块
+> **完整实现细节见各模型文档，此处仅作索引。**
 
-- **FR-001**: 系统必须提供登录页面，包含用户名输入框、密码输入框、验证码输入框和验证码图片
-- **FR-002**: 系统必须使用开源 Captcha 方案生成图形验证码，有效期 2 分钟
-- **FR-002a**: 验证码过期后，前端必须自动刷新获取新验证码
-- **FR-003**: 系统必须使用国密算法（SM2/SM3/SM4）对用户名、密码、验证码、时间戳进行加密生成 token
-- **FR-004**: Token 有效期为 1 小时，无操作自动过期；有操作时刷新有效期
-- **FR-005**: 所有需要认证的页面和 API 必须验证 token 有效性，无效时返回 401 并跳转登录页
-- **FR-006**: 用户密码必须使用安全哈希算法加密后存储在数据库中
-- **FR-007**: 系统必须初始化一个 admin 账户（用户名: admin，密码: !9871229Qing）
-- **FR-008**: 系统暂不提供用户注册功能，所有用户通过数据库初始化
-- **FR-008a**: 用户连续 5 次登录失败后，账户锁定 15 分钟，期间拒绝该账户的登录请求
-
-#### 聊天功能模块
-
-- **FR-009**: 每个用户拥有且仅拥有一个持续会话，无需创建或切换会话
-- **FR-010**: 用户发送的消息必须实时持久化到数据库
-- **FR-011**: AI 响应必须以流式方式返回并实时显示在前端
-- **FR-012**: AI 响应完成后必须持久化到数据库
-- **FR-013**: 前端必须支持 Markdown 文本实时渲染（包括表格、代码块、列表等）
-- **FR-014**: 前端必须支持 Mermaid 流程图实时渲染
-- **FR-015**: 用户登录后必须加载并显示历史聊天记录
-- **FR-016**: 不同用户的聊天记录必须完全隔离
-
-#### LangGraph Agent 模块
-
-- **FR-017**: 系统必须使用 LangGraph 构建 ReAct 模式的聊天 Agent
-- **FR-018**: LangGraph Agent 模块必须独立设计，支持后续扩展更复杂的 Graph 流程
-- **FR-018a**: LangGraph checkpointer 必须使用 Redis 缓存存储（临时状态，无需持久化）
-- **FR-019**: 系统必须集成 LangGraph Dev 进行开发调试
-- **FR-020**: 系统必须集成 Langfuse 进行 LLM 调用监控
-
-#### 配置服务模块
-
-- **FR-021**: 系统必须提供统一的配置读取服务
-- **FR-022**: 配置文件必须包含数据库连接配置（PostgreSQL）
-- **FR-023**: 配置文件必须包含缓存配置（Redis）
-- **FR-024**: 配置文件必须包含 LLM 接口配置（兼容 OpenAI API 规范的 vLLM 服务）
-- **FR-025**: 敏感配置（密码、API Key）必须支持环境变量注入
-
-#### 监控与日志
-
-- **FR-026**: 数据库表设计必须包含支持监控和埋点的字段（如请求 ID、响应时间、token 用量等）
-- **FR-027**: 数据库表设计必须预留扩展字段，支持后续功能扩展
+| 编号 | 需求描述 | 详细文档 |
+|------|----------|----------|
+| **用户认证** |||
+| FR-001 | 登录页面（用户名/密码/验证码） | `behavior-model.md#B_AUTH_002` |
+| FR-002/002a | 验证码生成与自动刷新（2分钟有效） | `behavior-model.md#B_AUTH_001`、`rule-model.md#R_CAPTCHA_*` |
+| FR-003 | 国密算法Token生成（SM2/SM3/SM4） | `rule-model.md#R_TOKEN_001` |
+| FR-004 | Token双重过期（24h绝对+1h无操作） | `rule-model.md#R_TOKEN_003` |
+| FR-005 | Token验证与401跳转 | `behavior-model.md#B_AUTH_003` |
+| FR-006 | 密码SM3哈希存储 | `data-model.md#sys_user` |
+| FR-007 | 初始化admin账户 | `data-model.md#初始化数据` |
+| FR-008/008a | 无注册功能 + 5次失败锁定15分钟 | `rule-model.md#R_LOGIN_001` |
+| **聊天功能** |||
+| FR-009 | 单用户单会话模式 | `data-model.md#设计决策` |
+| FR-010~012 | 消息实时持久化 + 流式响应 | `behavior-model.md#B_CHAT_001/002` |
+| FR-013~014 | Markdown/Mermaid实时渲染 | `process-model.md#P_CHAT_001` |
+| FR-015~016 | 历史加载 + 用户数据隔离 | `behavior-model.md#B_CHAT_003`、`rule-model.md#R_DATA_001` |
+| **LangGraph Agent** |||
+| FR-017~018a | ReAct Agent + Redis Checkpointer | `behavior-model.md#B_CHAT_002`、`data-model.md#RedisSaver` |
+| FR-019~020 | LangGraph Dev + Langfuse集成 | `data-model.md#langgraph_execution` |
+| **配置服务** |||
+| FR-021~025 | 统一配置（DB/Redis/LLM/环境变量） | `data-model.md#七、配置参数汇总` |
+| **监控埋点** |||
+| FR-026~027 | 监控字段 + 扩展字段预留 | `data-model.md#message表`、`langgraph_execution表` |
 
 ---
 
-### Key Entities
+### Key Entities 索引
 
-#### User（用户）
+> **完整表结构见 `data-model.md`**
 
-- 用户唯一标识（user_id，同时作为数据隔离标识，租户=用户）
-- 用户名（唯一）
-- 加密后的密码
-- 账户状态（启用/禁用）
-- 登录失败次数（用于锁定判断）
-- 锁定截止时间（锁定状态时记录）
-- 创建时间、更新时间
-
-#### Conversation（会话）
-
-- 会话唯一标识
-- 关联用户标识
-- 会话创建时间
-- 最后活跃时间
-- 会话状态
-
-#### Message（消息）
-
-- 消息唯一标识
-- 关联会话标识
-- 消息角色（user/assistant/system）
-- 消息内容
-- 发送时间
-- 请求 ID（用于链路追踪）
-- 响应耗时（仅 assistant 消息）
-- Token 用量（输入/输出）
-- 模型名称
-- 扩展字段（JSON 格式，预留）
+| 实体 | 存储 | 说明 | 详细定义 |
+|------|------|------|----------|
+| sys_user | PostgreSQL | 用户表（认证、锁定、统计） | `data-model.md#2.1` |
+| message | PostgreSQL | 消息表（持久化聊天记录） | `data-model.md#2.2` |
+| langgraph_execution | PostgreSQL | 执行监控表（可选） | `data-model.md#2.3` |
+| auth:token:* | Redis | Token缓存（双重过期） | `data-model.md#3.1` |
+| auth:captcha:* | Redis | 验证码缓存（2分钟TTL） | `data-model.md#3.1` |
+| langgraph:checkpoint:* | Redis | LangGraph对话状态 | `data-model.md#3.2` |
 
 ---
 
 ## Success Criteria *(mandatory)*
 
-### Measurable Outcomes
-
-- **SC-001**: 用户可以在 30 秒内完成登录流程（包括输入凭证和验证码）
-- **SC-002**: 用户发送消息后，首个响应字符在 3 秒内显示（网络正常情况下）
-- **SC-003**: 流式响应的字符延迟不超过 100 毫秒（用户感知流畅）
-- **SC-004**: 系统支持至少 100 个并发用户同时进行聊天
-- **SC-005**: 历史消息加载在 2 秒内完成（最近 50 条消息）
-- **SC-006**: Markdown 和 Mermaid 内容在流式传输完成后 500 毫秒内完成渲染
-- **SC-007**: 用户认证失败时 100% 正确拦截并跳转登录页
-- **SC-008**: 所有聊天消息 100% 持久化到数据库，数据不丢失
-- **SC-009**: 不同用户的聊天记录 100% 隔离，无数据泄露
+| 编号 | 指标 | 目标值 |
+|------|------|--------|
+| SC-001 | 登录流程完成时间 | < 30秒 |
+| SC-002 | 首个响应字符延迟 | < 3秒 |
+| SC-003 | 流式字符延迟 | < 100ms |
+| SC-004 | 并发用户支持 | ≥ 100 |
+| SC-005 | 历史消息加载（50条） | < 2秒 |
+| SC-006 | Markdown/Mermaid渲染 | 完成后 < 500ms |
+| SC-007 | 认证拦截准确率 | 100% |
+| SC-008 | 消息持久化成功率 | 100% |
+| SC-009 | 用户数据隔离 | 100% |
 
 ---
 
 ## Assumptions
 
-1. **LLM 服务可用性**: 假设 vLLM 部署的内网 LLM 服务稳定可用，支持 OpenAI 兼容的流式 API
-2. **网络环境**: 假设内网环境网络稳定，延迟在可接受范围内
-3. **用户规模**: 初期用户规模较小（< 100 并发），暂不考虑大规模集群部署
-4. **浏览器兼容性**: 主要支持现代浏览器（Chrome、Firefox、Edge、Safari 最新两个主版本）
-5. **单设备登录**: 采用最新登录有效策略，旧设备 token 自动失效
-6. **消息长度限制**: 单条用户消息最大 4000 字符，AI 响应无硬性限制
+1. **LLM 服务可用性**: vLLM 内网服务稳定，支持 OpenAI 兼容流式 API
+2. **网络环境**: 内网延迟可接受
+3. **用户规模**: 初期 < 100 并发，暂不考虑集群
+4. **浏览器兼容**: Chrome/Firefox/Edge/Safari 最新两版本
+5. **单设备登录**: 最新登录有效，旧设备 token 失效
+6. **消息长度**: 用户消息 ≤ 4000 字符，AI 响应无限制
 
 ---
