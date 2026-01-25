@@ -25,6 +25,12 @@ __pycache__/
 *$py.class
 *.so
 
+# Node.js
+node_modules/
+.next/
+dist/
+build/
+
 # IDE
 .idea/
 .vscode/

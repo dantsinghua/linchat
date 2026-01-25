@@ -69,9 +69,11 @@ RESTful API 规范:
     成功: { "code": 0, "data": {...}, "message": "success" }
     失败: { "code": <错误码>, "data": null, "message": "<错误信息>" }
 
-WebSocket 规范（用于流式响应）:
-  端点: /ws/chat/{conversation_id}/
-  消息类型: user_message / assistant_chunk / assistant_complete / error
+流式响应规范（支持 SSE 或 WebSocket）:
+  SSE 端点: POST /api/v1/chat （推荐，适用于AI响应等单向流式场景）
+  WebSocket 端点: /ws/chat/{thread_id}/ （可选，适用于双向交互场景）
+  消息类型: content / done / error
+  Content-Type: text/event-stream (SSE) 或 application/json (WebSocket)
 
 接口版本控制:
   - 使用 URL 路径版本化（/api/v1/、/api/v2/）
@@ -83,11 +85,13 @@ WebSocket 规范（用于流式响应）:
 
 **存储职责划分：**
 
-| 存储 | 职责 | 核心规范 |
-|------|------|----------|
-| PostgreSQL | 主存储（唯一可信来源） | Django ORM、禁止原生SQL、事务保护、软删除 |
-| Elasticsearch | 搜索引擎（只读副本） | 数据来源于PostgreSQL、通过同步机制写入 |
-| Redis | 缓存与实时通信 | 所有键设置TTL、键命名规范、可重建数据 |
+| 存储 | 职责 | 核心规范 | 状态 |
+|------|------|----------|------|
+| PostgreSQL | 主存储（唯一可信来源） | Django ORM、禁止原生SQL、事务保护、软删除 | 必需 |
+| Elasticsearch | 搜索引擎（只读副本） | 数据来源于PostgreSQL、通过同步机制写入 | 可选* |
+| Redis | 缓存与实时通信 | 所有键设置TTL、键命名规范、可重建数据 | 必需 |
+
+> *Elasticsearch 为可选组件，当前版本（001-llm-chat-page）暂不使用，后续版本可按需引入用于全文搜索功能。
 
 **数据一致性核心原则：**
 - 写操作必须保证原子性，失败必须回滚
@@ -369,7 +373,7 @@ WebSocket 规范（用于流式响应）:
 +------------------+----------------------------------------+
 | 数据一致性        | 写操作原子性，失败必须回滚                 |
 |                  | PostgreSQL 为唯一数据源                       |
-|                  | ES/Redis 同步失败需补偿机制              |
+|                  | Redis 同步失败需补偿机制（ES 可选）        |
 +------------------+----------------------------------------+
 | 安全要求          | Token 存储在 httpOnly Cookie            |
 |                  | Redis 实现接口频率限制                   |

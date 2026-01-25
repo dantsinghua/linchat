@@ -1,5 +1,6 @@
 # Claude 开发指南
 
+> 必须是用中文交流！！！
 > 本文件为 Claude AI 代理在本项目中的开发行为提供明确指导。
 > 所有代码生成、修改和审查必须遵循本指南。
 
@@ -10,6 +11,77 @@
 **项目名称**: 大模型聊天平台 (LinChat)
 **项目类型**: 企业级多租户 AI 聊天应用
 **开发模式**: 规范驱动开发 (Speckit)
+
+---
+
+## ⚠️⚠️⚠️ 开发环境配置 (必读！！！) ⚠️⚠️⚠️
+
+> **🚨 重要警告：在执行任何 Python/Django 后端命令之前，必须先激活 linchat 虚拟环境！**
+
+### Python 虚拟环境
+
+| 项目 | 虚拟环境路径 |
+|------|-------------|
+| **LinChat 后端** | `/home/dantsinghua/work/linchat/linchat/` |
+
+### 激活命令
+
+```bash
+# ⚠️ 每次开发前必须执行！！！
+source /home/dantsinghua/work/linchat/linchat/bin/activate
+
+# 验证激活成功 (应显示 linchat 虚拟环境)
+which python
+# 期望输出: /home/dantsinghua/work/linchat/linchat/bin/python
+```
+
+### 后端开发常用命令
+
+```bash
+# 激活虚拟环境后执行
+cd /home/dantsinghua/work/linchat/backend
+
+# Django 命令
+python manage.py runserver 8002      # 启动开发服务器 (端口8002)
+python manage.py migrate              # 数据库迁移
+python manage.py makemigrations       # 生成迁移文件
+python manage.py shell                # Django Shell
+
+# 测试
+pytest                                # 运行测试
+pytest --cov=apps                     # 带覆盖率测试
+
+# 代码质量
+black .                               # 代码格式化
+isort .                               # 导入排序
+mypy .                                # 类型检查
+```
+
+### 前端开发命令
+
+```bash
+cd /home/dantsinghua/work/linchat/frontend
+
+npm run dev -- -p 3784               # 启动开发服务器 (端口3784)
+npm run build                         # 构建
+npm run lint                          # 代码检查
+npm test                              # 运行测试
+```
+
+### 服务端口规划
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| LinChat 前端 | 3784 | Next.js 开发服务器 |
+| LinChat 后端 | 8002 | Django 开发服务器 |
+| PostgreSQL | 5432 | 主数据库 |
+| Redis | 6379 | 缓存服务 |
+| Nginx | 3782 | 反向代理入口 |
+
+### 公网访问
+
+- **URL**: `http://www.greydan.xin/linchat`
+- **流量路径**: frpc → nginx(3782) → linchat 前端(3784) / 后端(8002)
 
 ---
 

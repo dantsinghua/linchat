@@ -33,12 +33,12 @@
 
 **Purpose**: 创建项目结构，配置开发环境
 
-- [ ] T001 创建后端 Django 项目结构 `backend/`，配置 Django REST Framework
-- [ ] T002 创建前端 Next.js 项目结构 `frontend/`，配置 TypeScript 严格模式
-- [ ] T003 [P] 配置后端依赖 `backend/requirements.txt`（Django、LangGraph、gmssl、captcha 等）
-- [ ] T004 [P] 配置前端依赖 `frontend/package.json`（react-markdown、mermaid、zustand 等）
-- [ ] T005 [P] 创建 Docker Compose 配置 `docker-compose.yml`（PostgreSQL、Redis、Langfuse）
-- [ ] T006 [P] 配置环境变量模板
+- [x] T001 创建后端 Django 项目结构 `backend/`，配置 Django REST Framework
+- [x] T002 创建前端 Next.js 项目结构 `frontend/`，配置 TypeScript 严格模式
+- [x] T003 [P] 配置后端依赖 `backend/requirements.txt`（Django、LangGraph、gmssl、captcha 等）
+- [x] T004 [P] 配置前端依赖 `frontend/package.json`（react-markdown、mermaid、zustand 等）
+- [x] T005 [P] 创建 Docker Compose 配置 `docker-compose.yml`（PostgreSQL、Redis、Langfuse）
+- [x] T006 [P] 配置环境变量模板
   - 后端：`.env.example`（DATABASE_URL, REDIS_URL, LLM_API_BASE, SECRET_KEY 等）
   - 前端：`frontend/.env.local.example`（NEXT_PUBLIC_API_BASE_URL 等）
   > 📖 参考：[data-model.md#七、配置参数汇总](./data-model.md#七配置参数汇总)
@@ -73,9 +73,8 @@
 - [ ] T013 [P] 创建统一响应格式 `backend/apps/common/responses.py`（code/data/message 结构）
 - [ ] T014 [P] 创建国密算法封装 `backend/apps/users/crypto.py`（SM3哈希、SM4加密/解密）
   > 📖 参考：[behavior-model.md#1.2 用户登录](./behavior-model.md#12-用户登录b_auth_002) - SM4解密密码、SM3比对哈希流程
-- [ ] T015 创建认证与频率限制中间件 `backend/apps/common/middleware.py`
+- [ ] T015 创建认证中间件 `backend/apps/common/middleware.py`
   - Token鉴权：实现R_TOKEN_003双重过期规则（24小时绝对过期 + 1小时无操作过期）
-  - 频率限制：匿名100次/时，认证1000次/时，LLM 60次/分
   > 📖 **必读**：[behavior-model.md#1.3 Token鉴权验证](./behavior-model.md#13-token鉴权验证b_auth_003) - 完整验证逻辑
   > 📖 **必读**：[data-model.md#3.1 认证相关](./data-model.md#31-认证相关) - Token缓存结构、TTL计算规则
   > ⚠️ **注意**：Token必须存储在httpOnly Cookie，禁止localStorage
@@ -171,11 +170,6 @@
   - **AuthService测试**：密码SM3哈希验证、Token SM4加密生成、双重过期机制
   - **登录锁定测试**：5次失败锁定、15分钟解锁、成功后计数重置
   - **单点登录测试**：新登录使旧Token失效、Token索引更新
-  - **频率限制测试**（覆盖spec.md Edge Cases "频率限制超限"）：
-    - 匿名用户100次/时限制（超限返回429，提示"请求过于频繁，请稍后重试"）
-    - 认证用户1000次/时限制（超限返回429）
-    - LLM接口60次/分限制（超限返回429，含剩余等待时间）
-    - 限制计数器TTL验证（Redis键过期后计数重置）
   - **SC-001 登录流程耗时测试**：
     - 测量范围：用户点击登录按钮 → 成功跳转聊天页面
     - 包含环节：验证码校验、密码验证、Token生成、Cookie设置、页面跳转
@@ -247,6 +241,8 @@
   - status=2（生成中）时自动重连SSE继续接收
   > 📖 **必读**：[process-model.md#前端SSE处理](./process-model.md#核心代码) - useChatStream完整代码模板
 - [ ] T043 [P] [US2] 创建 Markdown 渲染组件 `frontend/src/components/chat/MarkdownRenderer.tsx`（react-markdown、代码高亮）
+  - 启用 rehype-raw 插件支持 `<u>` 下划线标签
+  - 配置 rehype-highlight 实现代码语法高亮
 - [ ] T044 [P] [US2] 创建 Mermaid 渲染组件 `frontend/src/components/chat/MermaidRenderer.tsx`（流式完成后渲染）
 - [ ] T045 [US2] 创建消息列表组件 `frontend/src/components/chat/MessageList.tsx`
   - 历史消息渲染（用户消息右侧蓝底、AI消息左侧灰底）
@@ -254,11 +250,18 @@
   - **消息状态渲染**（参考 [data-model.md#2.2 消息表](./data-model.md#22-消息表message) status字段）：
     - status=2（生成中）：显示加载动画
     - status=3（中断）：消息末尾显示"[已中断]"灰色标记 + "继续生成"按钮
+      - **[已中断]标记样式**: 灰色文字(#9CA3AF)、12px字号、位于消息内容末尾
+      - **继续生成按钮样式**:
+        - 位置：assistant消息气泡底部右侧，与消息内容间距8px
+        - 样式：outline按钮、蓝色边框(#3B82F6)、白底、圆角4px、padding 4px 12px
+        - 图标：左侧播放图标(▶)、右侧文字"继续生成"
+        - 交互：hover时背景变浅蓝(#EFF6FF)、点击后按钮变为loading状态
 - [ ] T046 [US2] 创建消息输入组件 `frontend/src/components/chat/MessageInput.tsx`
   - **输入校验**：
     - 空消息拦截：`content.trim()` 为空时禁用发送按钮
     - 长度限制：最大 4000 字符，超出时显示字符计数警告（如"4001/4000"红色）
   - **发送按钮**：空闲状态显示，点击触发消息发送
+  - **防抖处理**：发送按钮点击后300ms内禁用，防止快速重复点击
   - **停止按钮**：生成中状态显示（红色圆形停止图标），点击调用 POST /stop 终止生成
   - **状态切换**：通过 chatStore.isGenerating 控制按钮显示
   - **中断后处理**：停止成功后，已生成的消息末尾显示"[已中断]"灰色标记，弹出Toast提示
@@ -286,17 +289,16 @@
   - **异常处理测试**（宪法4.3）：
     - LLMConnectionError：重试3次逻辑
     - LLMTimeoutError：重试3次逻辑
-    - LLMRateLimitError：不重试，返回等待时间
+    - LLMRateLimitError：不重试，返回等待时间（LLM服务端限制）
     - LLMContentFilterError：不重试，返回用户修改提示
     - LLMInvalidResponseError：重试3次逻辑
     - LLMQuotaExceededError：不重试，返回联系管理员提示
-  - **频率限制测试**：LLM接口60次/分限制（超限返回429）
   - **停止生成测试**：中断时checkpoint保存、消息status=3更新
   > ⚠️ **覆盖率要求**：服务层 ≥ 95%（见宪法3.1）
   > ✅ **合格验证**：运行 `pytest --cov=apps.chat.services --cov-fail-under=95`，覆盖率低于95%视为任务未完成
 - [ ] T049d [P] [US2] 添加聊天组件测试 `frontend/tests/components/chat/`
   - **MessageList测试**：消息渲染、滚动锚定、中断标记显示
-  - **MessageInput测试**：空消息拦截、4000字符限制、发送/停止按钮切换
+  - **MessageInput测试**：空消息拦截、4000字符限制、发送/停止按钮切换、防抖300ms
   - **MarkdownRenderer测试**：代码块高亮、表格渲染
   - **SC-006 渲染性能冒烟测试**：
     - **Markdown 渲染**（1000字符含代码块）< 500ms
@@ -310,13 +312,9 @@
   - **LLM错误提示测试**：
     - 连接失败提示："AI 服务暂时无法连接，请稍后重试"
     - 超时提示："AI 响应超时，请稍后重试"
-    - 频率限制提示："请求过于频繁，请稍后重试"
+    - LLM频率限制提示："请求过于频繁，请稍后重试"（LLM服务端限制）
     - 内容过滤提示："消息包含敏感内容，请修改后重试"
     - 配额用尽提示："服务配额用尽，请联系管理员"
-  - **API频率限制测试（429响应）**：
-    - 匿名用户超限提示："请求过于频繁，请稍后重试"
-    - 认证用户超限提示："请求过于频繁，请稍后重试"
-    - LLM接口超限提示："请求过于频繁，请稍后重试"（含剩余等待时间）
   > 📖 参考：[constitution.md#4.3](../../.specify/memory/constitution.md) - LLM异常用户提示
   > 📖 参考：[spec.md#Success Criteria](./spec.md) - SC-006 渲染性能指标（完整压测在 T070）
 - [ ] T049e [US2] 添加登录到聊天端到端测试 `frontend/tests/e2e/login-to-chat.spec.ts`（Playwright完整流程）
@@ -520,7 +518,7 @@ Task: T044 创建 Mermaid 渲染组件 frontend/src/components/chat/MermaidRende
 | 阶段 | 任务数 | 关键产出 |
 |------|--------|----------|
 | Phase 1: Setup | 6 | 项目结构、依赖配置 |
-| Phase 2: Foundational | 15 | 数据库模型、通用组件、中间件（含频率限制）、单点登录、SSE事件推送 |
+| Phase 2: Foundational | 15 | 数据库模型、通用组件、认证中间件、单点登录、SSE事件推送 |
 | Phase 3: US1 登录认证 | 16 | 验证码、登录、Token 机制、**认证测试** |
 | Phase 4: US2 聊天功能 | 25 | Agent、流式响应、Markdown 渲染、异常处理、继续生成、**聊天测试+E2E+并发冒烟+性能冒烟** |
 | Phase 5: US3 配置管理 | 4 | 配置模块化 |

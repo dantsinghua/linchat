@@ -1,0 +1,44 @@
+# LinChat 后端依赖
+# Python 3.11+
+
+# ============ Django 核心 ============
+Django>=4.2,<5.0
+djangorestframework>=3.14.0
+django-cors-headers>=4.3.0
+django-redis>=5.4.0
+
+# ============ 数据库 ============
+psycopg2-binary>=2.9.9
+
+# ============ Redis ============
+redis>=5.0.0
+
+# ============ LangGraph / LangChain ============
+langchain>=0.2.0
+langchain-openai>=0.1.0
+langgraph>=0.2.0
+langgraph-checkpoint-redis>=0.1.0
+
+# ============ 国密算法 ============
+gmssl>=3.2.2
+
+# ============ 验证码 ============
+captcha>=0.5.0
+Pillow>=10.0.0
+
+# ============ 监控 ============
+langfuse>=2.0.0
+
+# ============ 工具 ============
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+httpx>=0.27.0
+
+# ============ 开发/测试 ============
+pytest>=8.0.0
+pytest-django>=4.8.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
+black>=24.0.0
+isort>=5.13.0
+mypy>=1.8.0

@@ -1,4 +1,6 @@
-version: '3.8'
+# LinChat Docker Compose 配置
+# 核心服务: PostgreSQL, Redis
+# 可选服务: Langfuse (需要 ClickHouse)
 
 services:
   # PostgreSQL 主数据库 (应用 + Langfuse 共用)
@@ -42,22 +44,54 @@ services:
     networks:
       - linchat-network
 
-  # Langfuse LLM 监控
+  # ClickHouse 分析数据库 (Langfuse v3 必需)
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: linchat-clickhouse
+    restart: unless-stopped
+    profiles:
+      - langfuse  # 仅在启用 Langfuse 时启动
+    environment:
+      CLICKHOUSE_DB: langfuse
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse_123}
+    ports:
+      - "8123:8123"  # HTTP 接口
+      - "9000:9000"  # Native 接口
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - linchat-network
+
+  # Langfuse LLM 监控 (可选，Phase 6 任务)
   langfuse:
-    image: langfuse/langfuse:latest
+    image: langfuse/langfuse:3
     container_name: linchat-langfuse
     restart: unless-stopped
+    profiles:
+      - langfuse  # 仅在需要时启用: docker compose --profile langfuse up -d
     depends_on:
       postgres:
         condition: service_healthy
+      clickhouse:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-linchat_123}@postgres:5432/langfuse
-      NEXTAUTH_URL: http://localhost:3000
-      NEXTAUTH_SECRET: ${LANGFUSE_SECRET:-linchat-langfuse-secret-key-change-me}
-      SALT: ${LANGFUSE_SALT:-linchat-langfuse-salt-change-me}
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse_123}
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: ${LANGFUSE_SECRET:-linchat-langfuse-secret-key-change-me-32chars}
+      SALT: ${LANGFUSE_SALT:-linchat-langfuse-salt-change-me-32chars}
       TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY:-false}
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
     ports:
-      - "3000:3000"
+      - "3001:3000"  # 改为3001避免与前端冲突
     networks:
       - linchat-network
 
@@ -65,6 +99,8 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  clickhouse_data:
     driver: local
 
 networks:
