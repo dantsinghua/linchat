@@ -95,13 +95,8 @@ def sm4_encrypt(plaintext: str) -> str:
     # 将明文转为字节
     plaintext_bytes = plaintext.encode("utf-8")
 
-    # PKCS7 填充到16字节的倍数
-    block_size = 16
-    padding_len = block_size - (len(plaintext_bytes) % block_size)
-    padded_data = plaintext_bytes + bytes([padding_len] * padding_len)
-
-    # 加密
-    ciphertext = crypt_sm4.crypt_ecb(padded_data)
+    # gmssl 的 crypt_ecb 会自动处理 PKCS7 填充，无需手动填充
+    ciphertext = crypt_sm4.crypt_ecb(plaintext_bytes)
 
     # Base64 编码
     return base64.b64encode(ciphertext).decode("utf-8")
@@ -131,15 +126,8 @@ def sm4_decrypt(ciphertext: str) -> str:
         # Base64 解码
         ciphertext_bytes = base64.b64decode(ciphertext)
 
-        # 解密
-        plaintext_padded = crypt_sm4.crypt_ecb(ciphertext_bytes)
-
-        # 移除 PKCS7 填充
-        padding_len = plaintext_padded[-1]
-        if padding_len > 16 or padding_len == 0:
-            raise ValueError("Invalid padding")
-
-        plaintext_bytes = plaintext_padded[:-padding_len]
+        # gmssl 的 crypt_ecb 会自动处理 PKCS7 去填充
+        plaintext_bytes = crypt_sm4.crypt_ecb(ciphertext_bytes)
 
         return plaintext_bytes.decode("utf-8")
 

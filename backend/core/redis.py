@@ -12,38 +12,30 @@ from django.conf import settings
 
 
 class RedisClient:
-    """Redis 客户端封装"""
+    """Redis 客户端封装
 
-    _instance: "RedisClient | None" = None
-    _client: aioredis.Redis | None = None
+    注意：在 WSGI 环境下（Django runserver）使用异步视图时，
+    每次请求可能使用不同的事件循环，因此每次调用创建新连接。
+    """
 
-    def __new__(cls) -> "RedisClient":
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+    @staticmethod
+    async def get_client() -> aioredis.Redis:
+        """获取 Redis 客户端连接
 
-    async def get_client(self) -> aioredis.Redis:
-        """获取 Redis 客户端连接"""
-        if self._client is None:
-            self._client = aioredis.from_url(
-                settings.REDIS_URL,
-                encoding="utf-8",
-                decode_responses=True,
-            )
-        return self._client
-
-    async def close(self) -> None:
-        """关闭连接"""
-        if self._client:
-            await self._client.close()
-            self._client = None
+        每次调用创建新连接，避免事件循环问题
+        """
+        return aioredis.from_url(
+            settings.REDIS_URL,
+            encoding="utf-8",
+            decode_responses=True,
+        )
 
 
 # ============ 便捷方法 ============
 
 async def get_redis() -> aioredis.Redis:
     """获取 Redis 客户端"""
-    return await RedisClient().get_client()
+    return await RedisClient.get_client()
 
 
 async def redis_get(key: str) -> str | None:

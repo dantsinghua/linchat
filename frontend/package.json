@@ -29,7 +29,8 @@
     "mermaid": "^10.9.0",
     "axios": "^1.6.0",
     "clsx": "^2.1.0",
-    "tailwind-merge": "^2.2.0"
+    "tailwind-merge": "^2.2.0",
+    "sm-crypto": "^0.3.13"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

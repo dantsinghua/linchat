@@ -94,7 +94,7 @@ export function useAuth() {
             break;
 
           case 'connected':
-            console.log('SSE connected:', data.message);
+            // SSE 连接成功
             break;
 
           case 'heartbeat':
@@ -102,7 +102,7 @@ export function useAuth() {
             break;
 
           default:
-            console.log('Unknown SSE event:', data);
+            // 未知事件类型，忽略
         }
       } catch {
         console.error('Failed to parse SSE event:', event.data);
@@ -113,6 +113,9 @@ export function useAuth() {
 
   /**
    * 建立 SSE 连接
+   *
+   * 使用 addEventListener 监听具体事件类型，
+   * 因为后端 event_service.py 发送的事件包含 event: 字段
    */
   const connectSSE = useCallback(() => {
     // 关闭现有连接
@@ -132,6 +135,14 @@ export function useAuth() {
         withCredentials: true,
       });
 
+      // 监听具体事件类型（后端使用 event: 字段区分事件类型）
+      // logout 事件：单点登录冲突、Token 过期、管理员踢出
+      eventSource.addEventListener('logout', handleSSEEvent);
+      // heartbeat 事件：心跳包
+      eventSource.addEventListener('heartbeat', handleSSEEvent);
+      // message 事件：通用消息（包括 connected）
+      eventSource.addEventListener('message', handleSSEEvent);
+      // 默认事件（无 event: 字段的消息）
       eventSource.onmessage = handleSSEEvent;
 
       eventSource.onerror = (error) => {
@@ -144,7 +155,6 @@ export function useAuth() {
           // 5秒后重连
           reconnectTimeoutRef.current = setTimeout(() => {
             if (isAuthenticated) {
-              console.log('Attempting to reconnect SSE...');
               connectSSE();
             }
           }, 5000);
@@ -152,7 +162,7 @@ export function useAuth() {
       };
 
       eventSource.onopen = () => {
-        console.log('SSE connection established');
+        // SSE 连接已建立
       };
 
       eventSourceRef.current = eventSource;

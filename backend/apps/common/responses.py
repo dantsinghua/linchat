@@ -6,10 +6,62 @@
 """
 from typing import Any, TypeVar
 
+from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.response import Response
 
 T = TypeVar("T")
+
+
+# ============ Django JsonResponse 版本 ============
+
+
+def api_response(
+    data: Any = None,
+    message: str = "操作成功",
+    code: str = "SUCCESS",
+    status_code: int = 200,
+) -> JsonResponse:
+    """
+    成功响应（JsonResponse 版本）
+
+    用于 Django View（非 DRF ViewSet）
+    """
+    return JsonResponse(
+        {
+            "code": code,
+            "message": message,
+            "data": data,
+        },
+        status=status_code,
+    )
+
+
+def error_response(
+    message: str = "操作失败",
+    code: str = "ERROR",
+    status_code: int = 400,
+    extra: dict | None = None,
+) -> JsonResponse:
+    """
+    错误响应（JsonResponse 版本）
+
+    用于 Django View（非 DRF ViewSet）
+    """
+    response_data = {
+        "code": code,
+        "message": message,
+        "data": None,
+    }
+
+    # 添加额外信息（如 remaining_seconds）
+    if extra:
+        response_data.update(extra)
+
+    return JsonResponse(response_data, status=status_code)
+
+
+# ============ DRF Response 版本 ============
 
 
 class ApiResponse:

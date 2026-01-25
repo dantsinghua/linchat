@@ -118,12 +118,12 @@
 
 ### 后端实现
 
-- [ ] T019 [US1] 创建验证码服务 `backend/apps/users/services.py`（CaptchaService：生成、存储、验证）
+- [x] T019 [US1] 创建验证码服务 `backend/apps/users/services.py`（CaptchaService：生成、存储、验证）
   > 📖 **必读**：[behavior-model.md#1.1 获取验证码（B_AUTH_001）](./behavior-model.md#11-获取验证码b_auth_001) - 完整代码模板
   > 📖 参考：[data-model.md#3.1 验证码缓存](./data-model.md#31-认证相关) - Redis键格式 `auth:captcha:{id}`，TTL=120秒
-- [ ] T020 [US1] 创建用户仓库层 `backend/apps/users/repositories.py`（用户查询、锁定状态更新）
+- [x] T020 [US1] 创建用户仓库层 `backend/apps/users/repositories.py`（用户查询、锁定状态更新）
   > 📖 参考：[data-model.md#2.1 用户表](./data-model.md#21-用户表sys_user) - 字段定义
-- [ ] T021 [US1] 扩展认证服务 `backend/apps/users/services.py`（AuthService：密码验证、Token生成、失败锁定，依赖T019）
+- [x] T021 [US1] 扩展认证服务 `backend/apps/users/services.py`（AuthService：密码验证、Token生成、失败锁定，依赖T019）
   - **Token生成格式**：`SM4({username}|{password}|{captcha}|{timestamp})`（见R_TOKEN_001）
   - **必须实现登录失败锁定逻辑**：连续5次失败后锁定账户15分钟（R_LOGIN_001）
   - 锁定状态检查、失败计数递增、锁定时间设置、成功后重置计数
@@ -132,30 +132,30 @@
   > 📖 **必读**：[rule-model.md#R_TOKEN_001](./rule-model.md#r_token_001-token生成规则) - Token生成规则（含captcha防重放）
   > 📖 参考：[data-model.md#3.1 登录失败计数](./data-model.md#31-认证相关) - Redis键格式 `auth:fail:{username}`，TTL=900秒
   > ⚠️ **安全要求**：Token通过httpOnly Cookie返回，禁止localStorage存储
-- [ ] T022 [P] [US1] 创建认证序列化器 `backend/apps/users/serializers.py`（LoginRequest、CaptchaResponse）
-- [ ] T023 [US1] 创建认证视图 `backend/apps/users/views.py`（GET /captcha、POST /login、POST /logout）
+- [x] T022 [P] [US1] 创建认证序列化器 `backend/apps/users/serializers.py`（LoginRequest、CaptchaResponse）
+- [x] T023 [US1] 创建认证视图 `backend/apps/users/views.py`（GET /captcha、POST /login、POST /logout）
   > 📖 参考：[process-model.md#一、用户登录流程](./process-model.md#一用户登录流程p_auth_001) - 完整时序图和异常处理表
-- [ ] T024 [US1] 配置认证路由 `backend/apps/users/urls.py`
-- [ ] T025 [US1] 创建 admin 初始化命令 `backend/apps/users/management/commands/init_admin.py`
+- [x] T024 [US1] 配置认证路由 `backend/apps/users/urls.py`
+- [x] T025 [US1] 创建 admin 初始化命令 `backend/apps/users/management/commands/init_admin.py`
   > 📖 参考：[data-model.md#2.1 初始化数据](./data-model.md#21-用户表sys_user) - admin用户初始密码 `!9871229Qing`
 
 ### 前端实现
 
-- [ ] T026 [P] [US1] 创建认证服务 `frontend/src/services/authService.ts`（getCaptcha、login、logout）
+- [x] T026 [P] [US1] 创建认证服务 `frontend/src/services/authService.ts`（getCaptcha、login、logout）
   > ⚠️ **安全要求**：Token由后端通过httpOnly Cookie设置，前端使用 `credentials: 'include'`
-- [ ] T027 [P] [US1] 创建认证 Hook `frontend/src/hooks/useAuth.ts`（登录状态管理、Token 刷新事件监听）
+- [x] T027 [P] [US1] 创建认证 Hook `frontend/src/hooks/useAuth.ts`（登录状态管理、Token 刷新事件监听）
   > 📖 参考：[process-model.md#二、Token鉴权流程](./process-model.md#二token鉴权流程p_auth_002) - 401响应处理逻辑
-- [ ] T028 [P] [US1] 创建验证码组件 `frontend/src/components/auth/CaptchaImage.tsx`（实现R_CAPTCHA_003规则：110秒自动刷新间隔）
+- [x] T028 [P] [US1] 创建验证码组件 `frontend/src/components/auth/CaptchaImage.tsx`（实现R_CAPTCHA_003规则：110秒自动刷新间隔）
   - **自动刷新**：验证码过期前10秒（110秒间隔）自动调用API刷新（覆盖spec.md Edge Case "验证码过期"）
   - **手动刷新**：用户点击验证码图片可手动刷新
   > 📖 参考：[data-model.md#3.1 验证码缓存](./data-model.md#31-认证相关) - 验证码TTL=120秒，前端需110秒刷新
   > 📖 参考：[rule-model.md#R_CAPTCHA_003](./rule-model.md#r_captcha_003-验证码自动刷新规则) - 前端自动刷新规则
-- [ ] T029 [US1] 创建登录表单组件 `frontend/src/components/auth/LoginForm.tsx`（用户名、密码、验证码）
+- [x] T029 [US1] 创建登录表单组件 `frontend/src/components/auth/LoginForm.tsx`（用户名、密码、验证码）
   > 📖 参考：[process-model.md#异常处理](./process-model.md#异常处理) - 登录异常场景和前端处理
-- [ ] T030 [US1] 创建登录页面 `frontend/src/app/login/page.tsx`
-- [ ] T031 [US1] 实现路由保护中间件 `frontend/src/middleware.ts`（未登录跳转登录页）
+- [x] T030 [US1] 创建登录页面 `frontend/src/app/login/page.tsx`
+- [x] T031 [US1] 实现路由保护中间件 `frontend/src/middleware.ts`（未登录跳转登录页）
   > 📖 参考：[process-model.md#一、用户登录流程](./process-model.md#一用户登录流程p_auth_001) - 步骤1-3：检查Token跳转
-- [ ] T032 [US1] 实现用户活动监听器 `frontend/src/hooks/useActivityTracker.ts`
+- [x] T032 [US1] 实现用户活动监听器 `frontend/src/hooks/useActivityTracker.ts`
   - **用户事件定义**（引用spec.md US1场景2）：
     - 包括：页面点击、API请求、页面刷新、浏览器回退等
     - 不包括：系统响应（如大模型完成回复）

@@ -17,8 +17,48 @@ import axios, {
 
 import { ApiError, ApiResponse } from '@/types';
 
+// ============ 工具函数 ============
+
+/**
+ * 将 snake_case 转换为 camelCase
+ *
+ * 后端返回 snake_case，前端使用 camelCase
+ */
+function snakeToCamel(str: string): string {
+  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+/**
+ * 递归转换对象的键名从 snake_case 到 camelCase
+ */
+function transformKeysToCamelCase<T>(obj: unknown): T {
+  if (obj === null || obj === undefined) {
+    return obj as T;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map((item) => transformKeysToCamelCase(item)) as T;
+  }
+
+  if (typeof obj === 'object') {
+    const transformed: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      const camelKey = snakeToCamel(key);
+      transformed[camelKey] = transformKeysToCamelCase(value);
+    }
+    return transformed as T;
+  }
+
+  return obj as T;
+}
+
 // API 基础 URL
+// 生产环境: /linchat/api/v1 (nginx 重写为 /api/v1)
+// 开发环境: /api/v1 (直连后端)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
+
+// basePath 配置 (与 next.config.js 保持一致)
+const BASE_PATH = '/linchat';
 
 /**
  * 创建 Axios 实例
@@ -51,6 +91,11 @@ apiClient.interceptors.request.use(
  */
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
+    // 将响应数据从 snake_case 转换为 camelCase
+    // 参考: 后端返回 user_id/expire_time，前端期望 userId/expireTime
+    if (response.data) {
+      response.data = transformKeysToCamelCase(response.data);
+    }
     return response;
   },
   (error: AxiosError<ApiError>) => {
@@ -61,9 +106,13 @@ apiClient.interceptors.response.use(
       // 跳转到登录页，保存当前路径用于登录后返回
       if (typeof window !== 'undefined') {
         const currentPath = window.location.pathname;
+        // 移除 basePath 前缀，保存相对路径用于登录后返回
+        const pathWithoutBase = currentPath.startsWith(BASE_PATH)
+          ? currentPath.slice(BASE_PATH.length) || '/'
+          : currentPath;
         // 避免在登录页循环跳转
-        if (currentPath !== '/login') {
-          window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`;
+        if (!currentPath.endsWith('/login')) {
+          window.location.href = `${BASE_PATH}/login?redirect=${encodeURIComponent(pathWithoutBase)}`;
         }
       }
     }
@@ -143,7 +192,11 @@ export function createSSEConnection(
         // 处理 401
         if (response.status === 401) {
           if (typeof window !== 'undefined') {
-            window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+            const currentPath = window.location.pathname;
+            const pathWithoutBase = currentPath.startsWith(BASE_PATH)
+              ? currentPath.slice(BASE_PATH.length) || '/'
+              : currentPath;
+            window.location.href = `${BASE_PATH}/login?redirect=${encodeURIComponent(pathWithoutBase)}`;
           }
           return;
         }

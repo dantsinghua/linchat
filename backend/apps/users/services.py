@@ -25,7 +25,7 @@ from apps.common.exceptions import (
     AuthFailedException,
     CaptchaInvalidException,
     UserDisabledException,
-)
+)  # UserDisabledException 用于账户禁用场景
 from apps.users.crypto import (
     generate_token,
     generate_token_hash,
@@ -34,6 +34,7 @@ from apps.users.crypto import (
     verify_password,
 )
 from apps.users.models import SysUser
+from apps.users.repositories import user_repo
 from core.redis import (
     get_captcha_key,
     get_login_fail_key,
@@ -197,7 +198,7 @@ class AuthService:
         await CaptchaService.verify(captcha_id, captcha_code)
 
         # 2. [R_LOGIN_001] 检查账户锁定状态
-        user = await AuthService._get_user_by_username(username)
+        user = await user_repo.find_by_username(username)
         if user and user.is_locked():
             remaining = int((user.lock_until - timezone.now()).total_seconds())
             remaining_minutes = remaining // 60 + 1
@@ -212,8 +213,9 @@ class AuthService:
             raise AuthFailedException("用户名或密码错误")
 
         # 4. 检查用户状态
+        # 参考: behavior-model.md#1.2 用户登录 - 账户禁用检查
         if not user.is_active():
-            raise AuthFailedException("账户已被禁用")
+            raise UserDisabledException("账户已被禁用")
 
         # 5. SM4解密密码并验证
         try:
@@ -245,13 +247,8 @@ class AuthService:
         token_key = get_token_key(token_hash)
         await redis_setex_json(token_key, settings.AUTH_TOKEN_IDLE_TTL, token_data)
 
-        # 9. 重置失败计数，更新登录信息
-        user.login_fail_count = 0
-        user.lock_until = None
-        user.last_login_time = login_time
-        user.last_login_ip = client_ip
-        user.last_active_time = login_time
-        await AuthService._save_user(user)
+        # 9. 重置失败计数，更新登录信息（使用 UserRepository）
+        await user_repo.update_login_info(user, login_time, client_ip)
 
         # 清除失败计数
         await redis_delete(get_login_fail_key(username))
@@ -289,31 +286,6 @@ class AuthService:
         return True
 
     @staticmethod
-    async def _get_user_by_username(username: str) -> SysUser | None:
-        """根据用户名查询用户"""
-        from asgiref.sync import sync_to_async
-
-        @sync_to_async
-        def query():
-            try:
-                return SysUser.objects.get(username=username)
-            except SysUser.DoesNotExist:
-                return None
-
-        return await query()
-
-    @staticmethod
-    async def _save_user(user: SysUser) -> None:
-        """保存用户"""
-        from asgiref.sync import sync_to_async
-
-        @sync_to_async
-        def save():
-            user.save()
-
-        await save()
-
-    @staticmethod
     async def _handle_login_failure(username: str) -> None:
         """
         处理登录失败（用户不存在的情况）
@@ -331,17 +303,18 @@ class AuthService:
         处理登录失败（用户存在的情况）
 
         参考: rule-model.md#R_LOGIN_001 - 5次失败锁定15分钟
+        使用 UserRepository 保持逻辑一致性
         """
-        user.login_fail_count += 1
-
-        if user.login_fail_count >= settings.AUTH_MAX_FAIL_COUNT:
-            user.lock_until = timezone.now() + timedelta(
+        # 计算是否需要锁定
+        lock_until = None
+        if user.login_fail_count + 1 >= settings.AUTH_MAX_FAIL_COUNT:
+            lock_until = timezone.now() + timedelta(
                 seconds=settings.AUTH_LOCK_DURATION
             )
-            user.login_fail_count = 0
             logger.warning(f"User {user.username} account locked due to too many failed attempts")
 
-        await AuthService._save_user(user)
+        # 使用 UserRepository 更新失败计数
+        await user_repo.increment_fail_count(user, lock_until)
 
 
 # ============ 单点登录服务 ============

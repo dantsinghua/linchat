@@ -4,18 +4,33 @@ import type { NextRequest } from 'next/server';
 /**
  * 路由保护中间件
  *
- * 将在 T031 完善实现
- * 未登录用户访问受保护页面时跳转到登录页
+ * 参考:
+ * - process-model.md#一、用户登录流程（P_AUTH_001）- 步骤2-3 Token检查和跳转
+ * - process-model.md#二、Token鉴权流程（P_AUTH_002）- 401响应处理
+ *
+ * 功能:
+ * - 未登录用户访问受保护页面时跳转到登录页
+ * - 已登录用户访问登录页时跳转到聊天页
+ *
+ * 注意:
+ * - Token 存储在 httpOnly Cookie 中，中间件可以读取
+ * - Cookie 名称: linchat_token（与后端 TOKEN_COOKIE_NAME 保持一致）
  */
 
 // basePath 配置 (与 next.config.js 保持一致)
 const basePath = '/linchat';
 
-// 需要认证的路由 (不含 basePath)
-const protectedRoutes = ['/linchat/chat'];
+// Token Cookie 名称（与后端保持一致）
+const TOKEN_COOKIE_NAME = 'linchat_token';
+
+// 需要认证的路由前缀
+const protectedRoutes = ['/chat'];
 
 // 公开路由（已登录用户访问会跳转到聊天页）
-const publicRoutes = ['/linchat/login'];
+const publicOnlyRoutes = ['/login'];
+
+// 完全公开的路由（无需任何处理）
+const publicRoutes = ['/401', '/api'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -25,14 +40,18 @@ export function middleware(request: NextRequest) {
     ? pathname.slice(basePath.length) || '/'
     : pathname;
 
-  // TODO: 检查 Token Cookie
-  // const token = request.cookies.get('token')?.value;
-  // const isAuthenticated = !!token;
+  // 完全公开路由，不做处理
+  if (publicRoutes.some((route) => pathWithoutBase.startsWith(route))) {
+    return NextResponse.next();
+  }
 
-  // 暂时跳过认证检查，将在 Phase 3 实现
-  const isAuthenticated = false;
+  // 检查 Token Cookie
+  // 参考: behavior-model.md#1.3 Token鉴权验证
+  const token = request.cookies.get(TOKEN_COOKIE_NAME)?.value;
+  const isAuthenticated = !!token;
 
   // 受保护路由检查
+  // 未登录用户尝试访问受保护页面，跳转到登录页
   if (protectedRoutes.some((route) => pathWithoutBase.startsWith(route))) {
     if (!isAuthenticated) {
       const loginUrl = new URL(`${basePath}/login`, request.url);
@@ -41,10 +60,20 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // 公开路由检查（已登录用户跳转到聊天页）
-  if (publicRoutes.some((route) => pathWithoutBase.startsWith(route))) {
+  // 公开路由检查
+  // 已登录用户访问登录页，跳转到聊天页
+  if (publicOnlyRoutes.some((route) => pathWithoutBase.startsWith(route))) {
     if (isAuthenticated) {
       return NextResponse.redirect(new URL(`${basePath}/chat`, request.url));
+    }
+  }
+
+  // 根路径处理
+  if (pathWithoutBase === '/') {
+    if (isAuthenticated) {
+      return NextResponse.redirect(new URL(`${basePath}/chat`, request.url));
+    } else {
+      return NextResponse.redirect(new URL(`${basePath}/login`, request.url));
     }
   }
 
