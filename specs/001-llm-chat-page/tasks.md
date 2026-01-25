@@ -53,43 +53,43 @@
 
 ### 2.1 数据库与迁移
 
-- [ ] T007 创建 Django settings 配置 `backend/core/settings.py`（PostgreSQL、Redis 连接）
+- [x] T007 创建 Django settings 配置 `backend/core/settings.py`（PostgreSQL、Redis 连接）
   > 📖 参考：[data-model.md#七、配置参数汇总](./data-model.md#七配置参数汇总)
-- [ ] T008 创建 Redis 连接管理 `backend/core/redis.py`
+- [x] T008 创建 Redis 连接管理 `backend/core/redis.py`
   > 📖 参考：[data-model.md#三、Redis缓存设计](./data-model.md#三redis-缓存设计)
-- [ ] T009 创建用户模型 `backend/apps/users/models.py`（sys_user 表）
+- [x] T009 创建用户模型 `backend/apps/users/models.py`（sys_user 表）
   > 📖 **必读**：[data-model.md#2.1 用户表（sys_user）](./data-model.md#21-用户表sys_user) - 包含完整字段定义、初始数据
-- [ ] T010 创建消息模型 `backend/apps/chat/models.py`（message、langgraph_execution 表）
+- [x] T010 创建消息模型 `backend/apps/chat/models.py`（message、langgraph_execution 表）
   > 📖 **必读**：[data-model.md#2.2 消息表（message）](./data-model.md#22-消息表message) + [#2.3 执行监控表](./data-model.md#23-执行监控表langgraph_execution--可选)
-- [ ] T011 生成并执行数据库迁移
+- [x] T011 生成并执行数据库迁移
 
 ### 2.2 通用组件
 
-- [ ] T012 [P] 创建自定义异常类 `backend/apps/common/exceptions.py`
+- [x] T012 [P] 创建自定义异常类 `backend/apps/common/exceptions.py`
   - 认证异常：AuthFailedException、TokenExpiredException、AccountLockedException、CaptchaInvalidException
   - LLM异常（宪法4.3）：LLMConnectionError、LLMTimeoutError、LLMRateLimitError、LLMContentFilterError、LLMInvalidResponseError、LLMQuotaExceededError
   > 📖 参考：[behavior-model.md#1.2 用户登录](./behavior-model.md#12-用户登录b_auth_002) - 异常类型定义
   > 📖 参考：[constitution.md#4.3](../../.specify/memory/constitution.md) - 大模型异常处理策略
-- [ ] T013 [P] 创建统一响应格式 `backend/apps/common/responses.py`（code/data/message 结构）
-- [ ] T014 [P] 创建国密算法封装 `backend/apps/users/crypto.py`（SM3哈希、SM4加密/解密）
+- [x] T013 [P] 创建统一响应格式 `backend/apps/common/responses.py`（code/data/message 结构）
+- [x] T014 [P] 创建国密算法封装 `backend/apps/users/crypto.py`（SM3哈希、SM4加密/解密）
   > 📖 参考：[behavior-model.md#1.2 用户登录](./behavior-model.md#12-用户登录b_auth_002) - SM4解密密码、SM3比对哈希流程
-- [ ] T015 创建认证中间件 `backend/apps/common/middleware.py`
+- [x] T015 创建认证中间件 `backend/apps/common/middleware.py`
   - Token鉴权：实现R_TOKEN_003双重过期规则（24小时绝对过期 + 1小时无操作过期）
   > 📖 **必读**：[behavior-model.md#1.3 Token鉴权验证](./behavior-model.md#13-token鉴权验证b_auth_003) - 完整验证逻辑
   > 📖 **必读**：[data-model.md#3.1 认证相关](./data-model.md#31-认证相关) - Token缓存结构、TTL计算规则
   > ⚠️ **注意**：Token必须存储在httpOnly Cookie，禁止localStorage
-- [ ] T015b [US1] 实现单点登录机制（新登录使旧Token失效，实现R_SSO_001规则）
+- [x] T015b [US1] 实现单点登录机制（新登录使旧Token失效，实现R_SSO_001规则）
   - **后端SSE推送登出事件**：新登录时向旧会话推送 `{type: "logout", reason: "SSO_CONFLICT"}` 事件
   - 删除旧Token缓存，更新用户当前Token索引
   > 📖 **必读**：[behavior-model.md#1.4 单点登录Token失效](./behavior-model.md#14-单点登录token失效b_auth_004) - 完整实现逻辑
   > 📖 参考：[rule-model.md#R_SSO_001](./rule-model.md#r_sso_001-单点登录规则) - 单点登录规则定义
   > 📖 参考：[data-model.md#3.1 单点登录Token索引](./data-model.md#31-认证相关) - Redis键格式 `auth:user_token:{user_id}`
-- [ ] T015c [US1] 创建SSE事件推送服务 `backend/apps/common/event_service.py`
+- [x] T015c [US1] 创建SSE事件推送服务 `backend/apps/common/event_service.py`
   - **事件类型**：logout（登出事件，含reason字段）
   - **SSE端点**：GET `/api/v1/events`（需认证，长连接）
   - **推送机制**：通过Redis Pub/Sub实现跨进程事件分发
   > 📖 参考：[process-model.md#一点五、单点登录SSE推送流程](./process-model.md#一点五单点登录sse推送流程p_auth_001a) - 完整流程图
-- [ ] T015d [P] [US1] 实现单点登录前端处理 `frontend/src/hooks/useAuth.ts`
+- [x] T015d [P] [US1] 实现单点登录前端处理 `frontend/src/hooks/useAuth.tsx`
   - **监听SSE登出事件**：建立SSE连接监听 `/api/v1/events`，接收服务端推送的登出事件
   - 收到 `SSO_CONFLICT` 事件时显示 Toast 提示："您已在其他设备登录"（停留 3 秒）
   - Toast 消失后自动跳转登录页
@@ -98,11 +98,11 @@
 
 ### 2.3 前端基础
 
-- [ ] T016 [P] 配置 Axios 实例 `frontend/src/services/api.ts`（401 拦截跳转登录页）
+- [x] T016 [P] 配置 Axios 实例 `frontend/src/services/api.ts`（401 拦截跳转登录页）
   > 📖 参考：[process-model.md#二、Token鉴权流程](./process-model.md#二token鉴权流程p_auth_002) - 401响应时前端处理代码
   > ⚠️ **注意**：使用 `credentials: 'include'` 携带httpOnly Cookie
-- [ ] T017 [P] 创建 TypeScript 类型定义 `frontend/src/types/index.ts`
-- [ ] T018 [P] 创建 401 错误页面 `frontend/src/app/401/page.tsx`（蓝白风格）
+- [x] T017 [P] 创建 TypeScript 类型定义 `frontend/src/types/index.ts`
+- [x] T018 [P] 创建 401 错误页面 `frontend/src/app/401/page.tsx`（蓝白风格）
 
 **Checkpoint**: 基础设施就绪，用户故事实现可以开始
 

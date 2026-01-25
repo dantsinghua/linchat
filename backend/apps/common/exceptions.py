@@ -54,6 +54,13 @@ class CaptchaInvalidException(AuthException):
     error_code = "CAPTCHA_INVALID"
 
 
+class UserDisabledException(AuthException):
+    """账户已禁用"""
+    status_code = status.HTTP_403_FORBIDDEN
+    default_message = "账户已被禁用"
+    error_code = "USER_DISABLED"
+
+
 # ============ LLM 异常 (宪法4.3) ============
 
 class LLMException(Exception):

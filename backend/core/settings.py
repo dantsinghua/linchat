@@ -49,6 +49,9 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # 自定义 Token 认证中间件
+    # 参考: behavior-model.md#1.3 Token鉴权验证
+    "apps.common.middleware.TokenAuthMiddleware",
 ]
 
 ROOT_URLCONF = "core.urls"

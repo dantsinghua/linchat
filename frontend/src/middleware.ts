@@ -12,10 +12,10 @@ import type { NextRequest } from 'next/server';
 const basePath = '/linchat';
 
 // 需要认证的路由 (不含 basePath)
-const protectedRoutes = ['/chat'];
+const protectedRoutes = ['/linchat/chat'];
 
 // 公开路由（已登录用户访问会跳转到聊天页）
-const publicRoutes = ['/login'];
+const publicRoutes = ['/linchat/login'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
