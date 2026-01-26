@@ -221,9 +221,23 @@ SM4_SECRET_KEY = os.getenv("SM4_SECRET_KEY", "default-sm4-key-16")  # 必须16�
 
 
 # LLM 服务配置
-VLLM_API_BASE = os.getenv("VLLM_API_BASE", "http://localhost:8000/v1")
-VLLM_API_KEY = os.getenv("VLLM_API_KEY", "")
-VLLM_MODEL_NAME = os.getenv("VLLM_MODEL_NAME", "")
+# 参考: data-model.md#七、配置参数汇总
+LLM_API_BASE = os.getenv("LLM_API_BASE", "http://localhost:8000/v1")
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "")
+
+# LLM 超时和重试配置
+# 参考: rule-model.md#R_AGENT_001 和 R_LLM_RETRY_001
+LLM_CALL_TIMEOUT = int(os.getenv("LLM_CALL_TIMEOUT", "60"))  # 单次调用超时: 60秒
+AGENT_TOTAL_TIMEOUT = int(os.getenv("AGENT_TOTAL_TIMEOUT", "300"))  # Agent总超时: 300秒
+LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))  # 最大重试次数
+LLM_INITIAL_RETRY_DELAY = float(os.getenv("LLM_INITIAL_RETRY_DELAY", "1.0"))  # 初始重试延迟(秒)
+LLM_MAX_RETRY_DELAY = float(os.getenv("LLM_MAX_RETRY_DELAY", "8.0"))  # 最大重试延迟(秒)
+LLM_RETRY_BACKOFF = float(os.getenv("LLM_RETRY_BACKOFF", "2.0"))  # 退避倍数
+
+# 消息配置
+# 参考: rule-model.md#R_MSG_001
+MAX_MESSAGE_LENGTH = int(os.getenv("MAX_MESSAGE_LENGTH", "4000"))  # 最大消息长度
 
 
 # Langfuse 配置
@@ -234,8 +248,10 @@ LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://localhost:3001")
 
 # LangGraph Checkpoint 配置
 # 参考: data-model.md#五、LangGraph RedisSaver 配置
-LANGGRAPH_CHECKPOINT_TTL = 60 * 24  # 24小时（分钟）
-LANGGRAPH_CHECKPOINT_REFRESH_ON_READ = True
+# TTL 单位为分钟（已通过 LangGraph 官方文档确认）
+# 参考: https://github.com/redis-developer/langgraph-redis
+LANGGRAPH_CHECKPOINT_TTL = 60 * 24  # 24小时 = 1440分钟
+LANGGRAPH_CHECKPOINT_REFRESH_ON_READ = True  # 读取时刷新TTL
 
 
 # 认证相关配置

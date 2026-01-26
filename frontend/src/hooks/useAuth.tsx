@@ -32,12 +32,19 @@ interface ToastMessage {
   duration: number;
 }
 
+// 用户信息类型
+interface UserInfo {
+  user_id: number;
+  username: string;
+}
+
 /**
  * 认证 Hook
  */
 export function useAuth() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [user, setUser] = useState<UserInfo | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -196,14 +203,23 @@ export function useAuth() {
       });
 
       if (response.ok) {
+        const data = await response.json();
+        if (data.code === 'SUCCESS' && data.data) {
+          setUser({
+            user_id: data.data.user_id,
+            username: data.data.username,
+          });
+        }
         setIsAuthenticated(true);
         return true;
       } else {
         setIsAuthenticated(false);
+        setUser(null);
         return false;
       }
     } catch {
       setIsAuthenticated(false);
+      setUser(null);
       return false;
     }
   }, []);
@@ -229,6 +245,7 @@ export function useAuth() {
       // 忽略错误
     } finally {
       setIsAuthenticated(false);
+      setUser(null);
       disconnectSSE();
       router.push('/login');
     }
@@ -249,6 +266,7 @@ export function useAuth() {
 
   return {
     isAuthenticated,
+    user,
     toast,
     checkAuth,
     onLoginSuccess,

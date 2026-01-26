@@ -36,24 +36,44 @@ export interface CaptchaResponse {
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type MessageStatus = 0 | 1 | 2 | 3; // 0-失败, 1-正常, 2-生成中, 3-中断
 
+/**
+ * 消息实体
+ * 参考: data-model.md#2.2 消息表
+ */
 export interface Message {
-  messageId: number;
-  messageUuid: string;
+  message_id: number;
+  message_uuid: string;
   role: MessageRole;
   content: string;
   status: MessageStatus;
-  createdTime: string;
+  sequence: number;
+  created_time: string;
+  request_id?: string | null;
+  model_name?: string | null;
+  response_time_ms?: number | null;
 }
 
 export interface ChatRequest {
   content: string;
 }
 
+/**
+ * SSE 流式响应事件
+ * 参考: process-model.md#三、消息发送与流式响应流程
+ */
 export interface ChatStreamEvent {
-  type: 'token' | 'done' | 'error';
-  content?: string;
-  messageId?: string;
-  error?: string;
+  type: 'content' | 'done' | 'error' | 'interrupted';
+  content: string;
+  message_id?: number;
+}
+
+export interface HistoryResponse {
+  messages: Message[];
+  has_more: boolean;
+}
+
+export interface GeneratingResponse {
+  message: Message | null;
 }
 
 // ============ 错误类型 ============

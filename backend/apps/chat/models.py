@@ -5,6 +5,7 @@
 - data-model.md#2.2 消息表（message）
 - data-model.md#2.3 执行监控表（langgraph_execution）
 """
+
 from django.db import models
 
 
@@ -113,8 +114,8 @@ class Message(models.Model):
     #   - role=user 时：后端LangGraph对话Agent接收消息的时间
     #   - role=assistant 时：后端生成首个token的时间（流式响应开始时间）
     # 整体按 created_time 正序展示（升序）
+    # 注意：不使用 auto_now_add，由服务层手动设置以满足语义要求
     created_time = models.DateTimeField(
-        auto_now_add=True,
         db_index=True,
         verbose_name="创建时间",
     )

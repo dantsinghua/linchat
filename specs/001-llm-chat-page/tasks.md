@@ -198,31 +198,31 @@
 
 ### 后端实现
 
-- [ ] T033 [US2] 创建消息仓库层 `backend/apps/chat/repositories.py`（消息保存、历史查询、用户数据隔离）
+- [x] T033 [US2] 创建消息仓库层 `backend/apps/chat/repositories.py`（消息保存、历史查询、用户数据隔离）
   - **消息排序规则（必须遵守）**：
     - 用户消息（role=user）：按后端LangGraph对话Agent接收时间排序
     - AI回复（role=assistant）：按后端回复的首个token生成时间排序
     - 整体按时间顺序正序展示（升序）
   > 📖 **必读**：[data-model.md#2.2 消息表（message）](./data-model.md#22-消息表message) - 完整字段定义、索引设计
   > 📖 参考：[behavior-model.md#2.3 加载历史消息](./behavior-model.md#23-加载历史消息b_chat_003) - 查询逻辑代码模板
-- [ ] T034 [US2] 创建 LangGraph Agent 定义 `backend/apps/chat/agent.py`（ReAct Agent、Redis Checkpointer）
+- [x] T034 [US2] 创建 LangGraph Agent 定义 `backend/apps/chat/agent.py`（ReAct Agent、Redis Checkpointer）
   > 📖 **必读**：[data-model.md#五、LangGraph RedisSaver 配置](./data-model.md#五langgraph-redissaver-配置) - Checkpointer初始化代码
   > 📖 **必读**：[behavior-model.md#2.2 执行LangGraph Agent](./behavior-model.md#22-执行langgraph-agentb_chat_002) - 完整Agent执行代码模板
   > 📖 参考：[data-model.md#3.2 LangGraph Checkpoint](./data-model.md#32-langgraph-checkpoint由redissaver管理) - Redis键格式、TTL配置
-- [ ] T035 [US2] 创建聊天服务 `backend/apps/chat/services.py`（消息处理、Agent 执行、流式响应生成）
+- [x] T035 [US2] 创建聊天服务 `backend/apps/chat/services.py`（消息处理、Agent 执行、流式响应生成）
   > 📖 **必读**：[behavior-model.md#2.1 发送消息并获取响应](./behavior-model.md#21-发送消息并获取响应b_chat_001) - send_message代码模板
   > 📖 **必读**：[behavior-model.md#2.2 执行LangGraph Agent](./behavior-model.md#22-执行langgraph-agentb_chat_002) - execute_agent完整代码（含双写策略）
   > 📖 参考：[behavior-model.md#四、Redis Checkpoint 关键说明](./behavior-model.md#四redis-checkpoint-关键说明) - 双写策略解释
-- [ ] T036 [P] [US2] 创建聊天序列化器 `backend/apps/chat/serializers.py`（ChatRequest含maxLength=4000验证、MessageVO）
-- [ ] T037 [US2] 创建聊天视图 `backend/apps/chat/views.py`（POST /chat SSE流式、GET /messages、POST /stop）
+- [x] T036 [P] [US2] 创建聊天序列化器 `backend/apps/chat/serializers.py`（ChatRequest含maxLength=4000验证、MessageVO）
+- [x] T037 [US2] 创建聊天视图 `backend/apps/chat/views.py`（POST /chat SSE流式、GET /messages、POST /stop）
   > 📖 参考：[process-model.md#后端SSE端点](./process-model.md#核心代码) - SSE StreamingResponse代码
-- [ ] T038 [US2] 配置聊天路由 `backend/apps/chat/urls.py`
-- [ ] T039 [US2] 实现停止生成功能
+- [x] T038 [US2] 配置聊天路由 `backend/apps/chat/urls.py`
+- [x] T039 [US2] 实现停止生成功能
   - **后端**：接收停止请求，保存当前checkpoint（状态terminated），更新消息status=3（中断）
   - **前端协作**：T046的停止按钮调用此API，响应后T045的MessageList显示"[已中断]"标记 + "继续生成"按钮
   - **提示弹窗**：停止后弹出"响应已中断，如有需要请复制已显示内容"
   > 📖 参考：[data-model.md#2.2 消息表](./data-model.md#22-消息表message) - status字段定义（0-失败,1-正常,2-生成中,3-中断）
-- [ ] T039a [US2] 实现"继续生成"功能
+- [x] T039a [US2] 实现"继续生成"功能
   - **后端 POST /chat/resume**：接收message_id，从对应checkpoint恢复生成
   - **前端逻辑**：
     - 点击"继续生成"按钮：调用resume API，从中断处继续生成，更新消息内容
@@ -233,18 +233,18 @@
 
 ### 前端实现
 
-- [ ] T040 [P] [US2] 创建聊天状态管理 `frontend/src/stores/chatStore.ts`（Zustand：消息列表、加载状态）
-- [ ] T041 [P] [US2] 创建聊天服务 `frontend/src/services/chatService.ts`（sendMessage、getMessages、stopGeneration）
+- [x] T040 [P] [US2] 创建聊天状态管理 `frontend/src/stores/chatStore.ts`（Zustand：消息列表、加载状态）
+- [x] T041 [P] [US2] 创建聊天服务 `frontend/src/services/chatService.ts`（sendMessage、getMessages、stopGeneration）
   > ⚠️ **注意**：使用 `credentials: 'include'` 携带httpOnly Cookie
-- [ ] T042 [US2] 创建 SSE 流式聊天 Hook `frontend/src/hooks/useChatStream.ts`（流式接收、实时更新；刷新页面时检测进行中消息并自动重连SSE继续接收，见spec.md US2场景5）
+- [x] T042 [US2] 创建 SSE 流式聊天 Hook `frontend/src/hooks/useChatStream.ts`（流式接收、实时更新；刷新页面时检测进行中消息并自动重连SSE继续接收，见spec.md US2场景5）
   - **消息状态检测**：参考 [data-model.md#2.2 消息表](./data-model.md#22-消息表message) status字段定义（0-失败,1-正常,2-生成中,3-中断）
   - status=2（生成中）时自动重连SSE继续接收
   > 📖 **必读**：[process-model.md#前端SSE处理](./process-model.md#核心代码) - useChatStream完整代码模板
-- [ ] T043 [P] [US2] 创建 Markdown 渲染组件 `frontend/src/components/chat/MarkdownRenderer.tsx`（react-markdown、代码高亮）
+- [x] T043 [P] [US2] 创建 Markdown 渲染组件 `frontend/src/components/chat/MarkdownRenderer.tsx`（react-markdown、代码高亮）
   - 启用 rehype-raw 插件支持 `<u>` 下划线标签
   - 配置 rehype-highlight 实现代码语法高亮
-- [ ] T044 [P] [US2] 创建 Mermaid 渲染组件 `frontend/src/components/chat/MermaidRenderer.tsx`（流式完成后渲染）
-- [ ] T045 [US2] 创建消息列表组件 `frontend/src/components/chat/MessageList.tsx`
+- [x] T044 [P] [US2] 创建 Mermaid 渲染组件 `frontend/src/components/chat/MermaidRenderer.tsx`（流式完成后渲染）
+- [x] T045 [US2] 创建消息列表组件 `frontend/src/components/chat/MessageList.tsx`
   - 历史消息渲染（用户消息右侧蓝底、AI消息左侧灰底）
   - 滚动锚定（默认锚定最底部，向上滚动加载更多）
   - **消息状态渲染**（参考 [data-model.md#2.2 消息表](./data-model.md#22-消息表message) status字段）：
@@ -256,7 +256,7 @@
         - 样式：outline按钮、蓝色边框(#3B82F6)、白底、圆角4px、padding 4px 12px
         - 图标：左侧播放图标(▶)、右侧文字"继续生成"
         - 交互：hover时背景变浅蓝(#EFF6FF)、点击后按钮变为loading状态
-- [ ] T046 [US2] 创建消息输入组件 `frontend/src/components/chat/MessageInput.tsx`
+- [x] T046 [US2] 创建消息输入组件 `frontend/src/components/chat/MessageInput.tsx`
   - **输入校验**：
     - 空消息拦截：`content.trim()` 为空时禁用发送按钮
     - 长度限制：最大 4000 字符，超出时显示字符计数警告（如"4001/4000"红色）
@@ -269,13 +269,13 @@
   > 📖 参考：[rule-model.md#R_MSG_002](./rule-model.md#r_msg_002-空消息拦截规则) - 空消息拦截
   > 📖 参考：[spec.md US2场景9](./spec.md) - 停止按钮终止生成并保存checkpoint
   > 📖 协作任务：T039(后端停止API)、T045(MessageList中断标记渲染)
-- [ ] T047 [US2] 创建聊天页面 `frontend/src/app/chat/page.tsx`（集成所有聊天组件）
-- [ ] T048 [US2] 实现消息发送失败处理（失败时：1.保留用户输入在输入框内 2.不在聊天列表生成用户消息框 3.不存储消息到数据库 4.记录失败日志 5.用户可重新点击发送，见spec.md US2场景10）
-- [ ] T049 [US2] 实现历史消息分页加载（游标分页、向上滚动加载更多）
+- [x] T047 [US2] 创建聊天页面 `frontend/src/app/chat/page.tsx`（集成所有聊天组件）
+- [x] T048 [US2] 实现消息发送失败处理（失败时：1.保留用户输入在输入框内 2.不在聊天列表生成用户消息框 3.不存储消息到数据库 4.记录失败日志 5.用户可重新点击发送，见spec.md US2场景10）
+- [x] T049 [US2] 实现历史消息分页加载（游标分页、向上滚动加载更多）
   > 📖 参考：[process-model.md#四、历史消息加载流程](./process-model.md#四历史消息加载流程p_chat_002) - 分页加载时序图
   > 📖 参考：[behavior-model.md#2.3 加载历史消息](./behavior-model.md#23-加载历史消息b_chat_003) - 游标分页逻辑
-- [ ] T049a [US2] 实现LLM服务异常处理（连接失败、超时、频率限制等，见宪法4.3）
-- [ ] T049b [US2] 实现网络中断错误提示组件 `frontend/src/components/chat/NetworkError.tsx`
+- [x] T049a [US2] 实现LLM服务异常处理（连接失败、超时、频率限制等，见宪法4.3）
+- [x] T049b [US2] 实现网络中断错误提示组件 `frontend/src/components/chat/NetworkError.tsx`
   - 显示网络错误提示，保留用户输入内容
   - 与 MessageInput 组件集成，失败时阻止消息提交
   > ⚠️ **阻塞依赖**：必须等待 T046 (MessageInput) 完成后再开始
