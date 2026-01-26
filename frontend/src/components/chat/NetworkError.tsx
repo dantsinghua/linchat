@@ -131,6 +131,7 @@ export const NetworkError = memo(function NetworkError({
 
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [error, autoHideDuration, onClear]);
 
   // 手动关闭

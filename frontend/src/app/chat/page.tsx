@@ -8,7 +8,7 @@
  */
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { MessageInput } from '@/components/chat/MessageInput';
@@ -34,9 +34,6 @@ export default function ChatPage() {
     clearFailedContent,
   } = useChatStream();
 
-  // 重试状态：保存上次失败的内容用于重试
-  const [retryContent, setRetryContent] = useState<string | null>(null);
-
   // 清除错误
   const handleClearError = useCallback(() => {
     // 错误已通过 useChatStore 管理，这里主要处理 UI 状态
@@ -45,10 +42,9 @@ export default function ChatPage() {
   // 重试发送
   const handleRetry = useCallback(async () => {
     if (failedContent) {
-      setRetryContent(failedContent);
+      const content = failedContent;
       clearFailedContent();
-      await send(failedContent);
-      setRetryContent(null);
+      await send(content);
     }
   }, [failedContent, clearFailedContent, send]);
 

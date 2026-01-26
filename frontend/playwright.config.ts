@@ -11,7 +11,8 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:3000',
+    // 使用环境变量或默认值，支持本地和生产环境
+    baseURL: process.env.BASE_URL || 'http://localhost:3784',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -26,8 +27,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
+    command: 'npm run build && npm run start -- -p 3784',
+    url: 'http://localhost:3784',
     reuseExistingServer: !process.env.CI,
+    timeout: 120000, // 构建可能需要较长时间
   },
 });

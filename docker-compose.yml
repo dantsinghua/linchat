@@ -1,9 +1,11 @@
 # LinChat Docker Compose 配置
 # 核心服务: PostgreSQL, Redis
-# 可选服务: Langfuse (需要 ClickHouse)
+# 监控服务: Langfuse (ClickHouse, MinIO)
 
 services:
-  # PostgreSQL 主数据库 (应用 + Langfuse 共用)
+  # ============ 核心基础设施 ============
+
+  # PostgreSQL 主数据库 (LinChat + Langfuse 共用)
   postgres:
     image: postgres:15-alpine
     container_name: linchat-postgres
@@ -26,40 +28,43 @@ services:
     networks:
       - linchat-network
 
-  # Redis 缓存服务
+  # Redis 缓存服务 (LinChat DB0, Langfuse DB1)
   redis:
-    image: redis:7-alpine
+    image: redis/redis-stack-server:latest
     container_name: linchat-redis
     restart: unless-stopped
+    environment:
+      REDIS_ARGS: "--requirepass ${REDIS_PASSWORD:-redis_linchat_123}"
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy volatile-lru
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_linchat_123}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - linchat-network
 
+  # ============ Langfuse 监控平台 ============
+
   # ClickHouse 分析数据库 (Langfuse v3 必需)
   clickhouse:
     image: clickhouse/clickhouse-server:24.3
     container_name: linchat-clickhouse
     restart: unless-stopped
-    profiles:
-      - langfuse  # 仅在启用 Langfuse 时启动
+    user: "101:101"
     environment:
       CLICKHOUSE_DB: langfuse
       CLICKHOUSE_USER: langfuse
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse_123}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse_ch_123}
     ports:
-      - "8123:8123"  # HTTP 接口
-      - "9000:9000"  # Native 接口
+      - "127.0.0.1:8123:8123"  # HTTP 接口 (仅本地)
+      - "127.0.0.1:9000:9000"  # Native 接口 (仅本地)
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
       interval: 10s
@@ -68,30 +73,140 @@ services:
     networks:
       - linchat-network
 
-  # Langfuse LLM 监控 (可选，Phase 6 任务)
-  langfuse:
-    image: langfuse/langfuse:3
-    container_name: linchat-langfuse
+  # MinIO 对象存储 (Langfuse v3 必需)
+  minio:
+    image: minio/minio:latest
+    container_name: linchat-minio
     restart: unless-stopped
-    profiles:
-      - langfuse  # 仅在需要时启用: docker compose --profile langfuse up -d
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_123_secure}
+    ports:
+      - "127.0.0.1:9010:9000"   # S3 API (仅本地)
+      - "127.0.0.1:9011:9001"   # Console (仅本地)
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - linchat-network
+
+  # MinIO 初始化 (创建 langfuse bucket)
+  minio-init:
+    image: minio/mc:latest
+    container_name: linchat-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_123_secure}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+      mc mb myminio/langfuse --ignore-existing;
+      exit 0;
+      "
+    networks:
+      - linchat-network
+
+  # Langfuse Web (使用官方预构建镜像)
+  langfuse-web:
+    image: langfuse/langfuse:3
+    container_name: linchat-langfuse-web
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
+      # 数据库
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-linchat_123}@postgres:5432/langfuse
+      # ClickHouse
       CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
       CLICKHOUSE_USER: langfuse
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse_123}
-      NEXTAUTH_URL: http://localhost:3001
-      NEXTAUTH_SECRET: ${LANGFUSE_SECRET:-linchat-langfuse-secret-key-change-me-32chars}
-      SALT: ${LANGFUSE_SALT:-linchat-langfuse-salt-change-me-32chars}
-      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY:-false}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse_ch_123}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      # Redis (使用 DB 1 隔离，避免与 LinChat 冲突)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: "1"
+      REDIS_AUTH: ${REDIS_PASSWORD:-redis_linchat_123}
+      # S3/MinIO
+      LANGFUSE_S3_EVENT_UPLOAD_ENABLED: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio_123_secure}
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      # 认证配置 (公网独立端口)
+      NEXTAUTH_URL: http://www.greydan.xin:8081
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET}
+      SALT: ${LANGFUSE_SALT}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY}
+      # 初始管理员账号 (首次启动时创建)
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-linchat-org}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-LinChat}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-linchat-project}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-linchat-monitor}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-admin@linchat.local}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-Admin@123456}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-Admin}
+      # 禁用公开注册 (仅允许初始管理员)
+      AUTH_DISABLE_SIGNUP: "true"
+      # 其他
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      TELEMETRY_ENABLED: "false"
       LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
     ports:
-      - "3001:3000"  # 改为3001避免与前端冲突
+      - "127.0.0.1:3100:3000"
+    networks:
+      - linchat-network
+
+  # Langfuse Worker (后台任务处理)
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    container_name: linchat-langfuse-worker
+    restart: unless-stopped
+    depends_on:
+      langfuse-web:
+        condition: service_started
+    environment:
+      # 数据库
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-linchat_123}@postgres:5432/langfuse
+      # ClickHouse
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_USER: langfuse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-langfuse_ch_123}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      # Redis (使用 DB 1)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: "1"
+      REDIS_AUTH: ${REDIS_PASSWORD:-redis_linchat_123}
+      # S3/MinIO
+      LANGFUSE_S3_EVENT_UPLOAD_ENABLED: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio_123_secure}
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      # 安全密钥 (必须与 web 一致)
+      SALT: ${LANGFUSE_SALT}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY}
     networks:
       - linchat-network
 
@@ -101,6 +216,10 @@ volumes:
   redis_data:
     driver: local
   clickhouse_data:
+    driver: local
+  clickhouse_logs:
+    driver: local
+  minio_data:
     driver: local
 
 networks:

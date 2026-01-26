@@ -165,7 +165,7 @@
 
 ### US1 测试（在Checkpoint后执行）
 
-- [ ] T032a [US1] 添加认证服务单元测试 `backend/tests/users/test_services.py`
+- [x] T032a [US1] 添加认证服务单元测试 `backend/tests/users/test_services.py`
   - **CaptchaService测试**：验证码生成、Redis存储TTL、一次性使用验证
   - **AuthService测试**：密码SM3哈希验证、Token SM4加密生成、双重过期机制
   - **登录锁定测试**：5次失败锁定、15分钟解锁、成功后计数重置
@@ -182,7 +182,7 @@
   > ⚠️ **覆盖率要求**：服务层 ≥ 95%（见宪法3.1）
   > ✅ **合格验证**：运行 `pytest --cov=apps.users.services --cov-fail-under=95`，覆盖率低于95%视为任务未完成
   > 📖 参考：[spec.md#Success Criteria](./spec.md) - SC-001 登录流程完成时间指标
-- [ ] T032b [P] [US1] 添加登录组件测试 `frontend/tests/components/auth/`（LoginForm、CaptchaImage）
+- [x] T032b [P] [US1] 添加登录组件测试 `frontend/tests/components/auth/`（LoginForm、CaptchaImage）
 
 **Checkpoint**: User Story 1 完成，登录认证流程可独立测试
 
@@ -283,7 +283,7 @@
 
 ### US2 测试（在Checkpoint后执行）
 
-- [ ] T049c [US2] 添加聊天服务单元测试 `backend/tests/chat/test_services.py`
+- [x] T049c [US2] 添加聊天服务单元测试 `backend/tests/chat/test_services.py`
   - **ChatService测试**：消息发送、空消息拦截、4000字符限制
   - **AgentService测试**：Agent执行、流式响应生成、Checkpoint交互
   - **异常处理测试**（宪法4.3）：
@@ -296,7 +296,7 @@
   - **停止生成测试**：中断时checkpoint保存、消息status=3更新
   > ⚠️ **覆盖率要求**：服务层 ≥ 95%（见宪法3.1）
   > ✅ **合格验证**：运行 `pytest --cov=apps.chat.services --cov-fail-under=95`，覆盖率低于95%视为任务未完成
-- [ ] T049d [P] [US2] 添加聊天组件测试 `frontend/tests/components/chat/`
+- [x] T049d [P] [US2] 添加聊天组件测试 `frontend/tests/components/chat/`
   - **MessageList测试**：消息渲染、滚动锚定、中断标记显示
   - **MessageInput测试**：空消息拦截、4000字符限制、发送/停止按钮切换、防抖300ms
   - **MarkdownRenderer测试**：代码块高亮、表格渲染
@@ -317,18 +317,18 @@
     - 配额用尽提示："服务配额用尽，请联系管理员"
   > 📖 参考：[constitution.md#4.3](../../.specify/memory/constitution.md) - LLM异常用户提示
   > 📖 参考：[spec.md#Success Criteria](./spec.md) - SC-006 渲染性能指标（完整压测在 T070）
-- [ ] T049e [US2] 添加登录到聊天端到端测试 `frontend/tests/e2e/login-to-chat.spec.ts`（Playwright完整流程）
+- [x] T049e [US2] 添加登录到聊天端到端测试 `frontend/tests/e2e/login-to-chat.spec.ts`（Playwright完整流程）
   - **SC-007 认证拦截验证**：未登录访问聊天页自动跳转登录页（100%拦截）
   - **SC-008 消息持久化验证**：发送消息后刷新页面，验证消息仍存在（100%成功率）
   - **SC-009 用户数据隔离验证**：用户A发送消息，用户B登录后验证看不到用户A的消息
   > 📖 参考：[spec.md#Success Criteria](./spec.md) - SC-007~009 验收标准
-- [ ] T049f [P] [US2] 添加基础并发冒烟测试 `backend/tests/chat/test_concurrency.py`
+- [x] T049f [P] [US2] 添加基础并发冒烟测试 `backend/tests/chat/test_concurrency.py`
   - **SC-004 初步验证**：10 用户并发发送消息，验证无死锁/数据错乱
   - 测试场景：并发登录、并发消息发送、并发历史加载
   - 工具：pytest-asyncio + httpx
   - 完整负载测试（100用户）延迟到 Phase 7 T069
   > 📖 参考：[spec.md#Success Criteria](./spec.md) - SC-004 并发用户支持指标
-- [ ] T049g [P] [US2] 添加基础性能冒烟测试 `backend/tests/performance/test_smoke.py`
+- [x] T049g [P] [US2] 添加基础性能冒烟测试 `backend/tests/performance/test_smoke.py`
   - **SC-002 初步验证**：大模型首令牌延迟 < 3秒（开发环境允许50%误差）
   - **SC-003 初步验证**：流式字符延迟 < 200ms（开发环境允许100%误差）
   - **SC-005 初步验证**：历史消息加载（50条）< 3秒

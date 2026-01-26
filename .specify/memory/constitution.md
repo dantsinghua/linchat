@@ -75,6 +75,13 @@ RESTful API 规范:
   消息类型: content / done / error
   Content-Type: text/event-stream (SSE) 或 application/json (WebSocket)
 
+SSE 视图实现规范 - **不可违背**:
+  - 必须使用 ASGI 原生异步视图（async def）
+  - 禁止在视图中手动创建临时事件循环（asyncio.new_event_loop）
+  - 使用 StreamingHttpResponse 配合异步生成器
+  - 服务器必须运行在 ASGI 模式（uvicorn/daphne）
+  - 异步资源（如 Redis pubsub）必须在同一事件循环中正确关闭
+
 接口版本控制:
   - 使用 URL 路径版本化（/api/v1/、/api/v2/）
   - 破坏性变更必须升级版本号
@@ -287,8 +294,23 @@ RESTful API 规范:
 | Django | 4.2+ | Next.js | 14+ |
 | DRF | 3.14+ | React | 18+ |
 | Celery | 5.3+ | TypeScript | 5.0+ |
+| uvicorn | 0.30+ | - | - |
 
-### 8.2 版本锁定策略
+### 8.2 ASGI 服务器配置 - **不可违背**
+
+后端必须运行在 ASGI 模式下以支持原生异步视图：
+
+```bash
+# 生产环境启动命令
+uvicorn core.asgi:application --host 0.0.0.0 --port 8002
+
+# 开发环境（带热重载）
+uvicorn core.asgi:application --host 0.0.0.0 --port 8002 --reload
+```
+
+**禁止使用**：`python manage.py runserver`（WSGI 模式不支持原生异步）
+
+### 8.3 版本锁定策略
 
 - 锁文件固定精确版本（poetry.lock、package-lock.json）
 - 每月更新依赖，安全补丁立即更新
