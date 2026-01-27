@@ -65,6 +65,7 @@ export interface ChatStreamEvent {
   type: 'content' | 'done' | 'error' | 'interrupted';
   content: string;
   message_id?: number;
+  request_id?: string; // 首个 chunk 返回，用于停止/继续生成
 }
 
 export interface HistoryResponse {

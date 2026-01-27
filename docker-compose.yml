@@ -129,6 +129,8 @@ services:
       minio:
         condition: service_healthy
     environment:
+      # 时区
+      TZ: Asia/Shanghai
       # 数据库
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-linchat_123}@postgres:5432/langfuse
       # ClickHouse
@@ -184,6 +186,8 @@ services:
       langfuse-web:
         condition: service_started
     environment:
+      # 时区
+      TZ: Asia/Shanghai
       # 数据库
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-linchat_123}@postgres:5432/langfuse
       # ClickHouse
@@ -200,6 +204,7 @@ services:
       # S3/MinIO
       LANGFUSE_S3_EVENT_UPLOAD_ENABLED: "true"
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
       LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
       LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
       LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio_123_secure}
