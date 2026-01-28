@@ -40,3 +40,17 @@ build/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Test coverage
+.coverage
+htmlcov/
+
+# Playwright
+.playwright-mcp/
+
+# Temporary scripts
+sysmon.py
+sysmon_enhanced.py
+
+# Project images (screenshots, etc.)
+linchat.png
