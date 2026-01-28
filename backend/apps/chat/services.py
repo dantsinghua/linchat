@@ -45,6 +45,7 @@ class StreamChunk:
     type: str  # content, done, error, interrupted
     content: str
     message_id: Optional[int] = None
+    request_id: Optional[str] = None  # 首个 chunk 返回，用于前端停止/继续生成
 
 
 @dataclass
@@ -503,17 +504,25 @@ class AgentService:
 
         try:
             # 2. 初始化 Langfuse 追踪（可选，失败不影响主流程）
+            # Langfuse v3.x 通过环境变量配置：
+            # LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST
             langfuse_handler = None
             try:
                 if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
-                    langfuse_handler = LangfuseCallbackHandler(
-                        trace_name=f"chat_{request_id}",
-                        user_id=str(user_id),
-                        session_id=thread_id,
-                        public_key=settings.LANGFUSE_PUBLIC_KEY,
-                        secret_key=settings.LANGFUSE_SECRET_KEY,
-                        host=settings.LANGFUSE_HOST,
+                    # v3.x CallbackHandler 从环境变量读取 secret_key 和 host
+                    # 确保环境变量已设置（Django settings 可能通过 dotenv 加载）
+                    import os
+
+                    os.environ.setdefault(
+                        "LANGFUSE_PUBLIC_KEY", settings.LANGFUSE_PUBLIC_KEY
                     )
+                    os.environ.setdefault(
+                        "LANGFUSE_SECRET_KEY", settings.LANGFUSE_SECRET_KEY
+                    )
+                    os.environ.setdefault("LANGFUSE_HOST", settings.LANGFUSE_HOST)
+
+                    langfuse_handler = LangfuseCallbackHandler()
+                    logger.info(f"Langfuse handler initialized for request {request_id}")
             except Exception as e:
                 logger.warning(f"Failed to initialize Langfuse: {e}")
 
@@ -539,6 +548,9 @@ class AgentService:
                         async for event in agent.astream_events(
                             input_message, config=config, version="v2"
                         ):
+                            # 提取事件类型
+                            event_type = event.get("event", "unknown")
+
                             # 检查是否收到停止信号
                             if stop_event.is_set():
                                 interrupted = True
@@ -582,22 +594,34 @@ class AgentService:
                                         await message_repo.create(assistant_msg)
 
                                     full_response += chunk.content
-                                    yield StreamChunk(
+                                    # 首个 chunk 返回 request_id，用于前端停止/继续生成
+                                    chunk_data = StreamChunk(
                                         type="content",
                                         content=chunk.content,
                                         message_id=assistant_msg.message_id if assistant_msg else None,
                                     )
+                                    if len(full_response) == len(chunk.content):
+                                        # 这是首个 chunk，包含 request_id
+                                        chunk_data.request_id = request_id
+                                    yield chunk_data
 
-                            # Token 统计
-                            elif event["event"] == "on_llm_end":
-                                if hasattr(event.get("data", {}), "output"):
-                                    output = event["data"]["output"]
-                                    if hasattr(output, "usage_metadata"):
+                            # Token 统计 (LangGraph 使用 on_chat_model_end 事件)
+                            elif event_type == "on_chat_model_end":
+                                data = event.get("data", {})
+                                if "output" in data:
+                                    output = data["output"]
+                                    # 优先从 usage_metadata 获取（需要 ChatOpenAI 配置 stream_usage=True）
+                                    if hasattr(output, "usage_metadata") and output.usage_metadata:
                                         usage = output.usage_metadata
                                         total_prompt_tokens += usage.get("input_tokens", 0)
-                                        total_completion_tokens += usage.get(
-                                            "output_tokens", 0
-                                        )
+                                        total_completion_tokens += usage.get("output_tokens", 0)
+                                    # 备用：从 response_metadata 获取（某些API可能用这个字段）
+                                    elif hasattr(output, "response_metadata") and output.response_metadata:
+                                        meta = output.response_metadata
+                                        if "token_usage" in meta:
+                                            usage = meta["token_usage"]
+                                            total_prompt_tokens += usage.get("prompt_tokens", 0)
+                                            total_completion_tokens += usage.get("completion_tokens", 0)
 
                 except asyncio.TimeoutError:
                     logger.error(f"Agent execution timeout: {request_id}")
@@ -693,6 +717,14 @@ class AgentService:
         finally:
             # 清理活跃会话记录
             unregister_generation(request_id)
+
+            # 刷新 Langfuse 数据（确保 trace 被发送）
+            if langfuse_handler and langfuse_handler.client:
+                try:
+                    langfuse_handler.client.flush()
+                    logger.debug(f"Langfuse handler flushed for request {request_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to flush Langfuse handler: {e}")
 
     @staticmethod
     async def resume(

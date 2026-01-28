@@ -217,9 +217,14 @@ export function useChatStream(): UseChatStreamReturn {
         content,
         {
           onChunk: (chunk) => {
+            // 从首个 chunk 获取 request_id
+            if (chunk.request_id && !currentRequestIdRef.current) {
+              currentRequestIdRef.current = chunk.request_id;
+              setCurrentRequestId(chunk.request_id);
+            }
             if (chunk.message_id && !realMessageId) {
               realMessageId = chunk.message_id;
-              // 更新临时消息为真实消息
+              // 更新临时消息为真实消息，包含 request_id
               updateMessage(tempAssistantMsg.message_id, {
                 message_id: chunk.message_id,
                 request_id: currentRequestIdRef.current,

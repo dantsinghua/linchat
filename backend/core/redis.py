@@ -7,8 +7,45 @@ import json
 from datetime import timedelta
 from typing import Any
 
+import redis
 import redis.asyncio as aioredis
 from django.conf import settings
+
+
+# ============ 同步 Redis 客户端 ============
+
+class SyncRedisClient:
+    """同步 Redis 客户端封装（用于同步上下文，如中间件）"""
+    _client: redis.Redis | None = None
+
+    @classmethod
+    def get_client(cls) -> redis.Redis:
+        """获取同步 Redis 客户端连接（单例模式）"""
+        if cls._client is None:
+            cls._client = redis.from_url(
+                settings.REDIS_URL,
+                encoding="utf-8",
+                decode_responses=True,
+            )
+        return cls._client
+
+
+def sync_redis_get(key: str) -> str | None:
+    """同步获取字符串值"""
+    client = SyncRedisClient.get_client()
+    return client.get(key)
+
+
+def sync_redis_delete(key: str) -> int:
+    """同步删除键"""
+    client = SyncRedisClient.get_client()
+    return client.delete(key)
+
+
+def sync_redis_expire(key: str, seconds: int) -> bool:
+    """同步设置键的过期时间"""
+    client = SyncRedisClient.get_client()
+    return client.expire(key, seconds)
 
 
 class RedisClient:

@@ -16,8 +16,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, AsyncGenerator
 
-from django.http import StreamingHttpResponse
-
 from core.redis import get_redis, get_user_events_channel
 
 logger = logging.getLogger(__name__)
@@ -169,35 +167,3 @@ class EventService:
             await pubsub.close()
 
 
-def create_sse_response(generator: AsyncGenerator[str, None]) -> StreamingHttpResponse:
-    """
-    创建 SSE 流式响应
-
-    Args:
-        generator: 异步事件生成器
-
-    Returns:
-        StreamingHttpResponse
-    """
-
-    def sync_generator():
-        """将异步生成器转换为同步生成器"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            agen = generator.__aiter__()
-            while True:
-                try:
-                    yield loop.run_until_complete(agen.__anext__())
-                except StopAsyncIteration:
-                    break
-        finally:
-            loop.close()
-
-    response = StreamingHttpResponse(
-        sync_generator(),
-        content_type="text/event-stream",
-    )
-    response["Cache-Control"] = "no-cache"
-    response["X-Accel-Buffering"] = "no"  # 禁用 nginx 缓冲
-    return response

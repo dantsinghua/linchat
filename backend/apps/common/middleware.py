@@ -28,6 +28,9 @@ from core.redis import (
     redis_delete,
     redis_expire,
     redis_get,
+    sync_redis_delete,
+    sync_redis_expire,
+    sync_redis_get,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,17 +51,20 @@ TOKEN_COOKIE_NAME = "linchat_token"
 
 class TokenAuthMiddleware:
     """
-    Token 认证中间件
+    Token 认证中间件（纯同步版本）
 
     实现 R_TOKEN_003 双重过期规则：
     - 无操作过期: 1小时无操作自动过期，有操作时刷新TTL
     - 绝对过期: 登录后24小时强制失效，刷新操作不延长此期限
+
+    注意: 此中间件是纯同步的，Django 会自动在线程池中运行它来支持异步视图
     """
 
     def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]):
         self.get_response = get_response
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
+        """同步调用"""
         # 检查是否为公开路径
         if self._is_public_path(request.path):
             return self.get_response(request)
@@ -93,26 +99,64 @@ class TokenAuthMiddleware:
 
     def _verify_token_sync(self, token: str) -> dict:
         """
-        同步验证 Token
+        同步验证 Token（纯同步版本，使用同步 Redis 客户端）
 
         参考: behavior-model.md#1.3 Token鉴权验证
-
-        注意: 这是同步版本，用于 Django 中间件
         """
-        import asyncio
+        # [R_TOKEN_002] Token 有效性校验
+        if not token:
+            raise TokenExpiredException("请先登录")
 
-        # 在同步上下文中运行异步函数
+        # 尝试解密验证 Token 格式
         try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            sm4_decrypt(token)
+        except Exception:
+            raise TokenExpiredException("Token无效")
 
-        return loop.run_until_complete(self._verify_token(token))
+        # 计算 Token 哈希
+        token_hash = generate_token_hash(token)
+        token_key = get_token_key(token_hash)
+
+        # 从 Redis 获取 Token 信息（使用同步 Redis 客户端）
+        token_data = sync_redis_get(token_key)
+
+        if not token_data:
+            raise TokenExpiredException("登录已过期，请重新登录")
+
+        token_info = json.loads(token_data)
+        login_time_str = token_info.get("login_time")
+
+        if not login_time_str:
+            raise TokenExpiredException("Token数据损坏")
+
+        login_time = datetime.fromisoformat(login_time_str)
+        # 确保 login_time 是 aware datetime
+        if login_time.tzinfo is None:
+            login_time = timezone.make_aware(login_time)
+
+        now = timezone.now()
+
+        # [R_TOKEN_003] 检查24小时绝对过期
+        elapsed = (now - login_time).total_seconds()
+        if elapsed >= settings.AUTH_TOKEN_ABSOLUTE_TTL:  # 24小时
+            sync_redis_delete(token_key)
+            raise TokenExpiredException("登录已超过24小时，请重新登录")
+
+        # [R_TOKEN_003] 刷新TTL（1小时无操作过期，但不超过24小时边界）
+        remaining_absolute = settings.AUTH_TOKEN_ABSOLUTE_TTL - elapsed
+        ttl = min(settings.AUTH_TOKEN_IDLE_TTL, int(remaining_absolute))
+        sync_redis_expire(token_key, ttl)
+
+        # 更新最后活跃时间
+        token_info["last_active_time"] = now.isoformat()
+        # 注意：这里不重新保存整个 token_info，只刷新 TTL 即可
+        # 如果需要更新 last_active_time，需要重新 SETEX
+
+        return token_info
 
     async def _verify_token(self, token: str) -> dict:
         """
-        异步验证 Token
+        异步验证 Token（用于异步上下文）
 
         参考: behavior-model.md#1.3 Token鉴权验证
         """
@@ -162,8 +206,6 @@ class TokenAuthMiddleware:
 
         # 更新最后活跃时间
         token_info["last_active_time"] = now.isoformat()
-        # 注意：这里不重新保存整个 token_info，只刷新 TTL 即可
-        # 如果需要更新 last_active_time，需要重新 SETEX
 
         return token_info
 

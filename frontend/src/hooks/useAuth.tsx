@@ -17,6 +17,10 @@ import { useRouter } from 'next/navigation';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 
+// EventSource polyfill type for withCredentials support
+// 注意：标准 EventSource 不支持 withCredentials，但 fetch-event-source 等库支持
+// 这里使用原生 EventSource，同源请求会自动携带 Cookie
+
 // SSE 事件类型
 interface SSEEvent {
   type: 'logout' | 'message' | 'heartbeat' | 'connected';
@@ -48,6 +52,8 @@ export function useAuth() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // 使用 ref 存储认证状态，避免闭包过期问题
+  const isAuthenticatedRef = useRef<boolean | null>(null);
 
   /**
    * 显示 Toast 消息
@@ -137,10 +143,8 @@ export function useAuth() {
 
     try {
       // 创建 SSE 连接
-      // 注意：EventSource 不支持设置 credentials，需要确保同源或服务端正确配置 CORS
-      const eventSource = new EventSource(`${API_BASE_URL}/events`, {
-        withCredentials: true,
-      });
+      // 同源请求会自动携带 Cookie，无需额外配置
+      const eventSource = new EventSource(`${API_BASE_URL}/events`);
 
       // 监听具体事件类型（后端使用 event: 字段区分事件类型）
       // logout 事件：单点登录冲突、Token 过期、管理员踢出
@@ -159,9 +163,9 @@ export function useAuth() {
         if (eventSource.readyState === EventSource.CLOSED) {
           eventSourceRef.current = null;
 
-          // 5秒后重连
+          // 5秒后重连，使用 ref 避免闭包过期问题
           reconnectTimeoutRef.current = setTimeout(() => {
-            if (isAuthenticated) {
+            if (isAuthenticatedRef.current) {
               connectSSE();
             }
           }, 5000);
@@ -176,7 +180,7 @@ export function useAuth() {
     } catch (error) {
       console.error('Failed to create SSE connection:', error);
     }
-  }, [handleSSEEvent, isAuthenticated]);
+  }, [handleSSEEvent]);
 
   /**
    * 断开 SSE 连接
@@ -250,6 +254,11 @@ export function useAuth() {
       router.push('/login');
     }
   }, [disconnectSSE, router]);
+
+  // 同步 isAuthenticated 到 ref，避免闭包过期问题
+  useEffect(() => {
+    isAuthenticatedRef.current = isAuthenticated;
+  }, [isAuthenticated]);
 
   // 组件挂载时检查认证状态
   useEffect(() => {

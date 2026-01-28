@@ -1,9 +1,11 @@
 """
-聊天视图
+聊天视图 (ASGI 原生异步视图)
 
 参考:
 - process-model.md#三、消息发送与流式响应流程（P_CHAT_001）
 - process-model.md#四、历史消息加载流程（P_CHAT_002）
+
+注意: SSE 流式响应视图使用 ASGI 原生异步实现，必须使用 uvicorn 启动服务
 """
 
 import asyncio
@@ -12,9 +14,6 @@ import logging
 
 from asgiref.sync import async_to_sync
 from django.http import HttpRequest, JsonResponse, StreamingHttpResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
-from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -31,10 +30,9 @@ from apps.common.responses import ApiResponse
 logger = logging.getLogger(__name__)
 
 
-@csrf_exempt
-def chat(request: HttpRequest) -> StreamingHttpResponse:
+async def chat(request: HttpRequest) -> StreamingHttpResponse:
     """
-    发送消息并获取流式响应
+    发送消息并获取流式响应 (ASGI 原生异步视图)
 
     POST /api/v1/chat/
 
@@ -49,6 +47,8 @@ def chat(request: HttpRequest) -> StreamingHttpResponse:
         - data: {"type": "done", "content": "", "message_id": 123}
         - data: {"type": "error", "content": "错误信息"}
         - data: {"type": "interrupted", "content": "[已中断]", "message_id": 123}
+
+    注意: 使用 ASGI 原生异步视图，必须使用 uvicorn 启动服务
     """
     if request.method != "POST":
         return JsonResponse(
@@ -78,57 +78,34 @@ def chat(request: HttpRequest) -> StreamingHttpResponse:
     user_id = request.user_id
     content = serializer.validated_data["content"]
 
-    def event_generator():
-        """同步 SSE 事件生成器，使用 async_to_sync 包装异步调用"""
-        import queue
-        import threading
-
-        result_queue = queue.Queue()
-
-        def run_async():
-            """在新线程中运行异步生成器"""
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                async def collect():
-                    try:
-                        async for chunk in ChatService.send_message(
-                            user_id=user_id, content=content
-                        ):
-                            data = {
-                                "type": chunk.type,
-                                "content": chunk.content,
-                            }
-                            if chunk.message_id:
-                                data["message_id"] = chunk.message_id
-                            result_queue.put(f"data: {json.dumps(data, ensure_ascii=False)}\n\n")
-                    except Exception as e:
-                        logger.exception("Chat error")
-                        error_data = {"type": "error", "content": getattr(e, "message", str(e))}
-                        result_queue.put(f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n")
-                    finally:
-                        result_queue.put(None)  # 结束信号
-
-                loop.run_until_complete(collect())
-            finally:
-                loop.close()
-
-        # 启动异步线程
-        thread = threading.Thread(target=run_async, daemon=True)
-        thread.start()
-
-        # 从队列中读取结果并 yield
-        while True:
-            item = result_queue.get()
-            if item is None:
-                break
-            yield item
+    async def event_generator():
+        """ASGI 原生异步 SSE 事件生成器"""
+        try:
+            async for chunk in ChatService.send_message(
+                user_id=user_id, content=content
+            ):
+                data = {
+                    "type": chunk.type,
+                    "content": chunk.content,
+                }
+                if chunk.message_id:
+                    data["message_id"] = chunk.message_id
+                if chunk.request_id:
+                    data["request_id"] = chunk.request_id
+                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+        except asyncio.CancelledError:
+            logger.info(f"Chat SSE connection cancelled for user {user_id}")
+            raise
+        except Exception as e:
+            logger.exception("Chat error")
+            error_data = {"type": "error", "content": getattr(e, "message", str(e))}
+            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
     response = StreamingHttpResponse(
         event_generator(), content_type="text/event-stream"
     )
     response["Cache-Control"] = "no-cache"
-    response["X-Accel-Buffering"] = "no"  # Nginx 禁用缓冲
+    response["X-Accel-Buffering"] = "no"
     return response
 
 
@@ -245,11 +222,9 @@ def stop_generation(request: Request) -> Response:
         return ApiResponse.not_found(message="未找到活跃的生成任务")
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
-def resume_generation(request: HttpRequest) -> StreamingHttpResponse:
+async def resume_generation(request: HttpRequest) -> StreamingHttpResponse:
     """
-    继续生成（从中断处恢复）
+    继续生成（从中断处恢复）(ASGI 原生异步视图)
 
     POST /api/v1/chat/resume/
 
@@ -262,8 +237,11 @@ def resume_generation(request: HttpRequest) -> StreamingHttpResponse:
     Response:
         SSE 流式响应
     """
-    import queue
-    import threading
+    if request.method != "POST":
+        return JsonResponse(
+            {"code": "METHOD_NOT_ALLOWED", "message": "Method not allowed", "data": None},
+            status=405,
+        )
 
     # 解析请求体
     try:
@@ -286,45 +264,26 @@ def resume_generation(request: HttpRequest) -> StreamingHttpResponse:
     user_id = request.user_id
     request_id = serializer.validated_data["request_id"]
 
-    def event_generator():
-        """同步 SSE 事件生成器"""
-        result_queue = queue.Queue()
-
-        def run_async():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                async def collect():
-                    try:
-                        async for chunk in ChatService.resume_generation(
-                            user_id=user_id, request_id=request_id
-                        ):
-                            data = {
-                                "type": chunk.type,
-                                "content": chunk.content,
-                            }
-                            if chunk.message_id:
-                                data["message_id"] = chunk.message_id
-                            result_queue.put(f"data: {json.dumps(data, ensure_ascii=False)}\n\n")
-                    except Exception as e:
-                        logger.exception("Resume generation error")
-                        error_data = {"type": "error", "content": str(e)}
-                        result_queue.put(f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n")
-                    finally:
-                        result_queue.put(None)
-
-                loop.run_until_complete(collect())
-            finally:
-                loop.close()
-
-        thread = threading.Thread(target=run_async, daemon=True)
-        thread.start()
-
-        while True:
-            item = result_queue.get()
-            if item is None:
-                break
-            yield item
+    async def event_generator():
+        """ASGI 原生异步 SSE 事件生成器"""
+        try:
+            async for chunk in ChatService.resume_generation(
+                user_id=user_id, request_id=request_id
+            ):
+                data = {
+                    "type": chunk.type,
+                    "content": chunk.content,
+                }
+                if chunk.message_id:
+                    data["message_id"] = chunk.message_id
+                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+        except asyncio.CancelledError:
+            logger.info(f"Resume generation SSE cancelled for user {user_id}")
+            raise
+        except Exception as e:
+            logger.exception("Resume generation error")
+            error_data = {"type": "error", "content": str(e)}
+            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
     response = StreamingHttpResponse(
         event_generator(), content_type="text/event-stream"
@@ -334,10 +293,9 @@ def resume_generation(request: HttpRequest) -> StreamingHttpResponse:
     return response
 
 
-@require_http_methods(["GET"])
-def reconnect_stream(request: HttpRequest) -> StreamingHttpResponse:
+async def reconnect_stream(request: HttpRequest) -> StreamingHttpResponse:
     """
-    重连流式响应（用于页面刷新时重连生成中的消息）
+    重连流式响应（用于页面刷新时重连生成中的消息）(ASGI 原生异步视图)
 
     GET /api/v1/chat/reconnect/?request_id={request_id}
 
@@ -350,8 +308,11 @@ def reconnect_stream(request: HttpRequest) -> StreamingHttpResponse:
     Response:
         SSE 流式响应
     """
-    import queue
-    import threading
+    if request.method != "GET":
+        return JsonResponse(
+            {"code": "METHOD_NOT_ALLOWED", "message": "Method not allowed", "data": None},
+            status=405,
+        )
 
     query_params = request.GET
 
@@ -367,45 +328,26 @@ def reconnect_stream(request: HttpRequest) -> StreamingHttpResponse:
     user_id = request.user_id
     request_id = serializer.validated_data["request_id"]
 
-    def event_generator():
-        """同步 SSE 事件生成器"""
-        result_queue = queue.Queue()
-
-        def run_async():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                async def collect():
-                    try:
-                        async for chunk in ChatService.reconnect_stream(
-                            user_id=user_id, request_id=request_id
-                        ):
-                            data = {
-                                "type": chunk.type,
-                                "content": chunk.content,
-                            }
-                            if chunk.message_id:
-                                data["message_id"] = chunk.message_id
-                            result_queue.put(f"data: {json.dumps(data, ensure_ascii=False)}\n\n")
-                    except Exception as e:
-                        logger.exception("Reconnect stream error")
-                        error_data = {"type": "error", "content": str(e)}
-                        result_queue.put(f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n")
-                    finally:
-                        result_queue.put(None)
-
-                loop.run_until_complete(collect())
-            finally:
-                loop.close()
-
-        thread = threading.Thread(target=run_async, daemon=True)
-        thread.start()
-
-        while True:
-            item = result_queue.get()
-            if item is None:
-                break
-            yield item
+    async def event_generator():
+        """ASGI 原生异步 SSE 事件生成器"""
+        try:
+            async for chunk in ChatService.reconnect_stream(
+                user_id=user_id, request_id=request_id
+            ):
+                data = {
+                    "type": chunk.type,
+                    "content": chunk.content,
+                }
+                if chunk.message_id:
+                    data["message_id"] = chunk.message_id
+                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+        except asyncio.CancelledError:
+            logger.info(f"Reconnect stream SSE cancelled for user {user_id}")
+            raise
+        except Exception as e:
+            logger.exception("Reconnect stream error")
+            error_data = {"type": "error", "content": str(e)}
+            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
     response = StreamingHttpResponse(
         event_generator(), content_type="text/event-stream"

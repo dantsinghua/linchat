@@ -95,6 +95,7 @@ def get_llm() -> ChatOpenAI:
         api_key=settings.LLM_API_KEY or "not-needed",  # vLLM 可能不需要 API key
         model=settings.LLM_MODEL_NAME,
         streaming=True,
+        stream_usage=True,  # 启用流式模式下的token统计
         timeout=settings.LLM_CALL_TIMEOUT,
         max_retries=settings.LLM_MAX_RETRIES,  # 重试次数，默认3次
     )
