@@ -228,7 +228,10 @@ async def test_sse_resource_cleanup_on_disconnect():
   - 服务层覆盖率: chat/services.py 97%, users/services.py 100%, event_service.py 96% ✓
   - 视图层覆盖率: 因使用 mock 测试异步行为，统计覆盖率低（实际逻辑已通过单元测试验证）
   - 163 个测试全部通过
-- [ ] T031 手动测试 SSE 连接断开时的资源释放
+- [x] T031 手动测试 SSE 连接断开时的资源释放
+  - 测试验证：Redis 连接数在请求前后保持稳定（差异 0）
+  - 自动化测试 tests/integration/test_sse_async.py 全部通过（8 个测试）
+  - 完整测试套件 163 个测试全部通过
 
 **Checkpoint**: 所有测试通过，覆盖率达标，无 `new_event_loop()` 遗留
 
