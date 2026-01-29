@@ -44,29 +44,35 @@ export const MessageInput = memo(function MessageInput({
   const lastSendTimeRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 当有失败内容时，恢复到输入框
-  useEffect(() => {
-    if (failedContent) {
-      setContent(failedContent);
-      onClearFailedContent?.();
-      // 聚焦到输入框
-      textareaRef.current?.focus();
-    }
-  }, [failedContent, onClearFailedContent]);
-
   const trimmedContent = content.trim();
   const isEmpty = trimmedContent.length === 0;
   const isOverLimit = content.length > MAX_LENGTH;
   const canSend = !isEmpty && !isOverLimit && !disabled && !isGenerating && !isSending;
 
-  // 自动调整文本框高度
+  // 自动调整文本框高度（最大170px，超出后出现内部滚动条）
   const adjustHeight = useCallback(() => {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+      const maxH = 170;
+      const scrollH = textarea.scrollHeight;
+      textarea.style.height = `${Math.min(scrollH, maxH)}px`;
+      textarea.style.overflowY = scrollH > maxH ? 'auto' : 'hidden';
     }
   }, []);
+
+  // 当有失败内容时，恢复到输入框
+  useEffect(() => {
+    if (failedContent) {
+      setContent(failedContent);
+      onClearFailedContent?.();
+      // 聚焦到输入框并调整高度
+      requestAnimationFrame(() => {
+        adjustHeight();
+        textareaRef.current?.focus();
+      });
+    }
+  }, [failedContent, onClearFailedContent, adjustHeight]);
 
   // 处理输入变化
   const handleChange = useCallback(
@@ -76,6 +82,14 @@ export const MessageInput = memo(function MessageInput({
     },
     [adjustHeight]
   );
+
+  // 重置文本框高度和滚动条
+  const resetTextarea = useCallback(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.overflowY = 'hidden';
+    }
+  }, []);
 
   // 发送消息
   const handleSend = useCallback(async () => {
@@ -88,18 +102,18 @@ export const MessageInput = memo(function MessageInput({
     }
     lastSendTimeRef.current = now;
 
+    const sendContent = trimmedContent;
+    // 立即清空输入框并重置高度（出错时通过 failedContent 机制恢复）
+    setContent('');
+    resetTextarea();
+
     setIsSending(true);
     try {
-      await onSend(trimmedContent);
-      setContent('');
-      // 重置文本框高度
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
+      await onSend(sendContent);
     } finally {
       setIsSending(false);
     }
-  }, [canSend, trimmedContent, onSend]);
+  }, [canSend, trimmedContent, onSend, resetTextarea]);
 
   // 停止生成
   const handleStop = useCallback(async () => {
@@ -137,31 +151,31 @@ export const MessageInput = memo(function MessageInput({
           </div>
         )}
 
-        <div className="flex items-end gap-3">
-          {/* 输入框 */}
-          <div className="relative flex-1">
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-              placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-              disabled={disabled}
-              rows={1}
-              className={`w-full resize-none rounded-lg border px-4 py-3 pr-12 transition-colors focus:outline-none focus:ring-2 ${
-                isOverLimit
-                  ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20'
-                  : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500/20'
-              } disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white`}
-              style={{ maxHeight: '200px' }}
-            />
-          </div>
+        {/* 输入框 */}
+        <div className="relative">
+          <textarea
+            ref={textareaRef}
+            value={content}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+            disabled={disabled || isGenerating}
+            rows={1}
+            className={`w-full resize-none rounded-lg border px-4 py-3 transition-colors focus:outline-none focus:ring-2 ${
+              isOverLimit
+                ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20'
+                : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500/20'
+            } disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white`}
+            style={{ maxHeight: '170px', overflowY: 'hidden' }}
+          />
+        </div>
 
-          {/* 发送/停止按钮 */}
+        {/* 发送/停止按钮 - 输入框下方右对齐 */}
+        <div className="mt-2 flex justify-end">
           {isGenerating ? (
             <button
               onClick={handleStop}
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
+              className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
               title="停止生成"
             >
               <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
@@ -172,7 +186,7 @@ export const MessageInput = memo(function MessageInput({
             <button
               onClick={handleSend}
               disabled={!canSend}
-              className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg transition-colors ${
+              className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
                 canSend
                   ? 'bg-primary-500 text-white hover:bg-primary-600'
                   : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-gray-600'
