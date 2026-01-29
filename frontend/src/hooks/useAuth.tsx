@@ -40,6 +40,7 @@ interface ToastMessage {
 interface UserInfo {
   user_id: number;
   username: string;
+  type: 'admin' | 'user';
 }
 
 /**
@@ -212,6 +213,7 @@ export function useAuth() {
           setUser({
             user_id: data.data.user_id,
             username: data.data.username,
+            type: data.data.type || 'user',
           });
         }
         setIsAuthenticated(true);

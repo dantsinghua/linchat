@@ -81,6 +81,7 @@ class TokenAuthMiddleware:
             # 将用户信息附加到 request
             request.user_id = user_info["user_id"]
             request.username = user_info["username"]
+            request.user_type = user_info.get("user_type", "user")
             request.token_hash = generate_token_hash(token)
         except TokenExpiredException as e:
             return self._unauthorized_response(str(e))
@@ -251,6 +252,7 @@ class AsyncTokenAuthMiddleware:
             # 将用户信息附加到 request
             request.user_id = user_info["user_id"]
             request.username = user_info["username"]
+            request.user_type = user_info.get("user_type", "user")
             request.token_hash = generate_token_hash(token)
         except TokenExpiredException as e:
             return self._unauthorized_response(str(e))

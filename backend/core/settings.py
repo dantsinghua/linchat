@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "apps.common",
     "apps.users",
     "apps.chat",
+    "apps.models",
 ]
 
 MIDDLEWARE = [
@@ -221,10 +222,8 @@ SM4_SECRET_KEY = os.getenv("SM4_SECRET_KEY", "default-sm4-key-16")  # 必须16�
 
 
 # LLM 服务配置
-# 参考: data-model.md#七、配置参数汇总
-LLM_API_BASE = os.getenv("LLM_API_BASE", "http://localhost:8000/v1")
-LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "")
+# 注: LLM_API_BASE/LLM_API_KEY/LLM_MODEL_NAME 已迁移到数据库（model 表）
+# 通过 apps.models.services.model_service.get_active_model() 获取
 
 # LLM 超时和重试配置
 # 参考: rule-model.md#R_AGENT_001 和 R_LLM_RETRY_001

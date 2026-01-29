@@ -232,6 +232,7 @@ class MeView(View):
         """获取当前用户信息"""
         user_id = getattr(request, "user_id", None)
         username = getattr(request, "username", None)
+        user_type = getattr(request, "user_type", "user")
 
         if not user_id:
             return error_response(
@@ -244,6 +245,7 @@ class MeView(View):
             {
                 "user_id": user_id,
                 "username": username,
+                "type": user_type,
             }
         )
 
