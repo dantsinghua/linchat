@@ -25,7 +25,7 @@ function TypeBadge({ type }: { type: string }) {
   const isLanguage = type === 'language';
   return (
     <span
-      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ${
         isLanguage
           ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
           : 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
@@ -57,16 +57,17 @@ export const ModelConfigCard = memo(function ModelConfigCard({
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
       {/* 卡片头部 */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <TypeBadge type={model.type} />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            {model.name}
-          </h3>
-        </div>
-        <div className="flex items-center gap-2">
+      <div className="mb-4 flex items-center gap-3">
+        <TypeBadge type={model.type} />
+        <h3
+          className="min-w-0 flex-1 truncate text-lg font-semibold text-gray-900 dark:text-white"
+          title={model.name}
+        >
+          {model.name}
+        </h3>
+        <div className="flex shrink-0 items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
+            className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${
               model.isActive
                 ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                 : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
@@ -82,7 +83,7 @@ export const ModelConfigCard = memo(function ModelConfigCard({
           {onEdit && (
             <button
               onClick={() => onEdit(model)}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              className="shrink-0 whitespace-nowrap rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
             >
               编辑
             </button>
