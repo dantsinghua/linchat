@@ -36,9 +36,11 @@ from apps.users.repositories import user_repo
 logger = logging.getLogger(__name__)
 
 
-def _get_language_model_name() -> str:
+async def _get_language_model_name() -> str:
     """从数据库获取激活的语言模型名称"""
-    config = model_service.get_active_model("language")
+    from asgiref.sync import sync_to_async
+
+    config = await sync_to_async(model_service.get_active_model)("language")
     return config["name"] if config else "unknown"
 
 
@@ -595,7 +597,7 @@ class AgentService:
                                             request_id=request_id,
                                             sequence=max_seq + 2,
                                             status=Message.STATUS_GENERATING,
-                                            model_name=_get_language_model_name(),
+                                            model_name=await _get_language_model_name(),
                                             created_time=first_token_time,
                                         )
                                         await message_repo.create(assistant_msg)

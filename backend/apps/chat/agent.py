@@ -11,6 +11,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
 
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.redis import AsyncRedisSaver
@@ -80,7 +81,7 @@ def get_thread_id(user_id: int) -> str:
 # ============ LLM 配置 ============
 
 
-def get_llm() -> ChatOpenAI:
+async def get_llm() -> ChatOpenAI:
     """
     获取 LLM 实例（每次从数据库读取最新配置，确保修改即时生效）
 
@@ -93,7 +94,7 @@ def get_llm() -> ChatOpenAI:
     Returns:
         ChatOpenAI: LLM 实例
     """
-    config = model_service.get_active_model("language")
+    config = await sync_to_async(model_service.get_active_model)("language")
     if not config:
         raise RuntimeError("未找到激活的语言模型配置，请在模型配置页面设置")
 
@@ -142,7 +143,7 @@ async def create_chat_agent():
         CompiledGraph: 编译后的 Agent 图
     """
     async with get_checkpointer() as checkpointer:
-        llm = get_llm()
+        llm = await get_llm()
 
         # 创建 ReAct Agent（当前版本不使用工具）
         # 参考: behavior-model.md#2.2 - 使用 create_react_agent
