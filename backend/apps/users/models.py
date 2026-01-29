@@ -27,6 +27,20 @@ class SysUser(models.Model):
         verbose_name="密码哈希（SM3）",
     )
 
+    # ========== 用户类型 ==========
+    TYPE_ADMIN = "admin"
+    TYPE_USER = "user"
+    TYPE_CHOICES = [
+        (TYPE_ADMIN, "管理员"),
+        (TYPE_USER, "普通用户"),
+    ]
+    type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES,
+        default=TYPE_USER,
+        verbose_name="用户类型",
+    )
+
     # ========== 账户状态 ==========
     status = models.SmallIntegerField(
         default=1,
@@ -101,3 +115,7 @@ class SysUser(models.Model):
     def is_active(self) -> bool:
         """检查账户是否启用"""
         return self.status == 1
+
+    def is_admin(self) -> bool:
+        """检查是否为管理员"""
+        return self.type == self.TYPE_ADMIN

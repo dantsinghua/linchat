@@ -100,3 +100,6 @@ class UserInfoSerializer(serializers.Serializer):
     username = serializers.CharField(
         help_text="用户名",
     )
+    type = serializers.CharField(
+        help_text="用户类型（admin/user）",
+    )

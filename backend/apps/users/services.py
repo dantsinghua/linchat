@@ -240,6 +240,7 @@ class AuthService:
         token_data = {
             "user_id": user.user_id,
             "username": user.username,
+            "user_type": user.type,
             "login_time": login_time.isoformat(),
             "last_active_time": login_time.isoformat(),
             "login_ip": client_ip,

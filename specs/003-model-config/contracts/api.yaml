@@ -1,0 +1,324 @@
+openapi: "3.0.3"
+info:
+  title: LinChat 模型配置管理 API
+  version: "1.0.0"
+  description: |
+    模型配置管理 API — 查看和修改语言模型及 embedding 模型配置。
+
+    **权限要求**: 所有端点仅限管理员用户（admin）访问，非管理员返回 403 Forbidden（对应 spec FR-016）。
+
+    **错误码约定**: 统一响应格式 `{code, message, data}` — 成功 code=0（遵循宪法 1.2），失败 code 使用 HTTP 状态码（400/401/403/404/405/500）。
+
+    **内部能力（不暴露为 API 端点）**:
+    - FR-014: 按 type + is_active 获取激活模型 — 通过 Service 层 `get_active_model(type)` 内部调用
+    - FR-015: 有效上下文窗口计算 — 通过 Model 计算属性 `effective_context_window` 返回
+
+servers:
+  - url: /api/v1
+    description: LinChat API v1
+
+paths:
+  /models/:
+    get:
+      summary: 获取所有模型配置
+      description: 返回所有模型记录，API Key 以脱敏形式展示
+      operationId: listModels
+      tags: [models]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ModelResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /models/{id}/:
+    get:
+      summary: 获取单个模型配置
+      operationId: getModel
+      tags: [models]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: "#/components/schemas/ModelResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: 更新模型配置
+      description: |
+        更新指定模型的配置参数。
+        - `type` 和 `is_active` 不可修改
+        - `api_key` 如果值包含 `****`（脱敏值），则保留原值不更新
+        - 选填参数传 `null` 表示清除（使用模型默认值），传 `0` 表示设为零
+      operationId: updateModel
+      tags: [models]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelUpdateRequest"
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: "#/components/schemas/ModelResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  schemas:
+    ModelResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        type:
+          type: string
+          enum: [language, embedding]
+          example: language
+        name:
+          type: string
+          example: deepseek-v3-1-terminus
+        url:
+          type: string
+          example: https://ark.cn-beijing.volces.com/api/v3
+        api_key:
+          type: string
+          description: 脱敏展示（前4位 + **** + 后4位）
+          example: "sk-t****cxyz"
+        max_context_window:
+          type: integer
+          example: 65536
+        max_input_tokens:
+          type: integer
+          example: 32768
+        max_output_tokens:
+          type: integer
+          example: 8192
+        temperature:
+          type: number
+          nullable: true
+          example: null
+        top_p:
+          type: number
+          nullable: true
+          example: null
+        frequency_penalty:
+          type: number
+          nullable: true
+          example: null
+        presence_penalty:
+          type: number
+          nullable: true
+          example: null
+        embedding_dimensions:
+          type: integer
+          nullable: true
+          example: null
+        is_active:
+          type: boolean
+          example: true
+        effective_context_window:
+          type: integer
+          description: 有效上下文窗口 (max_context_window * 0.9)
+          example: 58982
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ModelUpdateRequest:
+      type: object
+      required:
+        - name
+        - url
+        - api_key
+        - max_context_window
+        - max_input_tokens
+        - max_output_tokens
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          example: deepseek-v3-1-terminus
+        url:
+          type: string
+          maxLength: 500
+          example: https://ark.cn-beijing.volces.com/api/v3
+        api_key:
+          type: string
+          description: 新密钥或脱敏值（包含 **** 时保留原值）
+          example: "sk-new-api-key-here"
+        max_context_window:
+          type: integer
+          minimum: 1
+          example: 65536
+        max_input_tokens:
+          type: integer
+          minimum: 1
+          example: 32768
+        max_output_tokens:
+          type: integer
+          minimum: 1
+          example: 8192
+        temperature:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 2
+        top_p:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 1
+        frequency_penalty:
+          type: number
+          nullable: true
+          minimum: -2
+          maximum: 2
+        presence_penalty:
+          type: number
+          nullable: true
+          minimum: -2
+          maximum: 2
+        embedding_dimensions:
+          type: integer
+          nullable: true
+          minimum: 1
+
+  responses:
+    Forbidden:
+      description: 权限不足（非管理员用户）
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                example: 403
+              message:
+                type: string
+                example: 权限不足，仅管理员可访问
+              data:
+                nullable: true
+                example: null
+
+    Unauthorized:
+      description: 未认证
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                example: 401
+              message:
+                type: string
+                example: 未登录或登录已过期
+              data:
+                nullable: true
+                example: null
+
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                example: 404
+              message:
+                type: string
+                example: 模型配置不存在
+              data:
+                nullable: true
+                example: null
+
+    ValidationError:
+      description: 参数校验失败
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                example: 400
+              message:
+                type: string
+                example: 参数校验失败
+              data:
+                type: object
+                description: 字段级错误详情
+                example:
+                  name: ["该字段不能为空"]
+                  temperature: ["确保该值大于或等于 0"]

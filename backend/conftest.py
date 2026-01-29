@@ -12,3 +12,10 @@ def pytest_configure():
     """pytest 配置钩子"""
     if not settings.configured:
         django.setup()
+
+    # 测试环境禁用 DRF 限流，避免全量测试时触发 429
+    settings.REST_FRAMEWORK = {
+        **settings.REST_FRAMEWORK,
+        "DEFAULT_THROTTLE_CLASSES": [],
+        "DEFAULT_THROTTLE_RATES": {},
+    }

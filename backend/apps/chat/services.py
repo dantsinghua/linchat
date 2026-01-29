@@ -30,9 +30,16 @@ from apps.common.exceptions import (EmptyMessageException, LLMConnectionError,
                                     LLMInvalidResponseError,
                                     LLMQuotaExceededError, LLMRateLimitError,
                                     LLMTimeoutError, MessageTooLongException)
+from apps.models.services import model_service
 from apps.users.repositories import user_repo
 
 logger = logging.getLogger(__name__)
+
+
+def _get_language_model_name() -> str:
+    """从数据库获取激活的语言模型名称"""
+    config = model_service.get_active_model("language")
+    return config["name"] if config else "unknown"
 
 
 # ============ 数据类 ============
@@ -588,7 +595,7 @@ class AgentService:
                                             request_id=request_id,
                                             sequence=max_seq + 2,
                                             status=Message.STATUS_GENERATING,
-                                            model_name=settings.LLM_MODEL_NAME,
+                                            model_name=_get_language_model_name(),
                                             created_time=first_token_time,
                                         )
                                         await message_repo.create(assistant_msg)
