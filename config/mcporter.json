@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "tushare": {
+      "description": "TuShare 中国股票金融数据 MCP",
+      "command": "python",
+      "args": ["/home/dantsinghua/work/tushare/server.py"],
+      "cwd": "/home/dantsinghua/work/tushare",
+      "env": {
+        "TUSHARE_TOKEN": "03a53420850fc038f7691173fbfcd6c4eee7ad38d99d24ff75ada04c"
+      }
+    }
+  }
+}

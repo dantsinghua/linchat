@@ -1,0 +1,385 @@
+openapi: "3.1.0"
+info:
+  title: LinChat Memory API
+  version: "1.0.0"
+  description: |
+    M1b 上下文与记忆管理 — 记忆 CRUD 与语义搜索 REST API
+    基础路径: /api/v1/memories/
+
+servers:
+  - url: /linchat/api/v1
+    description: LinChat API (Nginx 反向代理)
+
+paths:
+  /memories/:
+    get:
+      summary: 获取当前用户的记忆列表
+      operationId: listMemories
+      tags: [Memory]
+      description: |
+        列出当前已认证用户的所有记忆。
+        自动按 user_id 过滤（从 Token 获取），保证用户隔离（R-004）。
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [memory, compaction, daily-summary, monthly-summary]
+          description: 按记忆类型过滤
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: 页码
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+          description: 每页条数
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                        description: 总记录数
+                      results:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/MemoryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      summary: 创建记忆
+      operationId: createMemory
+      tags: [Memory]
+      description: |
+        创建一条新记忆。元数据同步写入，embedding 异步生成（FR-004）。
+        embedding_status 初始为 pending，异步任务完成后变为 done。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryCreateRequest"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: "#/components/schemas/MemoryResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /memories/{memory_id}/:
+    get:
+      summary: 获取单条记忆详情
+      operationId: getMemory
+      tags: [Memory]
+      parameters:
+        - $ref: "#/components/parameters/MemoryId"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: "#/components/schemas/MemoryResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: 更新记忆
+      operationId: updateMemory
+      tags: [Memory]
+      description: |
+        更新记忆内容。旧 embedding 标记失效，异步重新生成（FR-004/FR-007）。
+        embedding_status 重置为 pending，retry_count 重置为 0。
+      parameters:
+        - $ref: "#/components/parameters/MemoryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryUpdateRequest"
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    $ref: "#/components/schemas/MemoryResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      summary: 删除记忆
+      operationId: deleteMemory
+      tags: [Memory]
+      description: |
+        删除记忆。级联删除 embedding 数据（FK ON DELETE CASCADE）。
+      parameters:
+        - $ref: "#/components/parameters/MemoryId"
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: "null"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /memories/search/:
+    post:
+      summary: 语义搜索记忆
+      operationId: searchMemories
+      tags: [Memory]
+      description: |
+        基于查询文本进行语义搜索（pgvector 向量检索）。
+        embedding_status != done 的记忆退化为关键词匹配（FR-006）。
+        性能要求：延迟 < 500ms（NFR-001）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemorySearchRequest"
+      responses:
+        "200":
+          description: 搜索成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MemorySearchResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  parameters:
+    MemoryId:
+      name: memory_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: 记忆 ID
+
+  schemas:
+    MemoryCreateRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: 记忆内容
+        name:
+          type: string
+          maxLength: 200
+          description: 记忆名称（可选）
+
+    MemoryUpdateRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: 更新后的记忆内容
+
+    MemorySearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: 搜索查询文本
+        limit:
+          type: integer
+          default: 5
+          minimum: 1
+          maximum: 20
+          description: 最大返回条数
+
+    MemoryResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 记忆 ID
+        type:
+          type: string
+          enum: [memory, compaction, daily-summary, monthly-summary]
+          description: 记忆类型
+        name:
+          type: string
+          nullable: true
+          description: 记忆名称
+        content:
+          type: string
+          description: 记忆内容
+        embedding_status:
+          type: string
+          enum: [pending, processing, done, failed]
+          description: Embedding 生成状态
+        created_at:
+          type: string
+          format: date-time
+          description: 创建时间
+        updated_at:
+          type: string
+          format: date-time
+          description: 更新时间
+
+    MemorySearchResult:
+      allOf:
+        - $ref: "#/components/schemas/MemoryResponse"
+        - type: object
+          properties:
+            score:
+              type: number
+              format: float
+              description: 相似度得分（0-1，越高越相关）
+            match_type:
+              type: string
+              enum: [semantic, keyword]
+              description: 匹配方式（语义匹配或关键词匹配）
+
+  responses:
+    Unauthorized:
+      description: 未认证或 Token 过期
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                example: 401
+              message:
+                type: string
+                example: 身份认证失败
+              data:
+                type: "null"
+
+    ValidationError:
+      description: 请求参数验证失败
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                example: 400
+              message:
+                type: string
+                example: 参数验证失败
+              data:
+                type: "null"
+
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                example: 404
+              message:
+                type: string
+                example: 记忆不存在
+              data:
+                type: "null"
+
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: auth_token
+      description: httpOnly Cookie Token 认证
+
+security:
+  - cookieAuth: []

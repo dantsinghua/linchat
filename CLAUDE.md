@@ -100,7 +100,7 @@ npm test                              # 运行测试
 | **Nginx 主入口** | 3782, 8080 | 0.0.0.0 | 反向代理统一入口 |
 | **Nginx Langfuse** | 8081 | 0.0.0.0 | Langfuse 独立端口 |
 | **PostgreSQL** | 5432 | 0.0.0.0 | 主数据库 (LinChat + Langfuse) |
-| **Redis** | 6379 | 0.0.0.0 | 缓存服务 (DB0: LinChat, DB1: Langfuse) |
+| **Redis** | 6379 | 0.0.0.0 | 缓存服务 (DB0: LinChat, DB1: Langfuse, DB2: Celery Broker) |
 | **Langfuse Web** | 3100 | 127.0.0.1 | Langfuse Web 服务 (内部) |
 | **ClickHouse HTTP** | 8123 | 127.0.0.1 | ClickHouse HTTP 接口 (仅本地) |
 | **ClickHouse Native** | 9000 | 127.0.0.1 | ClickHouse Native 接口 (仅本地) |
@@ -465,6 +465,16 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 
 ---
 
+## 强制术语定义 (不可违背)
+
+| 术语 | 定义 |
+|------|------|
+| **1 轮对话** | 1 条 role=user 消息 + 1 条 role=assistant 消息（1 对 user+assistant 消息） |
+| **保留最近 N 轮** | 保留最后 N×2 条 user/assistant 消息（例：2 轮 = 4 条消息） |
+| **隔离粒度** | 永远按 `user_id` 粒度，不存在"会话粒度"或"session 粒度" |
+
+---
+
 ## 架构约束 (不可违背)
 
 ### 分层架构
@@ -563,6 +573,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 7. **禁止**忽略数据一致性检查
 8. **禁止**在 SSE 视图中手动创建临时事件循环（必须使用 ASGI 原生异步视图）
 9. **禁止**使用 `python manage.py runserver` 启动后端（必须使用 uvicorn ASGI 模式）
+10. **禁止**使用"会话粒度"隔离 — 本项目所有隔离操作（数据查询、并发锁、缓存键）永远按 `user_id` 粒度，不存在"会话粒度"或"session 粒度"概念
 
 ---
 
@@ -589,6 +600,8 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 - Python 3.11+ (后端) / TypeScript 5.0+ (前端) (001-llm-chat-page)
 - Python 3.11+ + Django 4.2+, DRF 3.14+, uvicorn 0.30+, redis-py (async) (002-asgi-async-views)
 - PostgreSQL (主存储), Redis (缓存/Pubsub) (002-asgi-async-views)
+- Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, Celery 5.3+, tiktoken, pgvector, openai SDK, Langfuse (004-context-memory)
+- PostgreSQL 15 + pgvector 扩展（主存储）, Redis（缓存/分布式锁/Celery Broker） (004-context-memory)
 
 ## Recent Changes
 - 001-llm-chat-page: Added Python 3.11+ (后端) / TypeScript 5.0+ (前端)
