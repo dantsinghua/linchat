@@ -1,13 +1,4 @@
-"""
-用户认证视图
-
-参考:
-- process-model.md#一、用户登录流程（P_AUTH_001）
-- behavior-model.md#1.1 获取验证码（B_AUTH_001）
-- behavior-model.md#1.2 用户登录（B_AUTH_002）
-
-使用 Django 4.1+ 异步视图，无需手动管理事件循环
-"""
+"""用户认证视图 — 验证码 / 登录 / 登出 / 当前用户"""
 import json
 import logging
 
@@ -17,236 +8,127 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 
-from apps.common.exceptions import (
-    AccountLockedException,
-    AuthFailedException,
-    CaptchaInvalidException,
-    UserDisabledException,
-)
-from apps.common.middleware import (
-    TOKEN_COOKIE_NAME,
-    clear_token_cookie,
-    set_token_cookie,
-)
+from apps.common.exceptions import AuthException
+from apps.common.middleware import clear_token_cookie, set_token_cookie
 from apps.common.responses import api_response, error_response
-from apps.users.serializers import (
-    CaptchaResponseSerializer,
-    LoginRequestSerializer,
-    LoginResponseSerializer,
-    UserInfoSerializer,
-)
+from apps.users.serializers import LoginRequestSerializer
 from apps.users.services import AuthService, CaptchaService
 
 logger = logging.getLogger(__name__)
 
 
-def get_client_ip(request: HttpRequest) -> str:
-    """获取客户端 IP"""
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        return x_forwarded_for.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR", "unknown")
+def _get_client_ip(request: HttpRequest) -> str:
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    return xff.split(",")[0].strip() if xff else request.META.get("REMOTE_ADDR", "unknown")
+
+
+def _handle_auth_exception(e: AuthException) -> JsonResponse:
+    """AuthException 统一转 JsonResponse"""
+    extra = {}
+    if hasattr(e, "remaining_seconds") and e.remaining_seconds:
+        extra["remaining_seconds"] = e.remaining_seconds
+    return error_response(
+        message=str(e), code=e.error_code, status_code=e.status_code, extra=extra or None
+    )
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class CaptchaView(View):
-    """
-    验证码视图
-
-    GET /api/v1/auth/captcha - 获取验证码
-    """
+    """GET /api/v1/auth/captcha"""
 
     async def get(self, request: HttpRequest) -> JsonResponse:
-        """
-        获取验证码
-
-        参考: behavior-model.md#1.1 获取验证码（B_AUTH_001）
-        规则: R_CAPTCHA_001 - 验证码有效期2分钟
-        """
         try:
             result = await CaptchaService.generate()
-
-            serializer = CaptchaResponseSerializer(
-                {
-                    "captcha_id": result.captcha_id,
-                    "captcha_image": result.captcha_image,
-                }
-            )
-
-            return api_response(data=serializer.data)
-
-        except Exception as e:
+            return api_response(data=result)
+        except Exception:
             logger.exception("Failed to generate captcha")
             return error_response(
-                message="验证码生成失败",
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="验证码生成失败", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class LoginView(View):
-    """
-    登录视图
-
-    POST /api/v1/auth/login - 用户登录
-    """
+    """POST /api/v1/auth/login"""
 
     async def post(self, request: HttpRequest) -> JsonResponse:
-        """
-        用户登录
-
-        参考: process-model.md#一、用户登录流程（P_AUTH_001）
-        参考: behavior-model.md#1.2 用户登录（B_AUTH_002）
-        """
         try:
             body = json.loads(request.body)
         except json.JSONDecodeError:
             return error_response(
-                message="请求格式错误",
-                code="INVALID_REQUEST",
+                message="请求格式错误", code="INVALID_REQUEST",
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 验证请求数据
         serializer = LoginRequestSerializer(data=body)
         if not serializer.is_valid():
-            errors = serializer.errors
-            first_error = next(iter(errors.values()))[0]
+            first_error = next(iter(serializer.errors.values()))[0]
             return error_response(
-                message=str(first_error),
-                code="VALIDATION_ERROR",
+                message=str(first_error), code="VALIDATION_ERROR",
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
-
-        validated_data = serializer.validated_data
-        client_ip = get_client_ip(request)
 
         try:
             result = await AuthService.login(
-                username=validated_data["username"],
-                encrypted_password=validated_data["password"],
-                captcha_id=validated_data["captcha_id"],
-                captcha_code=validated_data["captcha_code"],
-                client_ip=client_ip,
+                username=serializer.validated_data["username"],
+                encrypted_password=serializer.validated_data["password"],
+                captcha_id=serializer.validated_data["captcha_id"],
+                captcha_code=serializer.validated_data["captcha_code"],
+                client_ip=_get_client_ip(request),
             )
-
-            # 构建响应
-            response_serializer = LoginResponseSerializer(
-                {
-                    "user_id": result.user_id,
-                    "username": result.username,
-                    "expire_time": result.expire_time,
-                }
-            )
-
-            response = api_response(
-                data=response_serializer.data,
+            resp = api_response(
+                data={
+                    "user_id": result["user_id"],
+                    "username": result["username"],
+                    "expire_time": result["expire_time"].isoformat(),
+                },
                 message="登录成功",
             )
+            set_token_cookie(resp, result["token"])
+            logger.info(f"User {result['username']} logged in from {_get_client_ip(request)}")
+            return resp
 
-            # 设置 httpOnly Cookie
-            # 参考: constitution.md#4.1 Token存储httpOnly Cookie
-            set_token_cookie(response, result.token)
-
-            logger.info(f"User {result.username} logged in from {client_ip}")
-            return response
-
-        except CaptchaInvalidException as e:
-            return error_response(
-                message=str(e),
-                code="CAPTCHA_INVALID",
-                status_code=status.HTTP_400_BAD_REQUEST,
-            )
-
-        except AccountLockedException as e:
-            return error_response(
-                message=str(e),
-                code="ACCOUNT_LOCKED",
-                status_code=status.HTTP_403_FORBIDDEN,
-                extra={"remaining_seconds": e.remaining_seconds},
-            )
-
-        except AuthFailedException as e:
-            return error_response(
-                message=str(e),
-                code="AUTH_FAILED",
-                status_code=status.HTTP_401_UNAUTHORIZED,
-            )
-
-        except UserDisabledException as e:
-            return error_response(
-                message=str(e),
-                code="USER_DISABLED",
-                status_code=status.HTTP_403_FORBIDDEN,
-            )
-
-        except Exception as e:
+        except AuthException as e:
+            return _handle_auth_exception(e)
+        except Exception:
             logger.exception("Login failed")
             return error_response(
-                message="登录失败，请稍后重试",
-                code="LOGIN_ERROR",
+                message="登录失败，请稍后重试", code="LOGIN_ERROR",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class LogoutView(View):
-    """
-    登出视图
-
-    POST /api/v1/auth/logout - 用户登出
-    """
+    """POST /api/v1/auth/logout"""
 
     async def post(self, request: HttpRequest) -> JsonResponse:
-        """用户登出"""
+        user_id = getattr(request, "user_id", None)
+        token_hash = getattr(request, "token_hash", None)
         try:
-            user_id = getattr(request, "user_id", None)
-            token_hash = getattr(request, "token_hash", None)
-
             if user_id and token_hash:
                 await AuthService.logout(user_id, token_hash)
-
-            # 清除 Cookie
-            response = api_response(message="登出成功")
-            clear_token_cookie(response)
-
-            return response
-
-        except Exception as e:
+        except Exception:
             logger.exception("Logout failed")
-            # 即使出错也清除 Cookie
-            response = api_response(message="登出成功")
-            clear_token_cookie(response)
-            return response
+
+        resp = api_response(message="登出成功")
+        clear_token_cookie(resp)
+        return resp
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class MeView(View):
-    """
-    当前用户信息视图
-
-    GET /api/v1/auth/me - 获取当前用户信息
-    """
+    """GET /api/v1/auth/me"""
 
     def get(self, request: HttpRequest) -> JsonResponse:
-        """获取当前用户信息"""
         user_id = getattr(request, "user_id", None)
-        username = getattr(request, "username", None)
-        user_type = getattr(request, "user_type", "user")
-
         if not user_id:
             return error_response(
-                message="未登录",
-                code="UNAUTHORIZED",
+                message="未登录", code="UNAUTHORIZED",
                 status_code=status.HTTP_401_UNAUTHORIZED,
             )
-
-        serializer = UserInfoSerializer(
-            {
-                "user_id": user_id,
-                "username": username,
-                "type": user_type,
-            }
-        )
-
-        return api_response(data=serializer.data)
+        return api_response(data={
+            "user_id": user_id,
+            "username": getattr(request, "username", None),
+            "type": getattr(request, "user_type", "user"),
+        })
