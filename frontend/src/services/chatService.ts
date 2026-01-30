@@ -6,6 +6,7 @@
  * - process-model.md#四、历史消息加载流程（P_CHAT_002）
  */
 import api from './api';
+import { trigger401Redirect } from '@/services/authGuard';
 import type {
   ApiResponse,
   ChatStreamEvent,
@@ -87,6 +88,10 @@ export async function sendMessage(
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        trigger401Redirect();
+        return;
+      }
       // 尝试解析错误响应
       try {
         const errorData = await response.json();
@@ -205,6 +210,10 @@ export async function resumeGeneration(
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        trigger401Redirect();
+        return;
+      }
       try {
         const errorData = await response.json();
         onError?.(errorData.message || '恢复生成失败');
@@ -301,6 +310,10 @@ export async function reconnectStream(
     );
 
     if (!response.ok) {
+      if (response.status === 401) {
+        trigger401Redirect();
+        return;
+      }
       try {
         const errorData = await response.json();
         onError?.(errorData.message || '重连失败');

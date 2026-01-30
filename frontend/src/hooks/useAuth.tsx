@@ -9,17 +9,17 @@
  * - 登录状态管理
  * - SSE 事件监听（单点登录登出事件）
  * - Token 刷新事件监听
+ *
+ * 重要: 使用 fetch SSE 替代原生 EventSource，
+ * 避免浏览器自动重连导致 401 请求风暴。
  */
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { trigger401Redirect, resetAuthGuard } from '@/services/authGuard';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
-
-// EventSource polyfill type for withCredentials support
-// 注意：标准 EventSource 不支持 withCredentials，但 fetch-event-source 等库支持
-// 这里使用原生 EventSource，同源请求会自动携带 Cookie
 
 // SSE 事件类型
 interface SSEEvent {
@@ -51,7 +51,7 @@ export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [user, setUser] = useState<UserInfo | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const sseAbortRef = useRef<AbortController | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // 使用 ref 存储认证状态，避免闭包过期问题
   const isAuthenticatedRef = useRef<boolean | null>(null);
@@ -73,123 +73,12 @@ export function useAuth() {
   );
 
   /**
-   * 处理 SSE 事件
-   */
-  const handleSSEEvent = useCallback(
-    (event: MessageEvent) => {
-      try {
-        const data: SSEEvent = JSON.parse(event.data);
-
-        switch (data.type) {
-          case 'logout':
-            // 单点登录冲突处理
-            if (data.reason === 'SSO_CONFLICT') {
-              // 显示 Toast 提示 3 秒
-              showToast('您已在其他设备登录', 'warning', 3000);
-
-              // Toast 消失后跳转登录页
-              setTimeout(() => {
-                setIsAuthenticated(false);
-                router.push('/login');
-              }, 3000);
-            } else if (data.reason === 'TOKEN_EXPIRED') {
-              showToast('登录已过期，请重新登录', 'warning', 2000);
-              setTimeout(() => {
-                setIsAuthenticated(false);
-                router.push('/login');
-              }, 2000);
-            } else if (data.reason === 'ADMIN_KICK') {
-              showToast('您已被管理员踢出', 'error', 3000);
-              setTimeout(() => {
-                setIsAuthenticated(false);
-                router.push('/login');
-              }, 3000);
-            }
-            break;
-
-          case 'connected':
-            // SSE 连接成功
-            break;
-
-          case 'heartbeat':
-            // 心跳包，忽略
-            break;
-
-          default:
-            // 未知事件类型，忽略
-        }
-      } catch {
-        console.error('Failed to parse SSE event:', event.data);
-      }
-    },
-    [router, showToast]
-  );
-
-  /**
-   * 建立 SSE 连接
-   *
-   * 使用 addEventListener 监听具体事件类型，
-   * 因为后端 event_service.py 发送的事件包含 event: 字段
-   */
-  const connectSSE = useCallback(() => {
-    // 关闭现有连接
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-
-    // 清除重连定时器
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-
-    try {
-      // 创建 SSE 连接
-      // 同源请求会自动携带 Cookie，无需额外配置
-      const eventSource = new EventSource(`${API_BASE_URL}/events`);
-
-      // 监听具体事件类型（后端使用 event: 字段区分事件类型）
-      // logout 事件：单点登录冲突、Token 过期、管理员踢出
-      eventSource.addEventListener('logout', handleSSEEvent);
-      // heartbeat 事件：心跳包
-      eventSource.addEventListener('heartbeat', handleSSEEvent);
-      // message 事件：通用消息（包括 connected）
-      eventSource.addEventListener('message', handleSSEEvent);
-      // 默认事件（无 event: 字段的消息）
-      eventSource.onmessage = handleSSEEvent;
-
-      eventSource.onerror = (error) => {
-        console.error('SSE connection error:', error);
-
-        // 连接断开，尝试重连
-        if (eventSource.readyState === EventSource.CLOSED) {
-          eventSourceRef.current = null;
-
-          // 5秒后重连，使用 ref 避免闭包过期问题
-          reconnectTimeoutRef.current = setTimeout(() => {
-            if (isAuthenticatedRef.current) {
-              connectSSE();
-            }
-          }, 5000);
-        }
-      };
-
-      eventSource.onopen = () => {
-        // SSE 连接已建立
-      };
-
-      eventSourceRef.current = eventSource;
-    } catch (error) {
-      console.error('Failed to create SSE connection:', error);
-    }
-  }, [handleSSEEvent]);
-
-  /**
    * 断开 SSE 连接
    */
   const disconnectSSE = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
+    if (sseAbortRef.current) {
+      sseAbortRef.current.abort();
+      sseAbortRef.current = null;
     }
 
     if (reconnectTimeoutRef.current) {
@@ -197,6 +86,140 @@ export function useAuth() {
       reconnectTimeoutRef.current = null;
     }
   }, []);
+
+  /**
+   * 处理 SSE 事件
+   */
+  const handleSSEEvent = useCallback(
+    (data: SSEEvent) => {
+      switch (data.type) {
+        case 'logout':
+          // 先断开 SSE，防止断连后触发重连
+          disconnectSSE();
+
+          if (data.reason === 'SSO_CONFLICT') {
+            showToast('您已在其他设备登录', 'warning', 3000);
+            setTimeout(() => {
+              setIsAuthenticated(false);
+              router.push('/login');
+            }, 3000);
+          } else if (data.reason === 'TOKEN_EXPIRED') {
+            showToast('登录已过期，请重新登录', 'warning', 2000);
+            setTimeout(() => {
+              setIsAuthenticated(false);
+              router.push('/login');
+            }, 2000);
+          } else if (data.reason === 'ADMIN_KICK') {
+            showToast('您已被管理员踢出', 'error', 3000);
+            setTimeout(() => {
+              setIsAuthenticated(false);
+              router.push('/login');
+            }, 3000);
+          }
+          break;
+
+        case 'connected':
+        case 'heartbeat':
+          // 忽略
+          break;
+
+        default:
+          break;
+      }
+    },
+    [disconnectSSE, router, showToast]
+  );
+
+  /**
+   * 建立 SSE 连接（使用 fetch + ReadableStream 替代 EventSource）
+   *
+   * 优势：401 时不会被浏览器自动重连，可完全控制重连逻辑。
+   */
+  const connectSSE = useCallback(() => {
+    // 关闭现有连接
+    disconnectSSE();
+
+    const controller = new AbortController();
+    sseAbortRef.current = controller;
+
+    const runSSE = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/events`, {
+          credentials: 'include',
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            trigger401Redirect();
+            return;
+          }
+          throw new Error(`SSE HTTP error: ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) return;
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          // 解析 SSE 格式：支持 event: 和 data: 字段
+          let currentEventType = '';
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              currentEventType = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              try {
+                const data: SSEEvent = JSON.parse(line.slice(6));
+                // 如果后端通过 event: 字段指定了类型，覆盖 data 中的 type
+                if (currentEventType && (currentEventType === 'logout' || currentEventType === 'heartbeat' || currentEventType === 'message' || currentEventType === 'connected')) {
+                  data.type = currentEventType as SSEEvent['type'];
+                }
+                handleSSEEvent(data);
+              } catch {
+                // 忽略解析错误
+              }
+              currentEventType = '';
+            } else if (line === '') {
+              // 空行表示事件分隔
+              currentEventType = '';
+            }
+          }
+        }
+
+        // 流正常结束，尝试重连
+        if (isAuthenticatedRef.current) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (isAuthenticatedRef.current) {
+              connectSSE();
+            }
+          }, 5000);
+        }
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') return;
+
+        console.error('SSE connection error:', error);
+        // 非 401 错误，5 秒后重连
+        if (isAuthenticatedRef.current) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (isAuthenticatedRef.current) {
+              connectSSE();
+            }
+          }, 5000);
+        }
+      }
+    };
+
+    runSSE();
+  }, [disconnectSSE, handleSSEEvent]);
 
   /**
    * 检查认证状态
@@ -219,6 +242,9 @@ export function useAuth() {
         setIsAuthenticated(true);
         return true;
       } else {
+        if (response.status === 401) {
+          trigger401Redirect();
+        }
         setIsAuthenticated(false);
         setUser(null);
         return false;
@@ -234,6 +260,7 @@ export function useAuth() {
    * 登录成功后调用
    */
   const onLoginSuccess = useCallback(() => {
+    resetAuthGuard();
     setIsAuthenticated(true);
     connectSSE();
   }, [connectSSE]);
@@ -242,6 +269,11 @@ export function useAuth() {
    * 登出
    */
   const logout = useCallback(async () => {
+    // 先断开 SSE 并清状态，防止断连触发重连
+    disconnectSSE();
+    setIsAuthenticated(false);
+    setUser(null);
+
     try {
       await fetch(`${API_BASE_URL}/auth/logout`, {
         method: 'POST',
@@ -249,12 +281,9 @@ export function useAuth() {
       });
     } catch {
       // 忽略错误
-    } finally {
-      setIsAuthenticated(false);
-      setUser(null);
-      disconnectSSE();
-      router.push('/login');
     }
+
+    router.push('/login');
   }, [disconnectSSE, router]);
 
   // 同步 isAuthenticated 到 ref，避免闭包过期问题
