@@ -8,26 +8,23 @@
 注意: SSE 流式响应视图使用 ASGI 原生异步实现，必须使用 uvicorn 启动服务
 """
 
-import asyncio
-import json
-import logging
-
 from asgiref.sync import async_to_sync
-from django.http import HttpRequest, JsonResponse, StreamingHttpResponse
+from django.http import HttpRequest, StreamingHttpResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.chat.serializers import (ChatRequestSerializer,
-                                   HistoryQuerySerializer,
-                                   MessageResponseSerializer,
-                                   ReconnectRequestSerializer,
-                                   ResumeGenerationRequestSerializer,
-                                   StopGenerationRequestSerializer)
+from apps.chat.serializers import (
+    ChatRequestSerializer,
+    HistoryQuerySerializer,
+    MessageResponseSerializer,
+    ReconnectRequestSerializer,
+    ResumeGenerationRequestSerializer,
+    StopGenerationRequestSerializer,
+)
 from apps.chat.services import ChatService, HistoryService
+from apps.chat.sse import first_validation_error, make_sse_response, parse_sse_request
 from apps.common.responses import ApiResponse
-
-logger = logging.getLogger(__name__)
 
 
 async def chat(request: HttpRequest) -> StreamingHttpResponse:
@@ -35,78 +32,15 @@ async def chat(request: HttpRequest) -> StreamingHttpResponse:
     发送消息并获取流式响应 (ASGI 原生异步视图)
 
     POST /api/v1/chat/
-
-    参考: process-model.md#三、消息发送与流式响应流程
-
-    Request Body:
-        content: str - 消息内容（最大4000字符）
-
-    Response:
-        SSE 流式响应
-        - data: {"type": "content", "content": "...", "message_id": 123}
-        - data: {"type": "done", "content": "", "message_id": 123}
-        - data: {"type": "error", "content": "错误信息"}
-        - data: {"type": "interrupted", "content": "[已中断]", "message_id": 123}
-
-    注意: 使用 ASGI 原生异步视图，必须使用 uvicorn 启动服务
     """
-    if request.method != "POST":
-        return JsonResponse(
-            {"code": "METHOD_NOT_ALLOWED", "message": "Method not allowed", "data": None},
-            status=405,
-        )
-
-    # 解析请求体
-    try:
-        body = json.loads(request.body.decode("utf-8"))
-    except json.JSONDecodeError:
-        return JsonResponse(
-            {"code": "VALIDATION_ERROR", "message": "Invalid JSON", "data": None},
-            status=400,
-        )
-
-    # 验证请求数据
-    serializer = ChatRequestSerializer(data=body)
-    if not serializer.is_valid():
-        errors = serializer.errors
-        first_error = next(iter(errors.values()))[0]
-        return JsonResponse(
-            {"code": "VALIDATION_ERROR", "message": str(first_error), "data": None},
-            status=400,
-        )
+    validated, error = parse_sse_request(request, ChatRequestSerializer)
+    if error:
+        return error
 
     user_id = request.user_id
-    content = serializer.validated_data["content"]
-
-    async def event_generator():
-        """ASGI 原生异步 SSE 事件生成器"""
-        try:
-            async for chunk in ChatService.send_message(
-                user_id=user_id, content=content
-            ):
-                data = {
-                    "type": chunk.type,
-                    "content": chunk.content,
-                }
-                if chunk.message_id:
-                    data["message_id"] = chunk.message_id
-                if chunk.request_id:
-                    data["request_id"] = chunk.request_id
-                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-        except asyncio.CancelledError:
-            logger.info(f"Chat SSE connection cancelled for user {user_id}")
-            raise
-        except Exception as e:
-            logger.exception("Chat error")
-            error_data = {"type": "error", "content": getattr(e, "message", str(e))}
-            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
-
-    response = StreamingHttpResponse(
-        event_generator(), content_type="text/event-stream"
-    )
-    response["Cache-Control"] = "no-cache"
-    response["X-Accel-Buffering"] = "no"
-    return response
+    content = validated["content"]
+    stream = ChatService.send_message(user_id=user_id, content=content)
+    return make_sse_response(stream, user_id, "Chat")
 
 
 @api_view(["GET"])
@@ -115,29 +49,10 @@ def get_messages(request: Request) -> Response:
     获取历史消息
 
     GET /api/v1/chat/messages/
-
-    参考: process-model.md#四、历史消息加载流程
-
-    Query Parameters:
-        limit: int - 返回数量（默认50，最大100）
-        before_sequence: int - 游标序号（分页用）
-
-    Response:
-        {
-            "code": "OK",
-            "message": "success",
-            "data": {
-                "messages": [...],
-                "has_more": true
-            }
-        }
     """
-    # 验证查询参数
     serializer = HistoryQuerySerializer(data=request.query_params)
     if not serializer.is_valid():
-        errors = serializer.errors
-        first_error = next(iter(errors.values()))[0]
-        return ApiResponse.validation_error(message=str(first_error))
+        return ApiResponse.validation_error(message=first_validation_error(serializer))
 
     user_id = request.user_id
     limit = serializer.validated_data.get("limit", 50)
@@ -149,7 +64,6 @@ def get_messages(request: Request) -> Response:
         before_sequence=before_sequence,
     )
 
-    # 判断是否有更多
     has_more = len(messages) > limit
     if has_more:
         messages = messages[:limit]
@@ -168,16 +82,6 @@ def get_generating_message(request: Request) -> Response:
     获取正在生成中的消息（用于页面刷新时检测）
 
     GET /api/v1/chat/generating/
-
-    参考: behavior-model.md#2.4 流式响应重连
-
-    Response:
-        {
-            "code": "OK",
-            "data": {
-                "message": {...} | null
-            }
-        }
     """
     user_id = request.user_id
     message = async_to_sync(HistoryService.get_generating_message)(user_id)
@@ -193,23 +97,10 @@ def stop_generation(request: Request) -> Response:
     停止生成
 
     POST /api/v1/chat/stop/
-
-    参考: spec.md US2场景9 - 停止按钮逻辑
-
-    Request Body:
-        request_id: str - 请求ID
-
-    Response:
-        {
-            "code": "OK",
-            "message": "停止信号已发送"
-        }
     """
     serializer = StopGenerationRequestSerializer(data=request.data)
     if not serializer.is_valid():
-        errors = serializer.errors
-        first_error = next(iter(errors.values()))[0]
-        return ApiResponse.validation_error(message=str(first_error))
+        return ApiResponse.validation_error(message=first_validation_error(serializer))
 
     user_id = request.user_id
     request_id = serializer.validated_data["request_id"]
@@ -227,70 +118,15 @@ async def resume_generation(request: HttpRequest) -> StreamingHttpResponse:
     继续生成（从中断处恢复）(ASGI 原生异步视图)
 
     POST /api/v1/chat/resume/
-
-    参考: behavior-model.md#2.5 继续生成（B_CHAT_005）
-    用于 status=3（中断）消息的继续生成
-
-    Request Body:
-        request_id: str - 原请求ID
-
-    Response:
-        SSE 流式响应
     """
-    if request.method != "POST":
-        return JsonResponse(
-            {"code": "METHOD_NOT_ALLOWED", "message": "Method not allowed", "data": None},
-            status=405,
-        )
-
-    # 解析请求体
-    try:
-        body = json.loads(request.body.decode("utf-8"))
-    except json.JSONDecodeError:
-        return JsonResponse(
-            {"code": "VALIDATION_ERROR", "message": "Invalid JSON", "data": None},
-            status=400,
-        )
-
-    serializer = ResumeGenerationRequestSerializer(data=body)
-    if not serializer.is_valid():
-        errors = serializer.errors
-        first_error = next(iter(errors.values()))[0]
-        return JsonResponse(
-            {"code": "VALIDATION_ERROR", "message": str(first_error), "data": None},
-            status=400,
-        )
+    validated, error = parse_sse_request(request, ResumeGenerationRequestSerializer)
+    if error:
+        return error
 
     user_id = request.user_id
-    request_id = serializer.validated_data["request_id"]
-
-    async def event_generator():
-        """ASGI 原生异步 SSE 事件生成器"""
-        try:
-            async for chunk in ChatService.resume_generation(
-                user_id=user_id, request_id=request_id
-            ):
-                data = {
-                    "type": chunk.type,
-                    "content": chunk.content,
-                }
-                if chunk.message_id:
-                    data["message_id"] = chunk.message_id
-                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-        except asyncio.CancelledError:
-            logger.info(f"Resume generation SSE cancelled for user {user_id}")
-            raise
-        except Exception as e:
-            logger.exception("Resume generation error")
-            error_data = {"type": "error", "content": str(e)}
-            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
-
-    response = StreamingHttpResponse(
-        event_generator(), content_type="text/event-stream"
-    )
-    response["Cache-Control"] = "no-cache"
-    response["X-Accel-Buffering"] = "no"
-    return response
+    request_id = validated["request_id"]
+    stream = ChatService.resume_generation(user_id=user_id, request_id=request_id)
+    return make_sse_response(stream, user_id, "Resume generation")
 
 
 async def reconnect_stream(request: HttpRequest) -> StreamingHttpResponse:
@@ -298,60 +134,14 @@ async def reconnect_stream(request: HttpRequest) -> StreamingHttpResponse:
     重连流式响应（用于页面刷新时重连生成中的消息）(ASGI 原生异步视图)
 
     GET /api/v1/chat/reconnect/?request_id={request_id}
-
-    参考: behavior-model.md#2.4 流式响应重连（B_CHAT_004）
-    用于 status=2（生成中）消息的 SSE 重连
-
-    Query Parameters:
-        request_id: str - 请求ID
-
-    Response:
-        SSE 流式响应
     """
-    if request.method != "GET":
-        return JsonResponse(
-            {"code": "METHOD_NOT_ALLOWED", "message": "Method not allowed", "data": None},
-            status=405,
-        )
-
-    query_params = request.GET
-
-    serializer = ReconnectRequestSerializer(data=query_params)
-    if not serializer.is_valid():
-        errors = serializer.errors
-        first_error = next(iter(errors.values()))[0]
-        return JsonResponse(
-            {"code": "VALIDATION_ERROR", "message": str(first_error), "data": None},
-            status=400,
-        )
+    validated, error = parse_sse_request(
+        request, ReconnectRequestSerializer, method="GET", source="query"
+    )
+    if error:
+        return error
 
     user_id = request.user_id
-    request_id = serializer.validated_data["request_id"]
-
-    async def event_generator():
-        """ASGI 原生异步 SSE 事件生成器"""
-        try:
-            async for chunk in ChatService.reconnect_stream(
-                user_id=user_id, request_id=request_id
-            ):
-                data = {
-                    "type": chunk.type,
-                    "content": chunk.content,
-                }
-                if chunk.message_id:
-                    data["message_id"] = chunk.message_id
-                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-        except asyncio.CancelledError:
-            logger.info(f"Reconnect stream SSE cancelled for user {user_id}")
-            raise
-        except Exception as e:
-            logger.exception("Reconnect stream error")
-            error_data = {"type": "error", "content": str(e)}
-            yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
-
-    response = StreamingHttpResponse(
-        event_generator(), content_type="text/event-stream"
-    )
-    response["Cache-Control"] = "no-cache"
-    response["X-Accel-Buffering"] = "no"
-    return response
+    request_id = validated["request_id"]
+    stream = ChatService.reconnect_stream(user_id=user_id, request_id=request_id)
+    return make_sse_response(stream, user_id, "Reconnect stream")
