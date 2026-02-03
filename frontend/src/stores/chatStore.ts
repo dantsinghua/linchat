@@ -23,6 +23,8 @@ interface ChatState {
   error: string | null;
   // 发送失败时保留的输入内容（用于恢复）
   failedContent: string | null;
+  // 是否正在压缩上下文
+  isCompacting: boolean;
 
   // Actions
   setMessages: (messages: Message[]) => void;
@@ -36,6 +38,7 @@ interface ChatState {
   setHasMore: (hasMore: boolean) => void;
   setError: (error: string | null) => void;
   setFailedContent: (content: string | null) => void;
+  setIsCompacting: (compacting: boolean) => void;
   clearMessages: () => void;
   reset: () => void;
 }
@@ -48,6 +51,7 @@ const initialState = {
   hasMore: true,
   error: null,
   failedContent: null,
+  isCompacting: false,
 };
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -92,6 +96,8 @@ export const useChatStore = create<ChatState>((set) => ({
   setError: (error) => set({ error }),
 
   setFailedContent: (failedContent) => set({ failedContent }),
+
+  setIsCompacting: (isCompacting) => set({ isCompacting }),
 
   clearMessages: () => set({ messages: [] }),
 

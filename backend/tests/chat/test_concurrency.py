@@ -34,21 +34,7 @@ from apps.chat.services import (
 from apps.common.exceptions import EmptyMessageException
 
 
-def run_async(coro):
-    """运行异步函数"""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
-
-
-async def collect_stream(async_gen):
-    """收集异步生成器的所有结果"""
-    results = []
-    async for item in async_gen:
-        results.append(item)
-    return results
+from tests.helpers import collect_stream, run_async
 
 
 class TestConcurrentGenerationManagement(TestCase):
@@ -113,7 +99,7 @@ class TestConcurrentGenerationManagement(TestCase):
 class TestConcurrentChatService(TestCase):
     """并发聊天服务测试"""
 
-    @patch("apps.chat.services.AgentService.execute")
+    @patch("apps.chat.services.agent_service.AgentService.execute")
     def test_concurrent_empty_message_validation(self, mock_execute):
         """测试并发空消息验证"""
         async def test_empty():
@@ -138,7 +124,7 @@ class TestConcurrentChatService(TestCase):
         # AgentService.execute 不应该被调用
         mock_execute.assert_not_called()
 
-    @patch("apps.chat.services.AgentService.execute")
+    @patch("apps.chat.services.agent_service.AgentService.execute")
     def test_concurrent_message_length_validation(self, mock_execute):
         """测试并发消息长度验证"""
         from django.conf import settings
@@ -169,7 +155,7 @@ class TestConcurrentChatService(TestCase):
 class TestConcurrentHistoryService(TestCase):
     """并发历史消息服务测试"""
 
-    @patch("apps.chat.services.message_repo.find_latest_by_user")
+    @patch("apps.chat.services.chat_service.message_repo.find_latest_by_user")
     def test_concurrent_load_messages(self, mock_find):
         """测试并发加载历史消息"""
         mock_find.return_value = []
@@ -191,8 +177,8 @@ class TestConcurrentHistoryService(TestCase):
         # 每个用户都应该有独立的调用
         self.assertEqual(mock_find.call_count, 10)
 
-    @patch("apps.chat.services.message_repo.find_latest_by_user")
-    @patch("apps.chat.services.message_repo.find_by_user_before_sequence")
+    @patch("apps.chat.services.chat_service.message_repo.find_latest_by_user")
+    @patch("apps.chat.services.chat_service.message_repo.find_by_user_before_sequence")
     def test_concurrent_paginated_load(self, mock_find_before, mock_find_latest):
         """测试并发分页加载"""
         mock_find_latest.return_value = []
@@ -223,7 +209,7 @@ class TestDataIsolation(TestCase):
 
     def test_user_id_isolation_in_thread_id(self):
         """测试 thread_id 包含 user_id 确保数据隔离"""
-        from apps.chat.agent import get_thread_id
+        from apps.graph.agent import get_thread_id
 
         thread_ids = set()
         for user_id in range(10):
@@ -244,7 +230,7 @@ class TestConcurrencyStressSmoke(TestCase):
         from apps.chat.services import _active_generations
         _active_generations.clear()
 
-    @patch("apps.chat.services.AgentService.execute")
+    @patch("apps.chat.services.agent_service.AgentService.execute")
     def test_10_users_concurrent_send(self, mock_execute):
         """SC-004: 10 用户并发发送消息，验证无死锁"""
         from apps.chat.services import StreamChunk
@@ -319,7 +305,7 @@ class TestConcurrencyStressSmoke(TestCase):
 
         run_async(test_lifecycle())
 
-    @patch("apps.chat.services.message_repo.find_latest_by_user")
+    @patch("apps.chat.services.chat_service.message_repo.find_latest_by_user")
     def test_mixed_concurrent_operations(self, mock_find):
         """测试混合并发操作（发送 + 加载历史）"""
         mock_find.return_value = []

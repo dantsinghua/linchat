@@ -3,6 +3,7 @@
 
 参考: process-model.md#一点五、单点登录SSE推送流程
 """
+
 import logging
 
 from django.http import HttpRequest, JsonResponse, StreamingHttpResponse

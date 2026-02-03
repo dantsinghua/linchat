@@ -29,8 +29,8 @@ class ChatRequestSerializer(serializers.Serializer):
     )
 
 
-class StopGenerationRequestSerializer(serializers.Serializer):
-    """停止生成请求序列化器"""
+class RequestIdSerializer(serializers.Serializer):
+    """请求ID序列化器（停止/继续/重连共用）"""
 
     request_id = serializers.CharField(
         required=True,
@@ -41,38 +41,10 @@ class StopGenerationRequestSerializer(serializers.Serializer):
     )
 
 
-class ResumeGenerationRequestSerializer(serializers.Serializer):
-    """
-    继续生成请求序列化器
-
-    参考: behavior-model.md#2.5 继续生成（B_CHAT_005）
-    用于 status=3（中断）消息的继续生成
-    """
-
-    request_id = serializers.CharField(
-        required=True,
-        max_length=64,
-        error_messages={
-            "required": "请求ID不能为空",
-        },
-    )
-
-
-class ReconnectRequestSerializer(serializers.Serializer):
-    """
-    重连请求序列化器
-
-    参考: behavior-model.md#2.4 流式响应重连（B_CHAT_004）
-    用于 status=2（生成中）消息的 SSE 重连
-    """
-
-    request_id = serializers.CharField(
-        required=True,
-        max_length=64,
-        error_messages={
-            "required": "请求ID不能为空",
-        },
-    )
+# 兼容别名，保持现有 import 不变
+StopGenerationRequestSerializer = RequestIdSerializer
+ResumeGenerationRequestSerializer = RequestIdSerializer
+ReconnectRequestSerializer = RequestIdSerializer
 
 
 class HistoryQuerySerializer(serializers.Serializer):

@@ -40,10 +40,10 @@ class TestGetLlmFromDatabase(TestCase):
             is_active=True,
         )
 
-    @patch("apps.chat.agent.ChatOpenAI")
+    @patch("apps.graph.agent.ChatOpenAI")
     def test_get_llm_reads_from_database(self, mock_chat_openai):
         """测试 get_llm() 从数据库读取 language 模型配置"""
-        from apps.chat.agent import get_llm
+        from apps.graph.agent import get_llm
 
         mock_chat_openai.return_value = MagicMock()
         get_llm()
@@ -55,10 +55,10 @@ class TestGetLlmFromDatabase(TestCase):
         self.assertEqual(call_kwargs["base_url"], "https://api.test.com/v1")
         self.assertEqual(call_kwargs["api_key"], self.api_key_plain)
 
-    @patch("apps.chat.agent.ChatOpenAI")
+    @patch("apps.graph.agent.ChatOpenAI")
     def test_get_llm_only_passes_non_null_optional_params(self, mock_chat_openai):
         """测试 get_llm() 仅传入非 NULL 选填参数（FR-007）"""
-        from apps.chat.agent import get_llm
+        from apps.graph.agent import get_llm
 
         mock_chat_openai.return_value = MagicMock()
         get_llm()
@@ -73,10 +73,10 @@ class TestGetLlmFromDatabase(TestCase):
         self.assertNotIn("frequency_penalty", call_kwargs)
         self.assertNotIn("presence_penalty", call_kwargs)
 
-    @patch("apps.chat.agent.ChatOpenAI")
+    @patch("apps.graph.agent.ChatOpenAI")
     def test_get_llm_passes_zero_values(self, mock_chat_openai):
         """测试 get_llm() 传入值为 0 的选填参数（0 != NULL）"""
-        from apps.chat.agent import get_llm
+        from apps.graph.agent import get_llm
 
         self.model.temperature = 0
         self.model.top_p = 0
@@ -89,10 +89,10 @@ class TestGetLlmFromDatabase(TestCase):
         self.assertEqual(call_kwargs["temperature"], 0)
         self.assertEqual(call_kwargs["top_p"], 0)
 
-    @patch("apps.chat.agent.ChatOpenAI")
+    @patch("apps.graph.agent.ChatOpenAI")
     def test_get_llm_config_change_takes_effect_immediately(self, mock_chat_openai):
         """测试无 lru_cache 时配置变更即时生效"""
-        from apps.chat.agent import get_llm
+        from apps.graph.agent import get_llm
 
         mock_chat_openai.return_value = MagicMock()
 
@@ -110,14 +110,14 @@ class TestGetLlmFromDatabase(TestCase):
         second_call_kwargs = mock_chat_openai.call_args[1]
         self.assertEqual(second_call_kwargs["model"], "deepseek-v3-updated")
 
-    @patch("apps.chat.agent.ChatOpenAI")
+    @patch("apps.graph.agent.ChatOpenAI")
     def test_get_llm_uses_max_context_window_not_effective(self, mock_chat_openai):
         """测试使用 max_context_window 原始值而非 effective_context_window
 
         M1a 阶段模型 API 调用直接使用 max_context_window 原始值。
         effective_context_window 仅供 M1b 上下文管理使用。
         """
-        from apps.chat.agent import get_llm
+        from apps.graph.agent import get_llm
 
         mock_chat_openai.return_value = MagicMock()
         get_llm()
@@ -135,7 +135,7 @@ class TestGetLlmFromDatabase(TestCase):
 
     def test_get_llm_no_active_model_raises(self):
         """测试无激活模型时抛出 RuntimeError"""
-        from apps.chat.agent import get_llm
+        from apps.graph.agent import get_llm
 
         ModelConfig.objects.all().delete()
         with self.assertRaises(RuntimeError) as ctx:

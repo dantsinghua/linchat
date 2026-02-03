@@ -21,7 +21,6 @@ from django.utils import timezone
 from apps.chat.services import (
     ChatService,
     HistoryService,
-    AgentService,
     StreamChunk,
     MessageVO,
     map_llm_exception,
@@ -30,6 +29,7 @@ from apps.chat.services import (
     get_stop_event,
     signal_stop,
 )
+from apps.graph.services import AgentService
 from apps.chat.models import Message, LangGraphExecution
 from apps.common.exceptions import (
     EmptyMessageException,
@@ -43,20 +43,7 @@ from apps.common.exceptions import (
 )
 
 
-# ============ 测试辅助函数 ============
-
-
-def run_async(coro):
-    """运行异步函数"""
-    return asyncio.get_event_loop().run_until_complete(coro)
-
-
-async def collect_stream(async_gen):
-    """收集异步生成器的所有结果"""
-    results = []
-    async for item in async_gen:
-        results.append(item)
-    return results
+from tests.helpers import collect_stream, run_async
 
 
 # ============ LLM 异常映射测试 ============
@@ -175,7 +162,7 @@ class TestGenerationManagement(TestCase):
 class TestChatService(TestCase):
     """聊天服务测试"""
 
-    @patch("apps.chat.services.AgentService.execute")
+    @patch("apps.graph.services.agent_service.AgentService.execute")
     def test_send_message_empty_content(self, mock_execute):
         """测试发送空消息 - R_MSG_002"""
         with self.assertRaises(EmptyMessageException):
@@ -190,7 +177,7 @@ class TestChatService(TestCase):
 
         mock_execute.assert_not_called()
 
-    @patch("apps.chat.services.AgentService.execute")
+    @patch("apps.graph.services.agent_service.AgentService.execute")
     def test_send_message_too_long(self, mock_execute):
         """测试发送超长消息 - R_MSG_001"""
         long_content = "a" * (settings.MAX_MESSAGE_LENGTH + 1)
@@ -203,7 +190,7 @@ class TestChatService(TestCase):
         self.assertIn(str(settings.MAX_MESSAGE_LENGTH), str(ctx.exception.message))
         mock_execute.assert_not_called()
 
-    @patch("apps.chat.services.AgentService.execute")
+    @patch("apps.graph.services.agent_service.AgentService.execute")
     def test_send_message_max_length(self, mock_execute):
         """测试发送最大长度消息 - 边界测试"""
         max_content = "a" * settings.MAX_MESSAGE_LENGTH
@@ -220,7 +207,7 @@ class TestChatService(TestCase):
         )
         mock_execute.assert_called_once()
 
-    @patch("apps.chat.services.AgentService.execute")
+    @patch("apps.graph.services.agent_service.AgentService.execute")
     def test_send_message_strips_whitespace(self, mock_execute):
         """测试消息会去除首尾空白"""
         async def mock_gen(*args, **kwargs):
@@ -257,7 +244,7 @@ class TestChatService(TestCase):
 class TestHistoryService(TestCase):
     """历史消息服务测试"""
 
-    @patch("apps.chat.services.message_repo.find_latest_by_user")
+    @patch("apps.chat.services.chat_service.message_repo.find_latest_by_user")
     def test_load_messages_first_page(self, mock_find):
         """测试加载首页消息"""
         mock_messages = [
@@ -300,7 +287,7 @@ class TestHistoryService(TestCase):
         self.assertEqual(result[0].message_id, 1)
         self.assertEqual(result[1].message_id, 2)
 
-    @patch("apps.chat.services.message_repo.find_by_user_before_sequence")
+    @patch("apps.chat.services.chat_service.message_repo.find_by_user_before_sequence")
     def test_load_messages_with_cursor(self, mock_find):
         """测试游标分页加载消息"""
         mock_messages = []
@@ -312,7 +299,7 @@ class TestHistoryService(TestCase):
             user_id=1, before_sequence=10, limit=50
         )
 
-    @patch("apps.chat.services.message_repo.find_latest_by_user")
+    @patch("apps.chat.services.chat_service.message_repo.find_latest_by_user")
     def test_load_messages_limit_max(self, mock_find):
         """测试限制最大返回数量为100"""
         mock_find.return_value = []
@@ -322,7 +309,7 @@ class TestHistoryService(TestCase):
         # 应该被限制为100
         mock_find.assert_called_once_with(user_id=1, limit=100)
 
-    @patch("apps.chat.services.message_repo.find_generating_message")
+    @patch("apps.chat.services.chat_service.message_repo.find_generating_message")
     def test_get_generating_message_exists(self, mock_find):
         """测试获取生成中的消息 - 存在"""
         mock_message = MagicMock(
@@ -345,7 +332,7 @@ class TestHistoryService(TestCase):
         self.assertEqual(result.message_id, 1)
         self.assertEqual(result.status, 2)
 
-    @patch("apps.chat.services.message_repo.find_generating_message")
+    @patch("apps.chat.services.chat_service.message_repo.find_generating_message")
     def test_get_generating_message_not_exists(self, mock_find):
         """测试获取生成中的消息 - 不存在"""
         mock_find.return_value = None
@@ -497,7 +484,7 @@ class TestLLMExceptionUserMessages(TestCase):
 class TestChatServiceResumeGeneration(TestCase):
     """ChatService.resume_generation 测试"""
 
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_resume_message_not_found(self, mock_get):
         """测试消息不存在"""
         mock_get.return_value = None
@@ -512,7 +499,7 @@ class TestChatServiceResumeGeneration(TestCase):
         self.assertEqual(result[0].type, "error")
         self.assertIn("消息不存在", result[0].content)
 
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_resume_message_not_interrupted(self, mock_get):
         """测试消息不是中断状态"""
         mock_message = MagicMock()
@@ -529,9 +516,9 @@ class TestChatServiceResumeGeneration(TestCase):
         self.assertEqual(result[0].type, "error")
         self.assertIn("不可继续生成", result[0].content)
 
-    @patch("apps.chat.services.AgentService.resume")
-    @patch("apps.chat.services.message_repo.update_status")
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.graph.services.agent_service.AgentService.resume")
+    @patch("apps.chat.services.chat_service.message_repo.update_status")
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_resume_success(self, mock_get, mock_update, mock_resume):
         """测试成功恢复生成"""
         mock_message = MagicMock()
@@ -567,7 +554,7 @@ class TestChatServiceReconnectStream(TestCase):
         from apps.chat.services import _active_generations
         _active_generations.clear()
 
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_reconnect_message_not_found(self, mock_get):
         """测试消息不存在"""
         mock_get.return_value = None
@@ -581,7 +568,7 @@ class TestChatServiceReconnectStream(TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].type, "error")
 
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_reconnect_message_already_done(self, mock_get):
         """测试消息已完成"""
         mock_message = MagicMock()
@@ -598,7 +585,7 @@ class TestChatServiceReconnectStream(TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].type, "done")
 
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_reconnect_message_interrupted(self, mock_get):
         """测试消息已中断"""
         mock_message = MagicMock()
@@ -615,7 +602,7 @@ class TestChatServiceReconnectStream(TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].type, "interrupted")
 
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_reconnect_message_failed(self, mock_get):
         """测试消息失败"""
         mock_message = MagicMock()
@@ -633,8 +620,8 @@ class TestChatServiceReconnectStream(TestCase):
         self.assertEqual(result[0].type, "error")
         self.assertIn("生成失败", result[0].content)
 
-    @patch("apps.chat.services.message_repo.update_status")
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.message_repo.update_status")
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_reconnect_no_active_generation(self, mock_get, mock_update):
         """测试没有活跃的生成任务（服务可能重启了）"""
         mock_message = MagicMock()
@@ -660,15 +647,29 @@ class TestChatServiceReconnectStream(TestCase):
 class TestAgentServiceExecute(TestCase):
     """AgentService.execute 测试"""
 
+    def setUp(self):
+        self._preamble_patcher = patch(
+            "apps.graph.services.agent_service._build_prompt_preamble",
+            new_callable=AsyncMock,
+            return_value=([], 0, 128000),
+        )
+        self._langfuse_patcher = patch(
+            "apps.graph.services.agent_service._init_langfuse",
+            return_value=None,
+        )
+        self._preamble_patcher.start()
+        self._langfuse_patcher.start()
+
     def tearDown(self):
-        """清理所有注册的会话"""
+        self._preamble_patcher.stop()
+        self._langfuse_patcher.stop()
         from apps.chat.services import _active_generations
         _active_generations.clear()
 
-    @patch("apps.chat.services.execution_repo.update")
-    @patch("apps.chat.services.execution_repo.create")
-    @patch("apps.chat.services.message_repo.get_max_sequence")
-    @patch("apps.chat.services.create_chat_agent")
+    @patch("apps.graph.services.agent_service.execution_repo.update")
+    @patch("apps.graph.services.agent_service.execution_repo.create")
+    @patch("apps.graph.services.agent_service.message_repo.get_max_sequence")
+    @patch("apps.graph.services.agent_service.create_chat_agent")
     def test_execute_no_token_received(
         self, mock_create_agent, mock_get_max_seq, mock_create_exec, mock_update_exec
     ):
@@ -699,14 +700,14 @@ class TestAgentServiceExecute(TestCase):
                 )
             )
 
-    @patch("apps.chat.services.user_repo.add_tokens")
-    @patch("apps.chat.services.user_repo.add_message_count")
-    @patch("apps.chat.services.message_repo.update")
-    @patch("apps.chat.services.message_repo.create")
-    @patch("apps.chat.services.execution_repo.update")
-    @patch("apps.chat.services.execution_repo.create")
-    @patch("apps.chat.services.message_repo.get_max_sequence")
-    @patch("apps.chat.services.create_chat_agent")
+    @patch("apps.graph.services.agent_service.user_repo.add_tokens")
+    @patch("apps.graph.services.agent_service.user_repo.add_message_count")
+    @patch("apps.graph.services.agent_service.message_repo.update")
+    @patch("apps.graph.services.agent_service.message_repo.create")
+    @patch("apps.graph.services.agent_service.execution_repo.update")
+    @patch("apps.graph.services.agent_service.execution_repo.create")
+    @patch("apps.graph.services.agent_service.message_repo.get_max_sequence")
+    @patch("apps.graph.services.agent_service.create_chat_agent")
     def test_execute_success(
         self,
         mock_create_agent,
@@ -758,12 +759,12 @@ class TestAgentServiceExecute(TestCase):
         self.assertEqual(content_chunks[0].content, "Hello")
         self.assertEqual(content_chunks[1].content, " world")
 
-    @patch("apps.chat.services.message_repo.update")
-    @patch("apps.chat.services.message_repo.create")
-    @patch("apps.chat.services.execution_repo.update")
-    @patch("apps.chat.services.execution_repo.create")
-    @patch("apps.chat.services.message_repo.get_max_sequence")
-    @patch("apps.chat.services.create_chat_agent")
+    @patch("apps.graph.services.agent_service.message_repo.update")
+    @patch("apps.graph.services.agent_service.message_repo.create")
+    @patch("apps.graph.services.agent_service.execution_repo.update")
+    @patch("apps.graph.services.agent_service.execution_repo.create")
+    @patch("apps.graph.services.agent_service.message_repo.get_max_sequence")
+    @patch("apps.graph.services.agent_service.create_chat_agent")
     def test_execute_interrupted(
         self,
         mock_create_agent,
@@ -812,10 +813,10 @@ class TestAgentServiceExecute(TestCase):
         self.assertEqual(len(interrupted_chunks), 1)
         self.assertIn("已中断", interrupted_chunks[0].content)
 
-    @patch("apps.chat.services.execution_repo.update")
-    @patch("apps.chat.services.execution_repo.create")
-    @patch("apps.chat.services.message_repo.get_max_sequence")
-    @patch("apps.chat.services.create_chat_agent")
+    @patch("apps.graph.services.agent_service.execution_repo.update")
+    @patch("apps.graph.services.agent_service.execution_repo.create")
+    @patch("apps.graph.services.agent_service.message_repo.get_max_sequence")
+    @patch("apps.graph.services.agent_service.create_chat_agent")
     def test_execute_exception_mapping(
         self, mock_create_agent, mock_get_max_seq, mock_create_exec, mock_update_exec
     ):
@@ -853,13 +854,21 @@ class TestAgentServiceExecute(TestCase):
 class TestAgentServiceResume(TestCase):
     """AgentService.resume 测试"""
 
+    def setUp(self):
+        self._preamble_patcher = patch(
+            "apps.graph.services.agent_service._build_prompt_preamble",
+            new_callable=AsyncMock,
+            return_value=([], 0, 128000),
+        )
+        self._preamble_patcher.start()
+
     def tearDown(self):
-        """清理所有注册的会话"""
+        self._preamble_patcher.stop()
         from apps.chat.services import _active_generations
         _active_generations.clear()
 
-    @patch("apps.chat.services.message_repo.update_content_and_status")
-    @patch("apps.chat.services.create_chat_agent")
+    @patch("apps.graph.services.agent_service.message_repo.update_content_and_status")
+    @patch("apps.graph.services.agent_service.create_chat_agent")
     def test_resume_success(self, mock_create_agent, mock_update):
         """测试成功恢复生成"""
         mock_message = MagicMock()
@@ -896,8 +905,8 @@ class TestAgentServiceResume(TestCase):
         self.assertEqual(len(done_chunks), 1)
         self.assertEqual(content_chunks[0].content, " continued")
 
-    @patch("apps.chat.services.message_repo.update_content_and_status")
-    @patch("apps.chat.services.create_chat_agent")
+    @patch("apps.graph.services.agent_service.message_repo.update_content_and_status")
+    @patch("apps.graph.services.agent_service.create_chat_agent")
     def test_resume_interrupted_again(self, mock_create_agent, mock_update):
         """测试恢复后再次中断"""
         mock_message = MagicMock()
@@ -936,8 +945,8 @@ class TestAgentServiceResume(TestCase):
         interrupted_chunks = [c for c in result if c.type == "interrupted"]
         self.assertEqual(len(interrupted_chunks), 1)
 
-    @patch("apps.chat.services.message_repo.update_status")
-    @patch("apps.chat.services.create_chat_agent")
+    @patch("apps.graph.services.agent_service.message_repo.update_status")
+    @patch("apps.graph.services.agent_service.create_chat_agent")
     def test_resume_exception(self, mock_create_agent, mock_update):
         """测试恢复时发生异常"""
         mock_message = MagicMock()
@@ -986,8 +995,8 @@ class TestChatServiceReconnectStreamPolling(TestCase):
         from apps.chat.services import _active_generations
         _active_generations.clear()
 
-    @patch("apps.chat.services.asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.asyncio.sleep", new_callable=AsyncMock)
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_reconnect_with_active_generation_completes(self, mock_get, mock_sleep):
         """测试重连到活跃生成，等待完成"""
         # 注册活跃生成
@@ -1020,8 +1029,8 @@ class TestChatServiceReconnectStreamPolling(TestCase):
         self.assertGreaterEqual(len(content_chunks), 1)
         self.assertEqual(len(done_chunks), 1)
 
-    @patch("apps.chat.services.asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.asyncio.sleep", new_callable=AsyncMock)
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_reconnect_with_active_generation_gets_interrupted(self, mock_get, mock_sleep):
         """测试重连到活跃生成，等待中断"""
         register_generation("req-poll-2")
@@ -1047,8 +1056,8 @@ class TestChatServiceReconnectStreamPolling(TestCase):
         interrupted_chunks = [c for c in result if c.type == "interrupted"]
         self.assertEqual(len(interrupted_chunks), 1)
 
-    @patch("apps.chat.services.asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.asyncio.sleep", new_callable=AsyncMock)
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_reconnect_with_active_generation_fails(self, mock_get, mock_sleep):
         """测试重连到活跃生成，等待失败"""
         register_generation("req-poll-3")
@@ -1075,8 +1084,8 @@ class TestChatServiceReconnectStreamPolling(TestCase):
         self.assertEqual(len(error_chunks), 1)
         self.assertIn("生成失败", error_chunks[0].content)
 
-    @patch("apps.chat.services.asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.asyncio.sleep", new_callable=AsyncMock)
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_reconnect_polling_message_deleted(self, mock_get, mock_sleep):
         """测试轮询时消息被删除"""
         register_generation("req-poll-4")
@@ -1099,8 +1108,8 @@ class TestChatServiceReconnectStreamPolling(TestCase):
         self.assertEqual(len(error_chunks), 1)
         self.assertIn("消息不存在", error_chunks[0].content)
 
-    @patch("apps.chat.services.asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.chat.services.message_repo.get_by_request_id")
+    @patch("apps.chat.services.chat_service.asyncio.sleep", new_callable=AsyncMock)
+    @patch("apps.chat.services.chat_service.message_repo.get_by_request_id")
     def test_reconnect_with_incremental_content(self, mock_get, mock_sleep):
         """测试重连时收到增量内容"""
         register_generation("req-poll-5")
@@ -1143,19 +1152,33 @@ class TestChatServiceReconnectStreamPolling(TestCase):
 class TestAgentServiceExecuteAdvanced(TestCase):
     """AgentService.execute 高级测试"""
 
+    def setUp(self):
+        self._preamble_patcher = patch(
+            "apps.graph.services.agent_service._build_prompt_preamble",
+            new_callable=AsyncMock,
+            return_value=([], 0, 128000),
+        )
+        self._langfuse_patcher = patch(
+            "apps.graph.services.agent_service._init_langfuse",
+            return_value=None,
+        )
+        self._preamble_patcher.start()
+        self._langfuse_patcher.start()
+
     def tearDown(self):
-        """清理所有注册的会话"""
+        self._preamble_patcher.stop()
+        self._langfuse_patcher.stop()
         from apps.chat.services import _active_generations
         _active_generations.clear()
 
-    @patch("apps.chat.services.user_repo.add_tokens")
-    @patch("apps.chat.services.user_repo.add_message_count")
-    @patch("apps.chat.services.message_repo.update")
-    @patch("apps.chat.services.message_repo.create")
-    @patch("apps.chat.services.execution_repo.update")
-    @patch("apps.chat.services.execution_repo.create")
-    @patch("apps.chat.services.message_repo.get_max_sequence")
-    @patch("apps.chat.services.create_chat_agent")
+    @patch("apps.graph.services.agent_service.user_repo.add_tokens")
+    @patch("apps.graph.services.agent_service.user_repo.add_message_count")
+    @patch("apps.graph.services.agent_service.message_repo.update")
+    @patch("apps.graph.services.agent_service.message_repo.create")
+    @patch("apps.graph.services.agent_service.execution_repo.update")
+    @patch("apps.graph.services.agent_service.execution_repo.create")
+    @patch("apps.graph.services.agent_service.message_repo.get_max_sequence")
+    @patch("apps.graph.services.agent_service.create_chat_agent")
     def test_execute_with_token_stats(
         self,
         mock_create_agent,
@@ -1203,10 +1226,10 @@ class TestAgentServiceExecuteAdvanced(TestCase):
         # 验证 add_message_count 被调用
         mock_add_msg_count.assert_called_once_with(1, 2)
 
-    @patch("apps.chat.services.execution_repo.update")
-    @patch("apps.chat.services.execution_repo.create")
-    @patch("apps.chat.services.message_repo.get_max_sequence")
-    @patch("apps.chat.services.create_chat_agent")
+    @patch("apps.graph.services.agent_service.execution_repo.update")
+    @patch("apps.graph.services.agent_service.execution_repo.create")
+    @patch("apps.graph.services.agent_service.message_repo.get_max_sequence")
+    @patch("apps.graph.services.agent_service.create_chat_agent")
     def test_execute_timeout(
         self, mock_create_agent, mock_get_max_seq, mock_create_exec, mock_update_exec
     ):
@@ -1237,12 +1260,12 @@ class TestAgentServiceExecuteAdvanced(TestCase):
                 )
             )
 
-    @patch("apps.chat.services.message_repo.update")
-    @patch("apps.chat.services.message_repo.create")
-    @patch("apps.chat.services.execution_repo.update")
-    @patch("apps.chat.services.execution_repo.create")
-    @patch("apps.chat.services.message_repo.get_max_sequence")
-    @patch("apps.chat.services.create_chat_agent")
+    @patch("apps.graph.services.agent_service.message_repo.update")
+    @patch("apps.graph.services.agent_service.message_repo.create")
+    @patch("apps.graph.services.agent_service.execution_repo.update")
+    @patch("apps.graph.services.agent_service.execution_repo.create")
+    @patch("apps.graph.services.agent_service.message_repo.get_max_sequence")
+    @patch("apps.graph.services.agent_service.create_chat_agent")
     def test_execute_error_after_first_token(
         self,
         mock_create_agent,

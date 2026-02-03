@@ -32,13 +32,18 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     # Third-party apps
+    "django.contrib.postgres",
     "rest_framework",
     "corsheaders",
+    "django_celery_beat",
     # Local apps
     "apps.common",
     "apps.users",
     "apps.chat",
     "apps.models",
+    "apps.memory",
+    "apps.graph",
+    "apps.context",
 ]
 
 MIDDLEWARE = [
@@ -261,6 +266,31 @@ AUTH_CAPTCHA_TTL = 120  # 验证码: 2分钟
 AUTH_FAIL_COUNT_TTL = 900  # 失败计数: 15分钟
 AUTH_MAX_FAIL_COUNT = 5  # 最大失败次数
 AUTH_LOCK_DURATION = 900  # 锁定时间: 15分钟
+
+
+# ============ Celery 配置 ============
+# 参考: research.md RES-003, CLAUDE.md
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://:redis_linchat_123@localhost:6379/2")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://:redis_linchat_123@localhost:6379/2")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "Asia/Shanghai"
+CELERY_ENABLE_UTC = False
+
+
+# ============ Memory 业务配置 ============
+# 参考: specs/004-context-memory/tasks.md T005
+MEMORY_EMBEDDING_PENDING_TIMEOUT = int(
+    os.getenv("MEMORY_EMBEDDING_PENDING_TIMEOUT", "300")
+)
+MEMORY_CONTENT_MAX_LENGTH = int(os.getenv("MEMORY_CONTENT_MAX_LENGTH", "10000"))
+MEMORY_EMBEDDING_DIMENSION = int(os.getenv("MEMORY_EMBEDDING_DIMENSION", "1024"))
+MEMORY_SEARCH_TOP_K = int(os.getenv("MEMORY_SEARCH_TOP_K", "5"))
+MEMORY_VECTOR_WEIGHT = float(os.getenv("MEMORY_VECTOR_WEIGHT", "0.7"))
+MEMORY_KEYWORD_WEIGHT = float(os.getenv("MEMORY_KEYWORD_WEIGHT", "0.3"))
+MEMORY_EMBEDDING_MAX_RETRY = int(os.getenv("MEMORY_EMBEDDING_MAX_RETRY", "3"))
+COMPRESS_LOCK_TIMEOUT = int(os.getenv("COMPRESS_LOCK_TIMEOUT", "60"))
 
 
 # 日志配置
