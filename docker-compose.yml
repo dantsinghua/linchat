@@ -6,8 +6,11 @@ services:
   # ============ 核心基础设施 ============
 
   # PostgreSQL 主数据库 (LinChat + Langfuse 共用)
+  # 自定义镜像：pgvector + pg_jieba 扩展 (004-context-memory)
   postgres:
-    image: postgres:15-alpine
+    build:
+      context: ./docker/postgres
+      dockerfile: Dockerfile
     container_name: linchat-postgres
     restart: unless-stopped
     environment:

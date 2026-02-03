@@ -209,7 +209,7 @@ class TestDataIsolation(TestCase):
 
     def test_user_id_isolation_in_thread_id(self):
         """测试 thread_id 包含 user_id 确保数据隔离"""
-        from apps.chat.agent import get_thread_id
+        from apps.graph.agent import get_thread_id
 
         thread_ids = set()
         for user_id in range(10):

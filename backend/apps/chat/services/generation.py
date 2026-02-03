@@ -7,15 +7,10 @@
 import asyncio
 from typing import Optional
 
-from apps.common.exceptions import (
-    LLMConnectionError,
-    LLMContentFilterError,
-    LLMException,
-    LLMInvalidResponseError,
-    LLMQuotaExceededError,
-    LLMRateLimitError,
-    LLMTimeoutError,
-)
+from apps.common.exceptions import (LLMConnectionError, LLMContentFilterError,
+                                    LLMException, LLMInvalidResponseError,
+                                    LLMQuotaExceededError, LLMRateLimitError,
+                                    LLMTimeoutError)
 
 # 存储正在生成中的会话，用于停止生成
 # key: request_id, value: asyncio.Event (设置时表示应该停止)
@@ -56,7 +51,9 @@ def map_llm_exception(e: Exception) -> LLMException:
     """
     error_str = str(e).lower()
 
-    if any(kw in error_str for kw in ["connection", "connect", "network", "unreachable"]):
+    if any(
+        kw in error_str for kw in ["connection", "connect", "network", "unreachable"]
+    ):
         return LLMConnectionError()
 
     if any(kw in error_str for kw in ["timeout", "timed out"]):
@@ -65,7 +62,9 @@ def map_llm_exception(e: Exception) -> LLMException:
     if any(kw in error_str for kw in ["rate limit", "too many requests", "429"]):
         return LLMRateLimitError()
 
-    if any(kw in error_str for kw in ["content filter", "content policy", "moderation"]):
+    if any(
+        kw in error_str for kw in ["content filter", "content policy", "moderation"]
+    ):
         return LLMContentFilterError()
 
     if any(kw in error_str for kw in ["quota", "insufficient", "billing"]):

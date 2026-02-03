@@ -13,6 +13,7 @@ urlpatterns = [
         path("auth/", include("apps.users.urls")),
         path("chat/", include("apps.chat.urls")),
         path("models/", include("apps.models.urls")),
+        path("memories/", include("apps.memory.urls")),
         path("", include("apps.common.urls")),
     ])),
 ]

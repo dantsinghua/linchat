@@ -602,6 +602,8 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 - PostgreSQL (主存储), Redis (缓存/Pubsub) (002-asgi-async-views)
 - Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, Celery 5.3+, tiktoken, pgvector, openai SDK, Langfuse (004-context-memory)
 - PostgreSQL 15 + pgvector 扩展（主存储）, Redis（缓存/分布式锁/Celery Broker） (004-context-memory)
+- Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, LangGraph, LangChain, tiktoken, pgvector, openai SDK, Celery 5.3+, Langfuse (004-context-memory)
+- PostgreSQL 15 + pgvector + pg_jieba (主存储), Redis (缓存/分布式锁/Celery Broker DB2) (004-context-memory)
 
 ## Recent Changes
 - 001-llm-chat-page: Added Python 3.11+ (后端) / TypeScript 5.0+ (前端)

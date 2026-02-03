@@ -3,6 +3,7 @@
 
 提供异步兼容的装饰器，用于 ASGI 原生异步视图
 """
+
 import asyncio
 from functools import wraps
 

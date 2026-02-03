@@ -21,6 +21,7 @@ import type { Message, MessageStatus } from '@/types';
 interface UseChatStreamReturn {
   messages: Message[];
   isGenerating: boolean;
+  isCompacting: boolean;
   isLoadingHistory: boolean;
   hasMore: boolean;
   error: string | null;
@@ -170,14 +171,21 @@ export function useChatStream(): UseChatStreamReturn {
         },
         onDone: (msgId) => {
           store.updateMessage(msgId || realId || tempAssistant.message_id, { status: 1 as MessageStatus });
+          store.setIsCompacting(false);
           resetStream();
         },
-        onError: (err) => handleFail(err),
+        onError: (err) => {
+          store.setIsCompacting(false);
+          handleFail(err);
+        },
         onInterrupted: (msgId) => {
           store.updateMessage(msgId || realId || tempAssistant.message_id, { status: 3 as MessageStatus });
+          store.setIsCompacting(false);
           resetStream();
           toast.info('响应已中断，如有需要请复制已显示内容');
         },
+        onContextCompacting: () => store.setIsCompacting(true),
+        onContextCompacted: () => store.setIsCompacting(false),
       }, controller.signal);
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
@@ -261,6 +269,7 @@ export function useChatStream(): UseChatStreamReturn {
   return {
     messages: store.messages,
     isGenerating: store.isGenerating,
+    isCompacting: store.isCompacting,
     isLoadingHistory: store.isLoadingHistory,
     hasMore: store.hasMore,
     error: store.error,

@@ -43,7 +43,7 @@ services/         → 所有业务逻辑（拆分为包）
   types.py        → StreamChunk、MessageVO 数据类
   generation.py   → 活跃生成管理（register/signal_stop）+ LLM 异常映射
   chat_service.py → ChatService + HistoryService
-  agent_service.py → AgentService（execute + resume）
+  context_service.py → ContextService（上下文管理）
 repositories.py   → 封装 ORM 操作，所有方法使用 @sync_to_async
 ```
 
@@ -80,12 +80,13 @@ repositories.py   → 封装 ORM 操作，所有方法使用 @sync_to_async
 
 停止生成通过 `_active_generations` 全局字典管理 `asyncio.Event`，`signal_stop()` 设置事件触发中断。
 
-## LangGraph Agent (agent.py)
+## LangGraph Agent（已迁移到 apps.graph）
 
-- `get_checkpointer()`: 返回 `AsyncRedisSaver`，**每个请求创建新实例**（不能缓存单例，Django 线程模式下不同请求在不同事件循环）
-- `get_thread_id(user_id)`: 返回 `f"user_{user_id}"`
-- `get_llm()`: 从数据库动态获取激活的模型配置
-- `create_chat_agent()`: 异步上下文管理器，创建 ReAct Agent（当前无 tools）
+agent.py、prompts.py、tools.py、agent_service.py 已迁移到 `apps/graph/` 模块。
+请参考 `apps/graph/` 目录了解 Agent 工厂、Prompt 系统和工具集。
+
+- Agent/LLM/Prompt 导入: `from apps.graph.agent import ...` / `from apps.graph.prompts import ...`
+- AgentService 导入: `from apps.graph.services import AgentService`
 
 ## LLM 异常处理
 

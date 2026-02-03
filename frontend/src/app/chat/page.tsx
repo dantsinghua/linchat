@@ -23,6 +23,7 @@ export default function ChatPage() {
   const {
     messages,
     isGenerating,
+    isCompacting,
     isLoadingHistory,
     hasMore,
     error,
@@ -133,6 +134,7 @@ export default function ChatPage() {
         <MessageList
           messages={messages}
           isGenerating={isGenerating}
+          isCompacting={isCompacting}
           isLoadingHistory={isLoadingHistory}
           hasMore={hasMore}
           onLoadMore={loadMore}

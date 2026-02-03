@@ -1,0 +1,10 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "chat": "./apps/graph/graph.py:chat_graph",
+    "context": "./apps/graph/graph.py:context_graph",
+    "memory": "./apps/graph/graph.py:memory_graph",
+    "cronmem": "./apps/graph/graph.py:cronmem_graph"
+  },
+  "env": ".env"
+}

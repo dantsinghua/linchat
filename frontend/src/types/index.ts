@@ -62,7 +62,7 @@ export interface ChatRequest {
  * 参考: process-model.md#三、消息发送与流式响应流程
  */
 export interface ChatStreamEvent {
-  type: 'content' | 'done' | 'error' | 'interrupted';
+  type: 'content' | 'done' | 'error' | 'interrupted' | 'context_compacting' | 'context_compacted';
   content: string;
   message_id?: number;
   request_id?: string; // 首个 chunk 返回，用于停止/继续生成

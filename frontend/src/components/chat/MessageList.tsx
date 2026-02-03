@@ -15,6 +15,7 @@ import type { Message } from '@/types';
 interface MessageListProps {
   messages: Message[];
   isGenerating: boolean;
+  isCompacting: boolean;
   isLoadingHistory: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
@@ -33,6 +34,7 @@ interface MessageListProps {
 export const MessageList = memo(function MessageList({
   messages,
   isGenerating: _isGenerating, // 保留以备后续使用
+  isCompacting,
   isLoadingHistory,
   hasMore,
   onLoadMore,
@@ -154,6 +156,35 @@ export const MessageList = memo(function MessageList({
           />
         ))}
       </div>
+
+      {/* 上下文压缩状态提示 */}
+      {isCompacting && (
+        <div className="mx-auto max-w-3xl py-2">
+          <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-4 py-2 text-sm text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
+            <svg
+              className="h-4 w-4 animate-spin"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+            <span>正在压缩上下文...</span>
+          </div>
+        </div>
+      )}
 
       {/* 底部锚点 */}
       <div ref={bottomRef} />

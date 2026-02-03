@@ -26,6 +26,8 @@ interface StreamCallbacks {
   onDone?: (messageId?: number) => void;
   onError?: (error: string) => void;
   onInterrupted?: (messageId?: number) => void;
+  onContextCompacting?: () => void;
+  onContextCompacted?: () => void;
 }
 
 // ============ 公共 SSE 流处理 ============
@@ -36,7 +38,7 @@ interface StreamCallbacks {
 async function streamSSE(
   url: string,
   init: RequestInit,
-  { onChunk, onDone, onError, onInterrupted }: StreamCallbacks,
+  { onChunk, onDone, onError, onInterrupted, onContextCompacting, onContextCompacted }: StreamCallbacks,
   errorLabel: string
 ): Promise<void> {
   try {
@@ -75,10 +77,12 @@ async function streamSSE(
         try {
           const data: ChatStreamEvent = JSON.parse(line.slice(6));
           switch (data.type) {
-            case 'content':     onChunk?.(data); break;
-            case 'done':        onDone?.(data.message_id); break;
-            case 'error':       onError?.(data.content || errorLabel); break;
-            case 'interrupted': onInterrupted?.(data.message_id); break;
+            case 'content':            onChunk?.(data); break;
+            case 'done':               onDone?.(data.message_id); break;
+            case 'error':              onError?.(data.content || errorLabel); break;
+            case 'interrupted':        onInterrupted?.(data.message_id); break;
+            case 'context_compacting': onContextCompacting?.(); break;
+            case 'context_compacted':  onContextCompacted?.(); break;
           }
         } catch { /* 忽略解析错误 */ }
       }
