@@ -7,8 +7,6 @@ ContextService 测试 [T047] [T062] [T063]
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from django.test import TransactionTestCase
-
 from apps.chat.services.context_service import (
     ContextService,
     ContextWindowTooSmallError,
@@ -65,16 +63,14 @@ class TestCheckTokenLimit:
         assert ContextService.check_token_limit([], 100) is False
 
 
-class TestBuildContext(TransactionTestCase):
-    """build_context 集成测试"""
+class TestBuildContext:
+    """build_context 单元测试"""
 
     MODEL_CONFIG = {"max_context_window": 128000, "name": "test-model"}
 
-    @patch("apps.chat.services.context_service.MemoryService", create=True)
-    def test_build_context_basic(self, mock_mem_svc) -> None:
+    @patch("apps.memory.services.MemoryService.search_memory", new_callable=AsyncMock, return_value=[])
+    def test_build_context_basic(self, mock_search) -> None:
         """基本调用流程"""
-        mock_mem_svc.search_memory = AsyncMock(return_value=[])
-
         messages = run_async(
             ContextService.build_context(
                 user_id=1,
@@ -88,11 +84,9 @@ class TestBuildContext(TransactionTestCase):
         assert messages[-1]["role"] == "user"
         assert messages[-1]["content"] == "你好"
 
-    @patch("apps.chat.services.context_service.MemoryService", create=True)
-    def test_build_context_with_history(self, mock_mem_svc) -> None:
+    @patch("apps.memory.services.MemoryService.search_memory", new_callable=AsyncMock, return_value=[])
+    def test_build_context_with_history(self, mock_search) -> None:
         """包含对话历史"""
-        mock_mem_svc.search_memory = AsyncMock(return_value=[])
-
         history = [
             {"role": "user", "content": "q1"},
             {"role": "assistant", "content": "a1"},
@@ -111,13 +105,9 @@ class TestBuildContext(TransactionTestCase):
         assert "a1" in contents
         assert "q2" in contents
 
-    @patch("apps.chat.services.context_service.MemoryService", create=True)
-    def test_build_context_memory_failure_degrades(self, mock_mem_svc) -> None:
+    @patch("apps.memory.services.MemoryService.search_memory", new_callable=AsyncMock, side_effect=Exception("Memory service down"))
+    def test_build_context_memory_failure_degrades(self, mock_search) -> None:
         """记忆召回失败降级为无记忆"""
-        mock_mem_svc.search_memory = AsyncMock(
-            side_effect=Exception("Memory service down")
-        )
-
         messages = run_async(
             ContextService.build_context(
                 user_id=1,
