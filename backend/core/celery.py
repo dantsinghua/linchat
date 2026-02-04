@@ -34,5 +34,9 @@ app.conf.beat_schedule = {
         "task": "memory.generate_monthly_summary",
         "schedule": crontab(day_of_month=1, hour=0, minute=0),  # 每月 1 日 00:00
     },
+    "embedding-health-check": {
+        "task": "memory.embedding_health_check",
+        "schedule": crontab(minute=0),  # 每小时整点执行
+    },
 }
 app.conf.timezone = "Asia/Shanghai"

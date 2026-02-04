@@ -77,6 +77,58 @@ export interface GeneratingResponse {
   message: Message | null;
 }
 
+// ============ 上下文监控类型 ============
+
+export interface TokenBreakdown {
+  system_prompt: number;
+  history: number;
+  memories: number;
+  compaction: number;
+  tool_defs: number;
+  tool_calls: number;
+  tool_results: number;
+  tool_count: number;
+  user_input: number;
+  total: number;
+}
+
+export type AlertLevel = 'normal' | 'warning' | 'critical';
+
+export interface MemoryRecord {
+  id: number;
+  content: string;
+  tag: string;
+  updated_at: string;
+  token_count: number;
+}
+
+export interface ToolProcess {
+  name: string;
+  task: string;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+export interface MonitorData {
+  model_name: string;
+  total_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  breakdown: TokenBreakdown;
+  max_context_tokens: number;
+  alert: AlertLevel;
+  pct: number;
+  memory_types: { tag: string; tokens: number }[];
+  memory_count: number;
+  memory_records: MemoryRecord[];
+  tool_processes: ToolProcess[];
+}
+
+export interface ContextStatus extends MonitorData {
+  type: 'context_status';
+  request_id?: string;
+}
+
 // ============ 错误类型 ============
 
 export interface ApiError {

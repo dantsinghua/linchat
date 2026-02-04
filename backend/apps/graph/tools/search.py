@@ -97,7 +97,8 @@ async def web_search(
         "回答末尾附上引文列表，格式：\n**参考来源：**\n"
         "1. [标题](url)\n2. [标题](url)"
     )
-    return "\n\n".join(lines)
+    from apps.graph.tools import cap_tool_result
+    return cap_tool_result("\n\n".join(lines), "web_search")
 
 
 SEARCH_TOOLS = [web_search]

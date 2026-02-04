@@ -31,18 +31,33 @@ def _token_counter(messages) -> int:
 
 
 def _wrap_prompt(prompt, preamble_tokens=0, effective_window=128000):
-    """将 preamble 包装为 callable(state) -> list[BaseMessage]"""
+    """将 preamble 包装为 callable(state) -> list[BaseMessage]
+
+    优化：tool calling 循环中（state 已有 tool 消息），移除历史文本
+    SystemMessage 以减少重复 token 消耗。LLM 在首次调用时已读取历史上下文，
+    后续调用只需处理 tool 结果。
+    """
     if prompt is None:
         return None
     history_budget = effective_window - preamble_tokens - RESPONSE_RESERVE
 
     def _prompt_fn(state: dict) -> list:
+        state_msgs = state.get("messages", [])
         trimmed = trim_messages(
-            state.get("messages", []),
+            state_msgs,
             max_tokens=max(history_budget, 2000),
             token_counter=_token_counter,
             strategy="last", start_on="human", allow_partial=False,
         )
+
+        # tool calling 循环中移除历史文本，减少重复 token
+        in_tool_loop = len(state_msgs) > 1
+        if in_tool_loop:
+            return [
+                m for m in prompt
+                if not (hasattr(m, "name") and m.name == "conversation_history")
+            ] + list(trimmed)
+
         return list(prompt) + list(trimmed)
 
     return _prompt_fn

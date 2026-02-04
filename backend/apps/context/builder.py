@@ -8,7 +8,8 @@ from typing import Optional
 
 from apps.context.loader import render
 from apps.context.types import (MessageRole, PromptConfig, PromptMessage,
-                                PromptModule, RetrievedMemory, ToolDefinition)
+                                PromptModule, RetrievedMemory, TokenBreakdown,
+                                ToolDefinition)
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +183,34 @@ class PromptBuilder:
             if msg.get("role") in ("user", "assistant") and msg.get("content")
         ]
 
+    def build_conversation_history_block(
+        self, conversation_history: Optional[list[dict[str, str]]] = None
+    ) -> Optional[str]:
+        """将对话历史格式化为文本块，嵌入 SystemMessage"""
+        if not conversation_history:
+            return None
+
+        # 配对为 user+assistant 轮次
+        turns: list[dict[str, str]] = []
+        i = 0
+        while i < len(conversation_history):
+            msg = conversation_history[i]
+            if msg.get("role") == "user" and msg.get("content"):
+                user_text = msg["content"]
+                assistant_text = ""
+                if i + 1 < len(conversation_history):
+                    next_msg = conversation_history[i + 1]
+                    if next_msg.get("role") == "assistant" and next_msg.get("content"):
+                        assistant_text = next_msg["content"]
+                        i += 1
+                turns.append({"user": user_text, "assistant": assistant_text})
+            i += 1
+
+        if not turns:
+            return None
+
+        return render("conversation_history.j2", turns=turns)
+
     # ------ 主组装方法 ------
 
     def build_messages(
@@ -234,6 +263,7 @@ class PromptBuilder:
         retrieved_memories: Optional[list[RetrievedMemory]] = None,
         compaction_summary: Optional[str] = None,
         available_tools: Optional[list[ToolDefinition]] = None,
+        conversation_history: Optional[list[dict[str, str]]] = None,
     ) -> list:
         from langchain_core.messages import SystemMessage
 
@@ -252,7 +282,70 @@ class PromptBuilder:
         if tool_text:
             preamble.append(SystemMessage(content=tool_text))
 
+        history_text = self.build_conversation_history_block(conversation_history)
+        if history_text:
+            preamble.append(
+                SystemMessage(content=history_text, name="conversation_history")
+            )
+
         return preamble
+
+    def build_preamble_with_breakdown(
+        self,
+        user_input: str,
+        retrieved_memories: Optional[list[RetrievedMemory]] = None,
+        compaction_summary: Optional[str] = None,
+        available_tools: Optional[list[ToolDefinition]] = None,
+        conversation_history: Optional[list[dict[str, str]]] = None,
+    ) -> tuple[list, "TokenBreakdown"]:
+        """构建 preamble 并返回 token 分部计数
+
+        Returns:
+            (preamble_list, TokenBreakdown) 元组
+        """
+        from langchain_core.messages import SystemMessage
+
+        from apps.common.tokenizer import count_tokens
+
+        breakdown = TokenBreakdown()
+
+        preamble: list[SystemMessage] = []
+
+        # system_prompt
+        system_text = self.build_system_prompt()
+        breakdown.system_prompt = count_tokens(system_text)
+        preamble.append(SystemMessage(content=system_text))
+
+        # compaction_summary
+        compaction_text = self.build_compaction_block(compaction_summary)
+        if compaction_text:
+            breakdown.compaction_summary = count_tokens(compaction_text)
+            preamble.append(SystemMessage(content=compaction_text))
+
+        # retrieved_memories
+        memory_text = self.build_memory_block(retrieved_memories)
+        if memory_text:
+            breakdown.retrieved_memories = count_tokens(memory_text)
+            preamble.append(SystemMessage(content=memory_text))
+
+        # tool_definitions
+        tool_text = self.build_tool_context(available_tools)
+        if tool_text:
+            breakdown.tool_definitions = count_tokens(tool_text)
+            preamble.append(SystemMessage(content=tool_text))
+
+        # conversation_history
+        history_text = self.build_conversation_history_block(conversation_history)
+        if history_text:
+            breakdown.history_messages = count_tokens(history_text)
+            preamble.append(
+                SystemMessage(content=history_text, name="conversation_history")
+            )
+
+        # user_input
+        breakdown.user_input = count_tokens(user_input)
+
+        return preamble, breakdown
 
 
 # ============================================================================

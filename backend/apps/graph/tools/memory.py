@@ -43,34 +43,50 @@ async def mem_search(query: str, config: RunnableConfig, limit: int = 5) -> str:
     results = await MemoryService.search_memory(user_id=user_id, query=query, limit=limit)
     if not results:
         return "未找到相关记忆。"
-    return "\n".join(
+    from apps.graph.tools import cap_tool_result
+    result = "\n".join(
         f"{i}. [id={r['memory'].id}] {r['memory'].content}"
         for i, r in enumerate(results, 1)
     )
+    return cap_tool_result(result, "mem_search")
 
 
 @tool
-async def mem_cache(content: str, config: RunnableConfig, name: Optional[str] = None) -> str:
-    """保存新的用户记忆。"""
+async def mem_cache(
+    content: str,
+    config: RunnableConfig,
+    name: Optional[str] = None,
+    tag: Optional[str] = None,
+) -> str:
+    """保存新的用户记忆。必须提供一个语义标签 tag（如"个人喜好"/"职业信息"/"工作任务"/"日常对话"等），用于分类管理记忆。"""
     user_id = _get_user_id(config)
     if not _is_django_mode():
         return f"[独立模式] 记忆已保存: {content[:50]}..."
     from apps.memory.services import MemoryService
 
-    memory = await MemoryService.create_memory(user_id=user_id, content=content, name=name)
+    memory = await MemoryService.create_memory(
+        user_id=user_id, content=content, name=name, tag=tag,
+    )
     return f"记忆已保存 (id={memory.id})"
 
 
 @tool
-async def mem_update(memory_id: int, content: str, config: RunnableConfig) -> str:
-    """更新指定的用户记忆内容。需要先通过 mem_search 获取 memory_id。"""
+async def mem_update(
+    memory_id: int,
+    content: str,
+    config: RunnableConfig,
+    tag: Optional[str] = None,
+) -> str:
+    """更新指定的用户记忆内容。需要先通过 mem_search 获取 memory_id。可提供语义标签 tag 更新分类。"""
     user_id = _get_user_id(config)
     if not _is_django_mode():
         return f"[独立模式] 记忆 (id={memory_id}) 已更新"
     from apps.memory.services import MemoryService
 
     try:
-        await MemoryService.update_memory(memory_id=memory_id, user_id=user_id, content=content)
+        await MemoryService.update_memory(
+            memory_id=memory_id, user_id=user_id, content=content, tag=tag,
+        )
         return f"记忆 (id={memory_id}) 已更新"
     except Exception as e:
         return f"更新失败: {e}"

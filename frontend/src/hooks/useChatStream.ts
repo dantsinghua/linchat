@@ -39,6 +39,7 @@ export function useChatStream(): UseChatStreamReturn {
   const store = useChatStore();
   const abortRef = useRef<AbortController | null>(null);
   const reqIdRef = useRef<string | null>(null);
+  const loadCountRef = useRef(0);
 
   /** 重置流状态（生成结束/错误/中断时调用） */
   const resetStream = useCallback(() => {
@@ -59,11 +60,15 @@ export function useChatStream(): UseChatStreamReturn {
   const loadHistory = useCallback(async () => {
     if (isAuthRedirecting()) return;
     if (store.isLoadingHistory) return;
+    if (store.isGenerating) return;  // 生成中不覆盖消息
     store.setIsLoadingHistory(true);
     store.setError(null);
 
+    const thisLoad = ++loadCountRef.current;
+
     try {
       const data = await getMessages(50);
+      if (loadCountRef.current !== thisLoad) return; // 放弃过期结果
       store.setMessages(data.messages);
       store.setHasMore(data.has_more);
 
@@ -149,8 +154,14 @@ export function useChatStream(): UseChatStreamReturn {
     const handleFail = (errMsg: string) => {
       const friendly = getErrorMessage(errMsg);
       store.setError(friendly);
-      store.setMessages(originalMessages);
-      store.setFailedContent(content);
+      if (!realId) {
+        // 服务端还没创建消息，安全回滚
+        store.setMessages(originalMessages);
+        store.setFailedContent(content);
+      } else {
+        // 服务端已创建消息，标记错误状态但不回滚
+        store.updateMessage(realId, { status: 0 as MessageStatus });
+      }
       resetStream();
       toast.error(friendly);
     };

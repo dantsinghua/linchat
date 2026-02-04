@@ -17,6 +17,7 @@ class EventType(str, Enum):
     LOGOUT = "logout"
     MESSAGE = "message"
     HEARTBEAT = "heartbeat"
+    CONTEXT_STATUS = "context_status"
 
 
 class LogoutReason(str, Enum):
@@ -71,6 +72,28 @@ class EventService:
             return True
         except Exception as e:
             logger.error(f"Failed to publish logout event for user {user_id}: {e}")
+            return False
+
+    @staticmethod
+    async def publish_event(user_id: int, event_type: str, data: dict[str, Any]) -> bool:
+        """发布通用事件到用户频道
+
+        Args:
+            user_id: 目标用户 ID
+            event_type: 事件类型标识
+            data: 事件数据负载
+        """
+        try:
+            client = await get_redis()
+            channel = get_user_events_channel(user_id)
+            event = SSEEvent(
+                event_type=EventType(event_type),
+                data=data,
+            )
+            await client.publish(channel, event.to_sse_format())
+            return True
+        except Exception as e:
+            logger.warning("Failed to publish %s event for user %d: %s", event_type, user_id, e)
             return False
 
     @staticmethod

@@ -293,6 +293,11 @@ MEMORY_EMBEDDING_MAX_RETRY = int(os.getenv("MEMORY_EMBEDDING_MAX_RETRY", "3"))
 COMPRESS_LOCK_TIMEOUT = int(os.getenv("COMPRESS_LOCK_TIMEOUT", "60"))
 
 
+# ============ Context Monitoring 配置 ============
+# 参考: specs/005-context-monitoring/tasks.md T001
+MAX_TOOL_RESULT_TOKENS = int(os.getenv("MAX_TOOL_RESULT_TOKENS", "1500"))
+MONITOR_PUSH_INTERVAL = float(os.getenv("MONITOR_PUSH_INTERVAL", "0.5"))
+
 # ============ Brave Search 配置 ============
 BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "")
 
@@ -330,6 +335,11 @@ LOGGING = {
         "apps": {
             "handlers": ["console"],
             "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
+        "apps.context.monitoring": {
+            "handlers": ["console"],
+            "level": "DEBUG",
             "propagate": False,
         },
     },

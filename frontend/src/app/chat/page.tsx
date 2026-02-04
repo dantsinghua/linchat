@@ -8,18 +8,26 @@
  */
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { MessageInput } from '@/components/chat/MessageInput';
 import { MessageList } from '@/components/chat/MessageList';
 import { NetworkError } from '@/components/chat/NetworkError';
+import {
+  ContextStatusBar,
+  MonitorSidebar,
+  MonitorToggleButton,
+  useContextMonitor,
+} from '@/components/chat/ContextMonitorPanel';
 import { useChatStream } from '@/hooks/useChatStream';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function ChatPage() {
   const router = useRouter();
   const { user, logout } = useAuth();
+  const [monitorOpen, setMonitorOpen] = useState(true);
+  const { data: monitorData, tokenHistory, contextHistory } = useContextMonitor();
   const {
     messages,
     isGenerating,
@@ -56,31 +64,62 @@ export default function ChatPage() {
   }, [logout, router]);
 
   return (
-    <div className="flex h-screen flex-col bg-gray-50 dark:bg-gray-900">
-      {/* 顶部导航 */}
-      <header className="border-b bg-white px-6 py-4 dark:bg-gray-800 dark:border-gray-700">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-500 text-white font-bold">
-              L
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+      {/* 主内容区 */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* 顶部导航 */}
+        <header className="border-b bg-white px-6 py-4 dark:bg-gray-800 dark:border-gray-700">
+          <div className="mx-auto flex max-w-5xl items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-500 text-white font-bold">
+                L
+              </div>
+              <h1 className="text-xl font-semibold text-gray-800 dark:text-white">
+                LinChat
+              </h1>
             </div>
-            <h1 className="text-xl font-semibold text-gray-800 dark:text-white">
-              LinChat
-            </h1>
-          </div>
 
-          <div className="flex items-center gap-4">
-            {/* 用户信息 */}
-            {user && (
-              <span className="text-sm text-gray-600 dark:text-gray-300">
-                {user.username}
-              </span>
-            )}
+            <div className="flex items-center gap-4">
+              {/* 用户信息 */}
+              {user && (
+                <span className="text-sm text-gray-600 dark:text-gray-300">
+                  {user.username}
+                </span>
+              )}
 
-            {/* 模型配置入口 - 仅管理员可见 */}
-            {user && user.type === 'admin' && (
+              {/* 模型配置入口 - 仅管理员可见 */}
+              {user && user.type === 'admin' && (
+                <button
+                  onClick={() => router.push('/settings')}
+                  className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                  </svg>
+                  模型配置
+                </button>
+              )}
+
+              {/* 监控面板切换 */}
+              <MonitorToggleButton
+                isOpen={monitorOpen}
+                onClick={() => setMonitorOpen((v) => !v)}
+              />
+
+              {/* 登出按钮 */}
               <button
-                onClick={() => router.push('/settings')}
+                onClick={handleLogout}
                 className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -88,68 +127,61 @@ export default function ChatPage() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
                   />
                 </svg>
-                模型配置
+                退出
               </button>
-            )}
-
-            {/* 登出按钮 */}
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                />
-              </svg>
-              退出
-            </button>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* 网络错误提示 */}
-      <NetworkError
-        error={error}
-        onClear={handleClearError}
-        onRetry={failedContent ? handleRetry : undefined}
-        showRetry={!!failedContent}
+        {/* 网络错误提示 */}
+        <NetworkError
+          error={error}
+          onClear={handleClearError}
+          onRetry={failedContent ? handleRetry : undefined}
+          showRetry={!!failedContent}
+        />
+
+        {/* 聊天区域 */}
+        <main className="flex flex-1 flex-col overflow-hidden">
+          {/* 消息列表 */}
+          <MessageList
+            messages={messages}
+            isGenerating={isGenerating}
+            isCompacting={isCompacting}
+            isLoadingHistory={isLoadingHistory}
+            hasMore={hasMore}
+            onLoadMore={loadMore}
+            onResume={resume}
+          />
+
+          {/* 输入框 + 状态条 */}
+          <div>
+            <MessageInput
+              isGenerating={isGenerating}
+              failedContent={failedContent}
+              onSend={send}
+              onStop={stop}
+              onClearFailedContent={clearFailedContent}
+            />
+            {monitorData && (
+              <div className="mx-auto max-w-3xl px-4 pb-2">
+                <ContextStatusBar pct={monitorData.pct} alert={monitorData.alert} />
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+
+      {/* 监控侧边栏 */}
+      <MonitorSidebar
+        isOpen={monitorOpen}
+        data={monitorData}
+        tokenHistory={tokenHistory}
+        contextHistory={contextHistory}
       />
-
-      {/* 聊天区域 */}
-      <main className="flex flex-1 flex-col overflow-hidden">
-        {/* 消息列表 */}
-        <MessageList
-          messages={messages}
-          isGenerating={isGenerating}
-          isCompacting={isCompacting}
-          isLoadingHistory={isLoadingHistory}
-          hasMore={hasMore}
-          onLoadMore={loadMore}
-          onResume={resume}
-        />
-
-        {/* 输入框 */}
-        <MessageInput
-          isGenerating={isGenerating}
-          failedContent={failedContent}
-          onSend={send}
-          onStop={stop}
-          onClearFailedContent={clearFailedContent}
-        />
-      </main>
     </div>
   );
 }
