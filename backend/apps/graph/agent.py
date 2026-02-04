@@ -116,9 +116,11 @@ async def _create_agent(
 async def create_chat_agent(prompt=None, extra_tools=None, preamble_tokens=0, effective_window=128000):
     """聊天 Agent [T053]：不使用 checkpointer 避免 ToolMessage 累积"""
     from apps.graph.tools.memory import MEMORY_TOOLS
+    from apps.graph.tools.python_repl import REPL_TOOLS
+    from apps.graph.tools.search import SEARCH_TOOLS
 
     async with _create_agent(
-        list(MEMORY_TOOLS) + (extra_tools or []),
+        list(MEMORY_TOOLS) + list(SEARCH_TOOLS) + list(REPL_TOOLS) + (extra_tools or []),
         prompt, preamble_tokens, effective_window, use_checkpointer=False,
     ) as agent:
         yield agent

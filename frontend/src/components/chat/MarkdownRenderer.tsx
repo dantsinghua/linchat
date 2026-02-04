@@ -25,6 +25,17 @@ interface MarkdownRendererProps {
 }
 
 /**
+ * 将 [[N]] 引用标记转换为上标 HTML
+ * 搜索工具返回编号结果，LLM 在回答中用 [[1]]、[[2]] 标注引用来源
+ */
+function preprocessCitations(text: string): string {
+  return text.replace(
+    /\[\[(\d+)\]\]/g,
+    '<sup class="citation-ref">[$1]</sup>'
+  );
+}
+
+/**
  * Markdown 渲染组件
  *
  * 功能：
@@ -161,7 +172,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           },
         }}
       >
-        {content}
+        {preprocessCitations(content)}
       </ReactMarkdown>
     </div>
   );

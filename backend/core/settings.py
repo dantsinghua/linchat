@@ -293,6 +293,10 @@ MEMORY_EMBEDDING_MAX_RETRY = int(os.getenv("MEMORY_EMBEDDING_MAX_RETRY", "3"))
 COMPRESS_LOCK_TIMEOUT = int(os.getenv("COMPRESS_LOCK_TIMEOUT", "60"))
 
 
+# ============ Brave Search 配置 ============
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "")
+
+
 # 日志配置
 LOGGING = {
     "version": 1,

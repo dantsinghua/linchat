@@ -60,3 +60,11 @@ td {
 th {
   @apply bg-gray-100 font-semibold;
 }
+
+/* 引用标记样式 */
+.citation-ref {
+  color: #3b82f6;
+  cursor: default;
+  font-size: 0.75rem;
+  margin: 0 1px;
+}
