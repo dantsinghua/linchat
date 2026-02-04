@@ -238,3 +238,62 @@ def generate_monthly_summary() -> None:
         UserMemory.MemoryType.DAILY_SUMMARY, start, end,
         "monthly-summary", f"monthly-{year}-{month:02d}", msg_limit=200,
     )
+
+
+@shared_task(name="memory.embedding_health_check")
+def embedding_health_check() -> None:
+    """Embedding 健康检查 — 每小时执行
+
+    1. 重置 failed + retry_count < 3 的记录为 pending（retry_count+1）
+    2. 标记 pending 超 1 小时和 processing 超 10 分钟的记录为 failed
+    3. 失败数 > 10 时输出 ERROR 级别告警
+    """
+    from django.utils import timezone as tz
+
+    from apps.memory.models import UserMemory
+
+    now = tz.now()
+    pending_threshold = now - tz.timedelta(hours=1)
+    processing_threshold = now - tz.timedelta(minutes=10)
+    max_retry = settings.MEMORY_EMBEDDING_MAX_RETRY
+
+    # 1. 重置可重试的 failed 记录
+    retryable = UserMemory.objects.filter(
+        embedding_status=UserMemory.EmbeddingStatus.FAILED,
+        retry_count__lt=max_retry,
+    )
+    retry_count = 0
+    for mem in retryable:
+        mem.embedding_status = UserMemory.EmbeddingStatus.PENDING
+        mem.retry_count += 1
+        mem.save(update_fields=["embedding_status", "retry_count", "updated_at"])
+        retry_count += 1
+
+    # 2. 标记超时的 pending 记录
+    stuck_pending = UserMemory.objects.filter(
+        embedding_status=UserMemory.EmbeddingStatus.PENDING,
+        updated_at__lt=pending_threshold,
+    ).update(embedding_status=UserMemory.EmbeddingStatus.FAILED)
+
+    # 3. 标记超时的 processing 记录
+    stuck_processing = UserMemory.objects.filter(
+        embedding_status=UserMemory.EmbeddingStatus.PROCESSING,
+        updated_at__lt=processing_threshold,
+    ).update(embedding_status=UserMemory.EmbeddingStatus.FAILED)
+
+    # 4. 统计当前失败总数
+    total_failed = UserMemory.objects.filter(
+        embedding_status=UserMemory.EmbeddingStatus.FAILED,
+    ).count()
+
+    # 5. 输出汇总日志
+    summary = (
+        f"Embedding health check: retried={retry_count}, "
+        f"stuck_pending={stuck_pending}, stuck_processing={stuck_processing}, "
+        f"total_failed={total_failed}"
+    )
+
+    if total_failed > 10:
+        logger.error(summary)
+    else:
+        logger.info(summary)

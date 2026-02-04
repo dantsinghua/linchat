@@ -8,8 +8,9 @@
 import asyncio
 import logging
 import os
+import time
 import uuid
-from typing import AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional
 
 from django.conf import settings
 from django.utils import timezone
@@ -33,21 +34,29 @@ logger = logging.getLogger(__name__)
 
 async def _build_prompt_preamble(
     user_id: int, user_message: str = "",
-) -> tuple[list, int, int]:
-    """构建 Agent 前置 prompt 消息列表 [T044]"""
+) -> tuple[list, int, int, "TokenBreakdown", list, str, int]:
+    """构建 Agent 前置 prompt 消息列表
+
+    Returns:
+        (preamble, preamble_tokens, effective_window, breakdown,
+         memory_results, model_name, max_context_window)
+    """
     from asgiref.sync import sync_to_async
 
     from apps.common.tokenizer import count_tokens
+    from apps.context.types import TokenBreakdown
     from apps.models.services import model_service
 
     config_data = await sync_to_async(model_service.get_active_model)("language")
     max_context_window = config_data.get("max_context_window", 128000) if config_data else 128000
+    model_name = config_data.get("name", "unknown") if config_data else "unknown"
 
     prompt_config = PromptConfig(user_id=user_id, max_context_window=max_context_window)
     builder = PromptBuilder(config=prompt_config)
 
-    # 记忆召回 [T044]
+    # 记忆召回
     retrieved_memories = None
+    memory_results: list = []
     if user_message:
         try:
             from apps.graph.prompts import RetrievedMemory
@@ -58,6 +67,7 @@ async def _build_prompt_preamble(
                 limit=settings.MEMORY_SEARCH_TOP_K, skip_vector=True,
             )
             if results:
+                memory_results = results
                 retrieved_memories = [
                     RetrievedMemory(
                         content=r["memory"].content,
@@ -69,46 +79,56 @@ async def _build_prompt_preamble(
         except Exception as e:
             logger.warning("Memory recall failed for user %d: %s", user_id, e)
 
-    preamble = builder.build_preamble(retrieved_memories=retrieved_memories)
+    # 先构建不含历史的 preamble，计算 fixed_tokens
+    preamble_no_history = builder.build_preamble(retrieved_memories=retrieved_memories)
 
     fixed_tokens = sum(
         count_tokens(m.content if hasattr(m, "content") else str(m))
-        for m in preamble
+        for m in preamble_no_history
     )
 
-    # 从 DB 拉取对话历史
-    from langchain_core.messages import AIMessage, HumanMessage, trim_messages
-
+    # 从 DB 拉取对话历史，转为 dict 列表
     history_msgs = await message_repo.find_latest_by_user(user_id, limit=50)
     history_msgs.reverse()
-    history = []
+    history_dicts: list[dict[str, str]] = []
     for m in history_msgs:
-        if m.role == "user":
-            history.append(HumanMessage(content=m.content))
+        if m.role == "user" and m.content:
+            history_dicts.append({"role": "user", "content": m.content})
         elif m.role == "assistant":
             content = (m.content or "").removesuffix("[已中断]")
             if content:
-                history.append(AIMessage(content=content))
+                history_dicts.append({"role": "assistant", "content": content})
 
-    history_budget = max_context_window - fixed_tokens - 4096
-    history = list(trim_messages(
-        history,
-        max_tokens=max(history_budget, 2000),
-        token_counter=lambda msgs: sum(count_tokens(m.content or "") for m in msgs),
-        strategy="last", start_on="human", allow_partial=False,
-    ))
+    # 按 token 预算从前向后裁剪（保证从 user 消息开始）
+    history_budget = max(max_context_window - fixed_tokens - 4096, 2000)
+    trimmed: list[dict[str, str]] = []
+    used_tokens = 0
+    for msg in reversed(history_dicts):
+        msg_tokens = count_tokens(msg["content"])
+        if used_tokens + msg_tokens > history_budget:
+            break
+        trimmed.append(msg)
+        used_tokens += msg_tokens
+    trimmed.reverse()
+    while trimmed and trimmed[0]["role"] != "user":
+        trimmed.pop(0)
 
-    preamble = list(preamble) + history
-    preamble_tokens = sum(
-        count_tokens(m.content if hasattr(m, "content") else str(m))
-        for m in preamble
+    # 使用 build_preamble_with_breakdown 获取带 breakdown 的 preamble
+    preamble, breakdown = builder.build_preamble_with_breakdown(
+        user_input=user_message,
+        retrieved_memories=retrieved_memories,
+        conversation_history=trimmed if trimmed else None,
     )
+    preamble_tokens = breakdown.total - breakdown.user_input
 
     logger.debug(
-        "Built preamble for user %d: preamble_tokens=%d, memories=%s",
-        user_id, preamble_tokens, len(retrieved_memories) if retrieved_memories else 0,
+        "Built preamble for user %d: preamble_tokens=%d, breakdown=%s",
+        user_id, preamble_tokens, breakdown.to_dict(),
     )
-    return preamble, preamble_tokens, prompt_config.effective_window
+    return (
+        preamble, preamble_tokens, prompt_config.effective_window,
+        breakdown, memory_results, model_name, max_context_window,
+    )
 
 
 def _init_langfuse(request_id: str) -> Optional[LangfuseCallbackHandler]:
@@ -207,9 +227,33 @@ class AgentService:
             callbacks = [langfuse_handler] if langfuse_handler else None
             config = get_agent_config(user_id, callbacks)
             input_message = {"messages": [HumanMessage(content=user_message)]}
-            preamble, preamble_tokens, effective_window = (
-                await _build_prompt_preamble(user_id, user_message)
-            )
+            (
+                preamble, preamble_tokens, effective_window,
+                breakdown, memory_results, model_name, max_context_window,
+            ) = await _build_prompt_preamble(user_id, user_message)
+
+            # 监控初始化 [005-context-monitoring]
+            monitor_data: Optional[dict[str, Any]] = None
+            tool_processes: list[dict[str, Any]] = []
+            last_alert = None
+            try:
+                from apps.common.event_service import EventService
+                from apps.context.monitoring import ContextMonitor
+
+                monitor_data = ContextMonitor.build_monitor_data(
+                    breakdown=breakdown,
+                    max_tokens=max_context_window,
+                    model_name=model_name,
+                    memory_results=memory_results,
+                    tool_processes=tool_processes,
+                )
+                monitor_data["request_id"] = request_id
+                last_alert = monitor_data["alert"]
+                await EventService.publish_event(
+                    user_id, "context_status", monitor_data,
+                )
+            except Exception as e:
+                logger.warning("Monitor init failed: %s", e)
 
             # 上下文压缩检测 [T069]
             try:
@@ -230,6 +274,9 @@ class AgentService:
                 logger.warning("Context compression check failed: %s", e)
 
             # 流式执行
+            last_push_time = time.monotonic()
+            push_interval = getattr(settings, "MONITOR_PUSH_INTERVAL", 0.5)
+
             async with create_chat_agent(
                 prompt=preamble, preamble_tokens=preamble_tokens,
                 effective_window=effective_window,
@@ -282,6 +329,53 @@ class AgentService:
                                     pt, ct = _extract_usage(output)
                                     total_prompt_tokens += pt
                                     total_completion_tokens += ct
+
+                            elif event.get("event") == "on_tool_end":
+                                # 追踪工具调用 [005-context-monitoring]
+                                try:
+                                    from apps.common.tokenizer import count_tokens
+                                    tool_name = event.get("name", "unknown")
+                                    tool_output = str(event.get("data", {}).get("output", ""))
+                                    tool_input = str(event.get("data", {}).get("input", ""))
+                                    t_in = count_tokens(tool_input)
+                                    t_out = count_tokens(tool_output)
+                                    breakdown.tool_calls += t_in
+                                    breakdown.tool_results += t_out
+                                    breakdown.tool_call_count += 1
+                                    tool_processes.append({
+                                        "name": tool_name,
+                                        "task": tool_input[:50] if tool_input else "",
+                                        "input_tokens": t_in,
+                                        "output_tokens": t_out,
+                                    })
+                                except Exception:
+                                    pass
+
+                            # 500ms 定时推送 [005-context-monitoring]
+                            try:
+                                now = time.monotonic()
+                                if now - last_push_time >= push_interval and monitor_data is not None:
+                                    from apps.context.monitoring import ContextMonitor
+                                    monitor_data = ContextMonitor.build_monitor_data(
+                                        breakdown=breakdown,
+                                        max_tokens=max_context_window,
+                                        model_name=model_name,
+                                        input_tokens=total_prompt_tokens,
+                                        output_tokens=total_completion_tokens,
+                                        memory_results=memory_results,
+                                        tool_processes=tool_processes,
+                                    )
+                                    monitor_data["request_id"] = request_id
+                                    current_alert = monitor_data["alert"]
+                                    await EventService.publish_event(
+                                        user_id, "context_status", monitor_data,
+                                    )
+                                    last_push_time = now
+                                    # 告警级别变化时立即推送（已在上面推送）
+                                    if current_alert != last_alert:
+                                        last_alert = current_alert
+                            except Exception:
+                                pass
 
                 except asyncio.TimeoutError:
                     raise LLMTimeoutError("AI响应超时，请稍后重试")
@@ -353,9 +447,10 @@ class AgentService:
 
         try:
             config = get_agent_config(user_id)
-            preamble, preamble_tokens, effective_window = (
-                await _build_prompt_preamble(user_id, "请继续")
-            )
+            (
+                preamble, preamble_tokens, effective_window,
+                _breakdown, _memory_results, _model_name, _max_ctx,
+            ) = await _build_prompt_preamble(user_id, "请继续")
 
             async with create_chat_agent(
                 prompt=preamble, preamble_tokens=preamble_tokens,

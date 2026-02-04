@@ -69,6 +69,60 @@ class PromptConfig:
         return int(self.max_context_window * self.effective_window_ratio)
 
 
+@dataclass
+class TokenBreakdown:
+    """上下文 token 分部计数
+
+    静态部分（构建上下文时填充）：前 6 个字段
+    动态部分（Agent 执行中累加）：tool_calls / tool_results / tool_call_count
+    """
+
+    system_prompt: int = 0
+    history_messages: int = 0
+    retrieved_memories: int = 0
+    compaction_summary: int = 0
+    tool_definitions: int = 0
+    user_input: int = 0
+    tool_calls: int = 0
+    tool_results: int = 0
+    tool_call_count: int = 0
+
+    @property
+    def total(self) -> int:
+        """所有字段之和"""
+        return (
+            self.system_prompt
+            + self.history_messages
+            + self.retrieved_memories
+            + self.compaction_summary
+            + self.tool_definitions
+            + self.user_input
+            + self.tool_calls
+            + self.tool_results
+        )
+
+    def usage_ratio(self, max_tokens: int) -> float:
+        """上下文使用率，max_tokens <= 0 时返回 0.0"""
+        if max_tokens <= 0:
+            return 0.0
+        return self.total / max_tokens
+
+    def to_dict(self) -> dict[str, int]:
+        """序列化为扁平字典，键名使用简短别名"""
+        return {
+            "system_prompt": self.system_prompt,
+            "history": self.history_messages,
+            "memories": self.retrieved_memories,
+            "compaction": self.compaction_summary,
+            "tool_defs": self.tool_definitions,
+            "user_input": self.user_input,
+            "tool_calls": self.tool_calls,
+            "tool_results": self.tool_results,
+            "tool_count": self.tool_call_count,
+            "total": self.total,
+        }
+
+
 class PromptModule(str, Enum):
     """可注册的功能模块"""
 

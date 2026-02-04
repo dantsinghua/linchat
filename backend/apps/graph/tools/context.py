@@ -42,9 +42,10 @@ async def context_compact(content: str) -> str:
     from apps.graph.prompts import COMPACTION_PROMPT_TEMPLATE
 
     llm = await get_llm()
+    from apps.graph.tools import cap_tool_result
     prompt = COMPACTION_PROMPT_TEMPLATE.format(conversation_text=content)
     response = await llm.ainvoke(prompt)
-    return str(response.content)
+    return cap_tool_result(str(response.content), "context_compact")
 
 
 @tool
@@ -68,8 +69,9 @@ async def context_extract(content: str, query: str) -> str:
         f"从以下内容中提取与问题「{query}」最相关的信息片段。"
         f"只返回相关内容，不要添加解释。\n\n{content}"
     )
+    from apps.graph.tools import cap_tool_result
     response = await llm.ainvoke(prompt)
-    return str(response.content)
+    return cap_tool_result(str(response.content), "context_extract")
 
 
 @tool
@@ -93,8 +95,9 @@ async def context_prune(content: str) -> str:
         "只保留核心信息和关键结论。直接输出结果，不要解释。\n\n"
         f"{content}"
     )
+    from apps.graph.tools import cap_tool_result
     response = await llm.ainvoke(prompt)
-    return str(response.content)
+    return cap_tool_result(str(response.content), "context_prune")
 
 
 # 工具集导出

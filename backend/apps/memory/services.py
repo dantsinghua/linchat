@@ -100,21 +100,28 @@ class MemoryService:
     async def create_memory(
         user_id: int, content: str,
         name: Optional[str] = None, type: str = "memory",
+        tag: Optional[str] = None,
     ) -> UserMemory:
         memory = UserMemory(
             user_id=user_id, content=content, name=name, type=type,
             embedding_status=UserMemory.EmbeddingStatus.PENDING, retry_count=0,
+            tags=[tag] if tag else None,
         )
         memory = await memory_repo.create(memory)
         await MemoryService._dispatch_embedding(memory)
         return memory
 
     @staticmethod
-    async def update_memory(memory_id: int, user_id: int, content: str) -> UserMemory:
+    async def update_memory(
+        memory_id: int, user_id: int, content: str,
+        tag: Optional[str] = None,
+    ) -> UserMemory:
         memory = await MemoryService._get_or_404(memory_id, user_id)
         memory.content = content
         memory.embedding_status = UserMemory.EmbeddingStatus.PENDING
         memory.retry_count = 0
+        if tag is not None:
+            memory.tags = [tag]
         memory = await memory_repo.update(memory)
         await MemoryService._dispatch_embedding(memory)
         return memory

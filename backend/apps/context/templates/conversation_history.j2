@@ -1,0 +1,9 @@
+# 近期对话记录
+
+以下是你与用户的近期对话记录，请据此保持对话连贯性。
+
+{% for turn in turns %}
+[用户]: {{ turn.user }}
+[助手]: {{ turn.assistant }}
+
+{% endfor %}

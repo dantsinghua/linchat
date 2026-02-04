@@ -62,8 +62,10 @@ export function middleware(request: NextRequest) {
 
   // 公开路由检查
   // 已登录用户访问登录页，跳转到聊天页
+  // 但如果带有 redirect 参数，说明是被 401 重定向来的，允许访问登录页
   if (publicOnlyRoutes.some((route) => pathWithoutBase.startsWith(route))) {
-    if (isAuthenticated) {
+    const hasRedirect = request.nextUrl.searchParams.has('redirect');
+    if (isAuthenticated && !hasRedirect) {
       return NextResponse.redirect(new URL(`${basePath}/chat`, request.url));
     }
   }

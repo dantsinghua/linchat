@@ -8,14 +8,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { trigger401Redirect, resetAuthGuard } from '@/services/authGuard';
+import { trigger401Redirect, resetAuthGuard, isAuthRedirecting } from '@/services/authGuard';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 
 interface SSEEvent {
-  type: 'logout' | 'message' | 'heartbeat' | 'connected';
+  type: 'logout' | 'message' | 'heartbeat' | 'connected' | 'context_status';
   reason?: 'SSO_CONFLICT' | 'TOKEN_EXPIRED' | 'ADMIN_KICK';
   message?: string;
+  [key: string]: unknown;
 }
 
 interface UserInfo {
@@ -58,12 +59,19 @@ export function useAuth() {
 
   const handleSSEEvent = useCallback(
     (data: SSEEvent) => {
+      // 上下文监控事件 — 通过 CustomEvent 分发给监控面板
+      if (data.type === 'context_status') {
+        window.dispatchEvent(
+          new CustomEvent('context_status', { detail: data })
+        );
+        return;
+      }
+
       if (data.type !== 'logout' || !data.reason) return;
       const cfg = LOGOUT_REASONS[data.reason];
       if (!cfg) return;
 
       disconnectSSE();
-      // 使用 sonner 或其他全局 toast 即可，此处简单用 alert 替代
       setTimeout(() => {
         setIsAuthenticated(false);
         router.push('/login');
@@ -73,6 +81,7 @@ export function useAuth() {
   );
 
   const connectSSE = useCallback(() => {
+    if (isAuthRedirecting()) return;
     disconnectSSE();
     const controller = new AbortController();
     sseAbortRef.current = controller;
@@ -110,7 +119,7 @@ export function useAuth() {
             } else if (line.startsWith('data: ')) {
               try {
                 const data: SSEEvent = JSON.parse(line.slice(6));
-                if (currentEventType && ['logout', 'heartbeat', 'message', 'connected'].includes(currentEventType)) {
+                if (currentEventType && ['logout', 'heartbeat', 'message', 'connected', 'context_status'].includes(currentEventType)) {
                   data.type = currentEventType as SSEEvent['type'];
                 }
                 handleSSEEvent(data);
@@ -132,6 +141,7 @@ export function useAuth() {
   }, [disconnectSSE, handleSSEEvent, scheduleReconnect]);
 
   const checkAuth = useCallback(async () => {
+    if (isAuthRedirecting()) return false;
     try {
       const response = await fetch(`${API_BASE_URL}/auth/me`, {
         credentials: 'include',
