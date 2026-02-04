@@ -145,7 +145,10 @@ async def create_cronmem_agent(prompt=None):
 
 
 def get_agent_config(user_id: int, callbacks: Optional[list] = None) -> dict:
-    config: dict = {"configurable": {"thread_id": get_thread_id(user_id)}}
+    config: dict = {"configurable": {
+        "thread_id": get_thread_id(user_id),
+        "user_id": user_id,
+    }}
     if callbacks:
         config["callbacks"] = callbacks
     return config

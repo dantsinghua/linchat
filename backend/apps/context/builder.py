@@ -66,6 +66,7 @@ class PromptBuilder:
         self._enabled_modules: list[PromptModule] = [
             PromptModule.BASE,
             PromptModule.REASONING,
+            PromptModule.TOOL_USAGE,
         ]
         self._custom_modules: list[str] = []
         self._extra_system_instructions: list[str] = []
