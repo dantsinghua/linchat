@@ -104,10 +104,12 @@ class TokenAuthMiddleware:
         return token_info
 
     def _unauthorized_response(self, message: str) -> JsonResponse:
-        return JsonResponse(
+        resp = JsonResponse(
             {"code": "UNAUTHORIZED", "message": message, "data": None},
             status=401,
         )
+        clear_token_cookie(resp)
+        return resp
 
 
 def set_token_cookie(

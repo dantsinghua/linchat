@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { trigger401Redirect, resetAuthGuard } from '@/services/authGuard';
+import { trigger401Redirect, resetAuthGuard, isAuthRedirecting } from '@/services/authGuard';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 
@@ -73,6 +73,7 @@ export function useAuth() {
   );
 
   const connectSSE = useCallback(() => {
+    if (isAuthRedirecting()) return;
     disconnectSSE();
     const controller = new AbortController();
     sseAbortRef.current = controller;
@@ -132,6 +133,7 @@ export function useAuth() {
   }, [disconnectSSE, handleSSEEvent, scheduleReconnect]);
 
   const checkAuth = useCallback(async () => {
+    if (isAuthRedirecting()) return false;
     try {
       const response = await fetch(`${API_BASE_URL}/auth/me`, {
         credentials: 'include',

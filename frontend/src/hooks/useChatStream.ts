@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
+import { isAuthRedirecting } from '@/services/authGuard';
 import { getErrorMessage } from '@/components/chat/NetworkError';
 import {
   getGeneratingMessage,
@@ -56,6 +57,7 @@ export function useChatStream(): UseChatStreamReturn {
 
   /** 加载历史消息 + 自动重连生成中的流 */
   const loadHistory = useCallback(async () => {
+    if (isAuthRedirecting()) return;
     if (store.isLoadingHistory) return;
     store.setIsLoadingHistory(true);
     store.setError(null);
