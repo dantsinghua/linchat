@@ -25,7 +25,9 @@ RESPONSE_RESERVE = 4096
 
 def _token_counter(messages) -> int:
     return sum(
-        _count_tokens(m.content if hasattr(m, "content") and isinstance(m.content, str) else "")
+        _count_tokens(
+            m.content if hasattr(m, "content") and isinstance(m.content, str) else ""
+        )
         for m in messages
     )
 
@@ -47,14 +49,17 @@ def _wrap_prompt(prompt, preamble_tokens=0, effective_window=128000):
             state_msgs,
             max_tokens=max(history_budget, 2000),
             token_counter=_token_counter,
-            strategy="last", start_on="human", allow_partial=False,
+            strategy="last",
+            start_on="human",
+            allow_partial=False,
         )
 
         # tool calling 循环中移除历史文本，减少重复 token
         in_tool_loop = len(state_msgs) > 1
         if in_tool_loop:
             return [
-                m for m in prompt
+                m
+                for m in prompt
                 if not (hasattr(m, "name") and m.name == "conversation_history")
             ] + list(trimmed)
 
@@ -107,11 +112,15 @@ async def get_llm() -> ChatOpenAI:
 
 @asynccontextmanager
 async def _create_agent(
-    tools, prompt=None, preamble_tokens=0,
-    effective_window=128000, use_checkpointer=True,
+    tools,
+    prompt=None,
+    preamble_tokens=0,
+    effective_window=128000,
+    use_checkpointer=True,
+    name: str = "LangGraph",
 ) -> AsyncIterator:
     llm = await get_llm()
-    kwargs: dict = {"model": llm, "tools": tools}
+    kwargs: dict = {"model": llm, "tools": tools, "name": name}
     wrapped = _wrap_prompt(prompt, preamble_tokens, effective_window)
     if wrapped:
         kwargs["prompt"] = wrapped
@@ -128,15 +137,20 @@ async def _create_agent(
 
 
 @asynccontextmanager
-async def create_chat_agent(prompt=None, extra_tools=None, preamble_tokens=0, effective_window=128000):
+async def create_chat_agent(
+    prompt=None, extra_tools=None, preamble_tokens=0, effective_window=128000
+):
     """聊天 Agent [T053]：不使用 checkpointer 避免 ToolMessage 累积"""
-    from apps.graph.tools.memory import MEMORY_TOOLS
-    from apps.graph.tools.python_repl import REPL_TOOLS
-    from apps.graph.tools.search import SEARCH_TOOLS
+    from apps.graph.subagents import get_subagent_tools
 
+    subagent_tools = get_subagent_tools()
     async with _create_agent(
-        list(MEMORY_TOOLS) + list(SEARCH_TOOLS) + list(REPL_TOOLS) + (extra_tools or []),
-        prompt, preamble_tokens, effective_window, use_checkpointer=False,
+        subagent_tools + (extra_tools or []),
+        prompt,
+        preamble_tokens,
+        effective_window,
+        use_checkpointer=False,
+        name="chat",
     ) as agent:
         yield agent
 
@@ -144,28 +158,32 @@ async def create_chat_agent(prompt=None, extra_tools=None, preamble_tokens=0, ef
 @asynccontextmanager
 async def create_context_agent(prompt=None):
     from apps.graph.tools.context import CONTEXT_TOOLS
-    async with _create_agent(list(CONTEXT_TOOLS), prompt) as agent:
+
+    async with _create_agent(list(CONTEXT_TOOLS), prompt, name="context") as agent:
         yield agent
 
 
 @asynccontextmanager
 async def create_memory_agent(prompt=None):
     from apps.graph.tools.memory import MEMORY_TOOLS
-    async with _create_agent(list(MEMORY_TOOLS), prompt) as agent:
+
+    async with _create_agent(list(MEMORY_TOOLS), prompt, name="memory") as agent:
         yield agent
 
 
 @asynccontextmanager
 async def create_cronmem_agent(prompt=None):
-    async with _create_agent([], prompt) as agent:
+    async with _create_agent([], prompt, name="cronmem") as agent:
         yield agent
 
 
 def get_agent_config(user_id: int, callbacks: Optional[list] = None) -> dict:
-    config: dict = {"configurable": {
-        "thread_id": get_thread_id(user_id),
-        "user_id": user_id,
-    }}
+    config: dict = {
+        "configurable": {
+            "thread_id": get_thread_id(user_id),
+            "user_id": user_id,
+        }
+    }
     if callbacks:
         config["callbacks"] = callbacks
     return config

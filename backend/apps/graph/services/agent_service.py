@@ -33,7 +33,8 @@ logger = logging.getLogger(__name__)
 
 
 async def _build_prompt_preamble(
-    user_id: int, user_message: str = "",
+    user_id: int,
+    user_message: str = "",
 ) -> tuple[list, int, int, "TokenBreakdown", list, str, int]:
     """构建 Agent 前置 prompt 消息列表
 
@@ -48,7 +49,9 @@ async def _build_prompt_preamble(
     from apps.models.services import model_service
 
     config_data = await sync_to_async(model_service.get_active_model)("language")
-    max_context_window = config_data.get("max_context_window", 128000) if config_data else 128000
+    max_context_window = (
+        config_data.get("max_context_window", 128000) if config_data else 128000
+    )
     model_name = config_data.get("name", "unknown") if config_data else "unknown"
 
     prompt_config = PromptConfig(user_id=user_id, max_context_window=max_context_window)
@@ -63,8 +66,10 @@ async def _build_prompt_preamble(
             from apps.memory.services import MemoryService
 
             results = await MemoryService.search_memory(
-                user_id=user_id, query=user_message,
-                limit=settings.MEMORY_SEARCH_TOP_K, skip_vector=True,
+                user_id=user_id,
+                query=user_message,
+                limit=settings.MEMORY_SEARCH_TOP_K,
+                skip_vector=False,
             )
             if results:
                 memory_results = results
@@ -123,11 +128,18 @@ async def _build_prompt_preamble(
 
     logger.debug(
         "Built preamble for user %d: preamble_tokens=%d, breakdown=%s",
-        user_id, preamble_tokens, breakdown.to_dict(),
+        user_id,
+        preamble_tokens,
+        breakdown.to_dict(),
     )
     return (
-        preamble, preamble_tokens, prompt_config.effective_window,
-        breakdown, memory_results, model_name, max_context_window,
+        preamble,
+        preamble_tokens,
+        prompt_config.effective_window,
+        breakdown,
+        memory_results,
+        model_name,
+        max_context_window,
     )
 
 
@@ -159,7 +171,9 @@ def _extract_usage(output: object) -> tuple[int, int]:
     return 0, 0
 
 
-def _finalize_message(msg, content, status, duration_ms, prompt_tokens, completion_tokens):
+def _finalize_message(
+    msg, content, status, duration_ms, prompt_tokens, completion_tokens
+):
     msg.content = content
     msg.status = status
     msg.response_time_ms = duration_ms
@@ -168,9 +182,16 @@ def _finalize_message(msg, content, status, duration_ms, prompt_tokens, completi
 
 
 def _finalize_execution(
-    execution, status, end_time, duration_ms,
-    output_data=None, total_prompt_tokens=0, total_completion_tokens=0,
-    langfuse_handler=None, error_type=None, error_message=None,
+    execution,
+    status,
+    end_time,
+    duration_ms,
+    output_data=None,
+    total_prompt_tokens=0,
+    total_completion_tokens=0,
+    langfuse_handler=None,
+    error_type=None,
+    error_message=None,
 ):
     execution.status = status
     execution.end_time = end_time
@@ -201,9 +222,13 @@ class AgentService:
         stop_event = register_generation(request_id)
 
         execution = LangGraphExecution(
-            execution_uuid=execution_uuid, request_id=request_id,
-            user_id=user_id, thread_id=thread_id, graph_name="react_agent",
-            status=LangGraphExecution.STATUS_PENDING, start_time=start_time,
+            execution_uuid=execution_uuid,
+            request_id=request_id,
+            user_id=user_id,
+            thread_id=thread_id,
+            graph_name="react_agent",
+            status=LangGraphExecution.STATUS_PENDING,
+            start_time=start_time,
             input_data={"message": user_message},
         )
         await execution_repo.create(execution)
@@ -228,8 +253,13 @@ class AgentService:
             config = get_agent_config(user_id, callbacks)
             input_message = {"messages": [HumanMessage(content=user_message)]}
             (
-                preamble, preamble_tokens, effective_window,
-                breakdown, memory_results, model_name, max_context_window,
+                preamble,
+                preamble_tokens,
+                effective_window,
+                breakdown,
+                memory_results,
+                model_name,
+                max_context_window,
             ) = await _build_prompt_preamble(user_id, user_message)
 
             # 监控初始化 [005-context-monitoring]
@@ -250,7 +280,9 @@ class AgentService:
                 monitor_data["request_id"] = request_id
                 last_alert = monitor_data["alert"]
                 await EventService.publish_event(
-                    user_id, "context_status", monitor_data,
+                    user_id,
+                    "context_status",
+                    monitor_data,
                 )
             except Exception as e:
                 logger.warning("Monitor init failed: %s", e)
@@ -260,13 +292,16 @@ class AgentService:
                 from apps.chat.services.context_service import ContextService
 
                 history_msgs = await message_repo.find_latest_by_user(user_id, limit=50)
-                context_messages = [{"role": m.role, "content": m.content} for m in history_msgs]
+                context_messages = [
+                    {"role": m.role, "content": m.content} for m in history_msgs
+                ]
                 context_messages.append({"role": "user", "content": user_message})
 
                 if ContextService.check_token_limit(context_messages, effective_window):
                     yield StreamChunk(type="context_compacting", content="")
                     await ContextService.compress_context(
-                        user_id=user_id, messages=context_messages,
+                        user_id=user_id,
+                        messages=context_messages,
                         effective_window=effective_window,
                     )
                     yield StreamChunk(type="context_compacted", content="")
@@ -276,9 +311,11 @@ class AgentService:
             # 流式执行
             last_push_time = time.monotonic()
             push_interval = getattr(settings, "MONITOR_PUSH_INTERVAL", 0.5)
+            memory_modified = False
 
             async with create_chat_agent(
-                prompt=preamble, preamble_tokens=preamble_tokens,
+                prompt=preamble,
+                preamble_tokens=preamble_tokens,
                 effective_window=effective_window,
             ) as agent:
                 try:
@@ -291,6 +328,12 @@ class AgentService:
                                 break
 
                             if event["event"] == "on_chat_model_stream":
+                                # SubAgent 内部 LLM 输出过滤：
+                                # 主 agent 事件 parent_ids depth <= 3，
+                                # SubAgent 内部事件 depth > 3
+                                if len(event.get("parent_ids", [])) > 3:
+                                    continue
+
                                 chunk = event["data"]["chunk"]
                                 if hasattr(chunk, "content") and chunk.content:
                                     if not first_token_received:
@@ -298,17 +341,23 @@ class AgentService:
                                         first_token_time = timezone.now()
                                         user_msg = Message(
                                             message_uuid=str(uuid.uuid4()),
-                                            user_id=user_id, role=Message.ROLE_USER,
-                                            content=user_message, request_id=request_id,
-                                            sequence=max_seq + 1, status=Message.STATUS_NORMAL,
+                                            user_id=user_id,
+                                            role=Message.ROLE_USER,
+                                            content=user_message,
+                                            request_id=request_id,
+                                            sequence=max_seq + 1,
+                                            status=Message.STATUS_NORMAL,
                                             created_time=start_time,
                                         )
                                         await message_repo.create(user_msg)
                                         assistant_msg = Message(
                                             message_uuid=str(uuid.uuid4()),
-                                            user_id=user_id, role=Message.ROLE_ASSISTANT,
-                                            content="", request_id=request_id,
-                                            sequence=max_seq + 2, status=Message.STATUS_GENERATING,
+                                            user_id=user_id,
+                                            role=Message.ROLE_ASSISTANT,
+                                            content="",
+                                            request_id=request_id,
+                                            sequence=max_seq + 2,
+                                            status=Message.STATUS_GENERATING,
                                             model_name=await _get_language_model_name(),
                                             created_time=first_token_time,
                                         )
@@ -316,8 +365,13 @@ class AgentService:
 
                                     full_response += chunk.content
                                     chunk_data = StreamChunk(
-                                        type="content", content=chunk.content,
-                                        message_id=assistant_msg.message_id if assistant_msg else None,
+                                        type="content",
+                                        content=chunk.content,
+                                        message_id=(
+                                            assistant_msg.message_id
+                                            if assistant_msg
+                                            else None
+                                        ),
                                     )
                                     if len(full_response) == len(chunk.content):
                                         chunk_data.request_id = request_id
@@ -333,29 +387,46 @@ class AgentService:
                             elif event.get("event") == "on_tool_end":
                                 # 追踪工具调用 [005-context-monitoring]
                                 try:
-                                    from apps.common.tokenizer import count_tokens
+                                    from apps.common.tokenizer import \
+                                        count_tokens
+
                                     tool_name = event.get("name", "unknown")
-                                    tool_output = str(event.get("data", {}).get("output", ""))
-                                    tool_input = str(event.get("data", {}).get("input", ""))
+                                    if tool_name == "memory_subagent":
+                                        memory_modified = True
+                                    tool_output = str(
+                                        event.get("data", {}).get("output", "")
+                                    )
+                                    tool_input = str(
+                                        event.get("data", {}).get("input", "")
+                                    )
                                     t_in = count_tokens(tool_input)
                                     t_out = count_tokens(tool_output)
                                     breakdown.tool_calls += t_in
                                     breakdown.tool_results += t_out
                                     breakdown.tool_call_count += 1
-                                    tool_processes.append({
-                                        "name": tool_name,
-                                        "task": tool_input[:50] if tool_input else "",
-                                        "input_tokens": t_in,
-                                        "output_tokens": t_out,
-                                    })
+                                    tool_processes.append(
+                                        {
+                                            "name": tool_name,
+                                            "task": (
+                                                tool_input[:50] if tool_input else ""
+                                            ),
+                                            "input_tokens": t_in,
+                                            "output_tokens": t_out,
+                                        }
+                                    )
                                 except Exception:
                                     pass
 
                             # 500ms 定时推送 [005-context-monitoring]
                             try:
                                 now = time.monotonic()
-                                if now - last_push_time >= push_interval and monitor_data is not None:
-                                    from apps.context.monitoring import ContextMonitor
+                                if (
+                                    now - last_push_time >= push_interval
+                                    and monitor_data is not None
+                                ):
+                                    from apps.context.monitoring import \
+                                        ContextMonitor
+
                                     monitor_data = ContextMonitor.build_monitor_data(
                                         breakdown=breakdown,
                                         max_tokens=max_context_window,
@@ -368,7 +439,9 @@ class AgentService:
                                     monitor_data["request_id"] = request_id
                                     current_alert = monitor_data["alert"]
                                     await EventService.publish_event(
-                                        user_id, "context_status", monitor_data,
+                                        user_id,
+                                        "context_status",
+                                        monitor_data,
                                     )
                                     last_push_time = now
                                     # 告警级别变化时立即推送（已在上面推送）
@@ -386,24 +459,49 @@ class AgentService:
 
                 if not first_token_received:
                     _finalize_execution(
-                        execution, LangGraphExecution.STATUS_FAILED, end_time, duration_ms,
-                        error_type="NoTokenReceived", error_message="未收到任何响应",
+                        execution,
+                        LangGraphExecution.STATUS_FAILED,
+                        end_time,
+                        duration_ms,
+                        error_type="NoTokenReceived",
+                        error_message="未收到任何响应",
                     )
                     await execution_repo.update(execution)
                     raise LLMInvalidResponseError("AI未返回任何响应，请重试")
 
                 if interrupted:
                     full_response += "[已中断]"
-                    _finalize_message(assistant_msg, full_response, Message.STATUS_INTERRUPTED, duration_ms, total_prompt_tokens, total_completion_tokens)
+                    _finalize_message(
+                        assistant_msg,
+                        full_response,
+                        Message.STATUS_INTERRUPTED,
+                        duration_ms,
+                        total_prompt_tokens,
+                        total_completion_tokens,
+                    )
                     await message_repo.update(assistant_msg)
                     _finalize_execution(execution, "interrupted", end_time, duration_ms)
                     await execution_repo.update(execution)
-                    yield StreamChunk(type="interrupted", content="[已中断]", message_id=assistant_msg.message_id)
+                    yield StreamChunk(
+                        type="interrupted",
+                        content="[已中断]",
+                        message_id=assistant_msg.message_id,
+                    )
                 else:
-                    _finalize_message(assistant_msg, full_response, Message.STATUS_NORMAL, duration_ms, total_prompt_tokens, total_completion_tokens)
+                    _finalize_message(
+                        assistant_msg,
+                        full_response,
+                        Message.STATUS_NORMAL,
+                        duration_ms,
+                        total_prompt_tokens,
+                        total_completion_tokens,
+                    )
                     await message_repo.update(assistant_msg)
                     _finalize_execution(
-                        execution, LangGraphExecution.STATUS_COMPLETED, end_time, duration_ms,
+                        execution,
+                        LangGraphExecution.STATUS_COMPLETED,
+                        end_time,
+                        duration_ms,
                         output_data={"response": full_response},
                         total_prompt_tokens=total_prompt_tokens,
                         total_completion_tokens=total_completion_tokens,
@@ -411,17 +509,52 @@ class AgentService:
                     )
                     await execution_repo.update(execution)
                     await user_repo.add_message_count(user_id, 2)
-                    await user_repo.add_tokens(user_id, total_prompt_tokens + total_completion_tokens)
-                    yield StreamChunk(type="done", content="", message_id=assistant_msg.message_id)
+                    await user_repo.add_tokens(
+                        user_id, total_prompt_tokens + total_completion_tokens
+                    )
+
+                    # Agent 完成后，如果记忆被修改，重新搜索并推送最终监控数据
+                    if memory_modified and monitor_data is not None:
+                        try:
+                            from apps.memory.services import MemoryService
+
+                            fresh_results = await MemoryService.search_memory(
+                                user_id=user_id,
+                                query=user_message,
+                                limit=settings.MEMORY_SEARCH_TOP_K,
+                                skip_vector=False,
+                            )
+                            monitor_data = ContextMonitor.build_monitor_data(
+                                breakdown=breakdown,
+                                max_tokens=max_context_window,
+                                model_name=model_name,
+                                input_tokens=total_prompt_tokens,
+                                output_tokens=total_completion_tokens,
+                                memory_results=fresh_results,
+                                tool_processes=tool_processes,
+                            )
+                            monitor_data["request_id"] = request_id
+                            await EventService.publish_event(
+                                user_id, "context_status", monitor_data
+                            )
+                        except Exception as e:
+                            logger.warning("Final memory refresh failed: %s", e)
+
+                    yield StreamChunk(
+                        type="done", content="", message_id=assistant_msg.message_id
+                    )
 
         except LLMException:
             raise
         except Exception as e:
             logger.exception(f"Agent execution error: {request_id}")
             _finalize_execution(
-                execution, LangGraphExecution.STATUS_FAILED, timezone.now(),
+                execution,
+                LangGraphExecution.STATUS_FAILED,
+                timezone.now(),
                 int((timezone.now() - start_time).total_seconds() * 1000),
-                error_type=type(e).__name__, error_message=str(e),
+                error_type=type(e).__name__,
+                error_message=str(e),
             )
             await execution_repo.update(execution)
             if assistant_msg:
@@ -448,41 +581,70 @@ class AgentService:
         try:
             config = get_agent_config(user_id)
             (
-                preamble, preamble_tokens, effective_window,
-                _breakdown, _memory_results, _model_name, _max_ctx,
+                preamble,
+                preamble_tokens,
+                effective_window,
+                _breakdown,
+                _memory_results,
+                _model_name,
+                _max_ctx,
             ) = await _build_prompt_preamble(user_id, "请继续")
 
             async with create_chat_agent(
-                prompt=preamble, preamble_tokens=preamble_tokens,
+                prompt=preamble,
+                preamble_tokens=preamble_tokens,
                 effective_window=effective_window,
             ) as agent:
                 async with asyncio.timeout(settings.AGENT_TOTAL_TIMEOUT):
                     async for event in agent.astream_events(
                         {"messages": [HumanMessage(content="请继续")]},
-                        config=config, version="v2",
+                        config=config,
+                        version="v2",
                     ):
                         if stop_event.is_set():
                             full_response += "[已中断]"
                             await message_repo.update_content_and_status(
-                                message.message_id, user_id, full_response, Message.STATUS_INTERRUPTED,
+                                message.message_id,
+                                user_id,
+                                full_response,
+                                Message.STATUS_INTERRUPTED,
                             )
-                            yield StreamChunk(type="interrupted", content="[已中断]", message_id=message.message_id)
+                            yield StreamChunk(
+                                type="interrupted",
+                                content="[已中断]",
+                                message_id=message.message_id,
+                            )
                             return
 
                         if event["event"] == "on_chat_model_stream":
+                            # SubAgent 内部 LLM 输出过滤（与 execute 一致）
+                            if len(event.get("parent_ids", [])) > 3:
+                                continue
+
                             chunk = event["data"]["chunk"]
                             if hasattr(chunk, "content") and chunk.content:
                                 full_response += chunk.content
-                                yield StreamChunk(type="content", content=chunk.content, message_id=message.message_id)
+                                yield StreamChunk(
+                                    type="content",
+                                    content=chunk.content,
+                                    message_id=message.message_id,
+                                )
 
                 await message_repo.update_content_and_status(
-                    message.message_id, user_id, full_response, Message.STATUS_NORMAL,
+                    message.message_id,
+                    user_id,
+                    full_response,
+                    Message.STATUS_NORMAL,
                 )
-                yield StreamChunk(type="done", content="", message_id=message.message_id)
+                yield StreamChunk(
+                    type="done", content="", message_id=message.message_id
+                )
 
         except Exception as e:
             logger.exception(f"Resume generation error: {request_id}")
-            await message_repo.update_status(message.message_id, user_id, Message.STATUS_FAILED)
+            await message_repo.update_status(
+                message.message_id, user_id, Message.STATUS_FAILED
+            )
             yield StreamChunk(type="error", content="恢复生成失败，请重试")
         finally:
             unregister_generation(request_id)

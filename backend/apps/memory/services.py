@@ -215,9 +215,10 @@ class MemoryService:
         except Exception:
             pass
 
-        prompt = CRONMEM_PROMPT_TEMPLATE.format(
-            existing_memories=existing or "无现有记忆",
-            conversation_text=content,
+        prompt = (
+            CRONMEM_PROMPT_TEMPLATE
+            .replace("{existing_memories}", existing or "无现有记忆")
+            .replace("{conversation_text}", content)
         )
 
         # LLM 调用，重试 3 次
@@ -227,19 +228,48 @@ class MemoryService:
                 llm = await get_llm()
                 response = await llm.ainvoke(prompt)
                 if not (response and response.content):
+                    logger.warning(
+                        "Summarize attempt %d/3 empty response: user=%d, type=%s",
+                        attempt + 1, user_id, summary_type,
+                    )
                     continue
                 raw = str(response.content)
+                logger.debug(
+                    "Summarize raw response: user=%d, type=%s, raw=%s",
+                    user_id, summary_type, raw[:500],
+                )
+                # 解析 JSON，提取 facts 列表
+                # LLM 可能返回 markdown 代码块包裹的 JSON，先清理
+                cleaned = raw.strip()
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
                 try:
-                    facts = json.loads(raw).get("facts", [])
-                    summary_content = "\n".join(facts) if facts else None
-                except (json.JSONDecodeError, TypeError):
+                    parsed = json.loads(cleaned)
+                    if isinstance(parsed, dict):
+                        facts = parsed.get("facts", [])
+                        summary_content = "\n".join(facts) if facts else None
+                    elif isinstance(parsed, list):
+                        # LLM 直接返回了数组而非 {"facts": [...]}
+                        summary_content = "\n".join(str(f) for f in parsed) if parsed else None
+                    else:
+                        # 合法 JSON 但不是 dict/list（如纯字符串），降级为原始文本
+                        summary_content = raw
+                except (json.JSONDecodeError, ValueError):
+                    # JSON 解析失败，降级为原始文本
                     summary_content = raw
-                break
+                if summary_content:
+                    break
             except Exception as e:
-                logger.warning("Summarize attempt %d/3 failed: user=%d: %s", attempt + 1, user_id, e)
+                logger.warning(
+                    "Summarize attempt %d/3 failed: user=%d, type=%s: %s",
+                    attempt + 1, user_id, summary_type, e,
+                )
 
         if not summary_content:
-            logger.warning("Summarize failed after retries: user=%d, type=%s", user_id, summary_type)
+            logger.warning(
+                "Summarize failed after retries: user=%d, type=%s, content_len=%d",
+                user_id, summary_type, len(content),
+            )
             return None
 
         try:

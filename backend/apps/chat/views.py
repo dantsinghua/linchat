@@ -65,8 +65,6 @@ def get_messages(request: Request) -> Response:
     )
 
     has_more = len(messages) > limit
-    if has_more:
-        messages = messages[:limit]
 
     return ApiResponse.success(
         data={

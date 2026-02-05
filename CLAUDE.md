@@ -607,6 +607,10 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 - Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, LangGraph, tiktoken, redis-py (async), Next.js 14+, React 18+, Zustand (005-context-monitoring)
 - PostgreSQL 15 (主存储), Redis (缓存/PubSub/Celery Broker) (005-context-monitoring)
 - PostgreSQL 15 (主存储), Redis (缓存/PubSub/Celery Broker DB2) (005-context-monitoring)
+- Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, LangGraph, LangChain, httpx, redis-py (async) (006-home-assistant-tools)
+- Redis（限流/缓存键） (006-home-assistant-tools)
+- Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, LangGraph (create_react_agent), LangChain (ChatOpenAI, tool decorator), uvicorn 0.30+, redis-py (async), httpx (006-subagent-tools)
+- PostgreSQL 15 (主存储), Redis (缓存/PubSub) (006-subagent-tools)
 
 ## Recent Changes
 - 001-llm-chat-page: Added Python 3.11+ (后端) / TypeScript 5.0+ (前端)

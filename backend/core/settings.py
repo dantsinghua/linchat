@@ -3,6 +3,7 @@ Django settings for LinChat project.
 
 基于 data-model.md 和 constitution.md 配置
 """
+
 import os
 from pathlib import Path
 
@@ -15,7 +16,9 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-dev-key-change-in-production")
+SECRET_KEY = os.getenv(
+    "DJANGO_SECRET_KEY", "django-insecure-dev-key-change-in-production"
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() == "true"
@@ -235,7 +238,12 @@ SM4_SECRET_KEY = os.getenv("SM4_SECRET_KEY", "default-sm4-key-16")  # 必须16�
 LLM_CALL_TIMEOUT = int(os.getenv("LLM_CALL_TIMEOUT", "60"))  # 单次调用超时: 60秒
 AGENT_TOTAL_TIMEOUT = int(os.getenv("AGENT_TOTAL_TIMEOUT", "300"))  # Agent总超时: 300秒
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))  # 最大重试次数
-LLM_INITIAL_RETRY_DELAY = float(os.getenv("LLM_INITIAL_RETRY_DELAY", "1.0"))  # 初始重试延迟(秒)
+SUBAGENT_TIMEOUT = int(
+    os.getenv("SUBAGENT_TIMEOUT", "60")
+)  # SubAgent 单次执行超时: 60秒
+LLM_INITIAL_RETRY_DELAY = float(
+    os.getenv("LLM_INITIAL_RETRY_DELAY", "1.0")
+)  # 初始重试延迟(秒)
 LLM_MAX_RETRY_DELAY = float(os.getenv("LLM_MAX_RETRY_DELAY", "8.0"))  # 最大重试延迟(秒)
 LLM_RETRY_BACKOFF = float(os.getenv("LLM_RETRY_BACKOFF", "2.0"))  # 退避倍数
 
@@ -270,8 +278,12 @@ AUTH_LOCK_DURATION = 900  # 锁定时间: 15分钟
 
 # ============ Celery 配置 ============
 # 参考: research.md RES-003, CLAUDE.md
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://:redis_linchat_123@localhost:6379/2")
-CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://:redis_linchat_123@localhost:6379/2")
+CELERY_BROKER_URL = os.getenv(
+    "CELERY_BROKER_URL", "redis://:redis_linchat_123@localhost:6379/2"
+)
+CELERY_RESULT_BACKEND = os.getenv(
+    "CELERY_RESULT_BACKEND", "redis://:redis_linchat_123@localhost:6379/2"
+)
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
