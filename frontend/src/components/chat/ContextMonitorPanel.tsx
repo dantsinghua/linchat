@@ -78,6 +78,30 @@ const MAX_HISTORY = 30;
 /*  useContextMonitor — 监听 CustomEvent + 维护历史                      */
 /* ------------------------------------------------------------------ */
 
+const STORAGE_KEY = 'linchat:monitor';
+
+function loadCachedMonitor(): {
+  data: MonitorData | null;
+  tokenHistory: { input: number[]; output: number[] };
+  contextHistory: number[];
+} {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return { data: null, tokenHistory: { input: [], output: [] }, contextHistory: [] };
+}
+
+function saveCachedMonitor(
+  data: MonitorData,
+  tokenHistory: { input: number[]; output: number[] },
+  contextHistory: number[],
+) {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ data, tokenHistory, contextHistory }));
+  } catch { /* ignore */ }
+}
+
 export function useContextMonitor() {
   const [data, setData] = useState<MonitorData | null>(null);
   const tokenHistoryRef = useRef<{ input: number[]; output: number[] }>({
@@ -92,6 +116,21 @@ export function useContextMonitor() {
     output: [],
   });
   const [contextHistory, setContextHistory] = useState<number[]>([]);
+
+  // 客户端 mount 后从 sessionStorage 恢复缓存数据（避免 SSR hydration 不匹配）
+  useEffect(() => {
+    const cached = loadCachedMonitor();
+    if (cached.data) {
+      setData(cached.data);
+      tokenHistoryRef.current = {
+        input: [...(cached.tokenHistory.input || [])],
+        output: [...(cached.tokenHistory.output || [])],
+      };
+      contextHistoryRef.current = [...(cached.contextHistory || [])];
+      setTokenHistory(cached.tokenHistory || { input: [], output: [] });
+      setContextHistory(cached.contextHistory || []);
+    }
+  }, []);
 
   useEffect(() => {
     function handler(e: Event) {
@@ -139,12 +178,17 @@ export function useContextMonitor() {
 
       if (ih.length > MAX_HISTORY) ih.shift();
       if (oh.length > MAX_HISTORY) oh.shift();
-      setTokenHistory({ input: [...ih], output: [...oh] });
+      const newTokenHistory = { input: [...ih], output: [...oh] };
+      setTokenHistory(newTokenHistory);
 
       const ch = contextHistoryRef.current;
       ch.push(status.breakdown?.total ?? 0);
       if (ch.length > MAX_HISTORY) ch.shift();
-      setContextHistory([...ch]);
+      const newContextHistory = [...ch];
+      setContextHistory(newContextHistory);
+
+      // 持久化到 sessionStorage，刷新页面后恢复
+      saveCachedMonitor(monitor, newTokenHistory, newContextHistory);
     }
 
     window.addEventListener('context_status', handler);
