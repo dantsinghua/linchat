@@ -2,7 +2,7 @@
 LangGraph 流程工厂集成测试 [T057]
 
 验证四个工厂函数创建的 Agent 各自工具集正确、不越界：
-- chat: 记忆工具集 (4) + extra_tools
+- chat: SubAgent 工具集 (search_subagent/memory_subagent/code_subagent) + extra_tools
 - context: 上下文工具集 (3)
 - memory: 记忆工具集 (4)
 - cronMem: 无工具 (0)
@@ -93,10 +93,8 @@ class TestAgentFactories:
 
     @patch("apps.graph.agent.get_llm")
     @patch("apps.graph.agent.create_react_agent")
-    def test_chat_agent_has_memory_tools(
-        self, mock_create, mock_llm
-    ) -> None:
-        """chat 流程包含记忆工具集"""
+    def test_chat_agent_has_subagent_tools(self, mock_create, mock_llm) -> None:
+        """chat 流程包含 SubAgent 工具集"""
         mock_llm.return_value = MagicMock()
         mock_create.return_value = MagicMock()
 
@@ -114,22 +112,23 @@ class TestAgentFactories:
         tools = call_kwargs.kwargs.get("tools") or call_kwargs[1].get("tools", [])
         tool_names = {t.name for t in tools}
 
-        # 包含 4 个记忆工具
-        assert "mem_search" in tool_names
-        assert "mem_cache" in tool_names
-        assert "mem_update" in tool_names
-        assert "mem_delete" in tool_names
+        # 包含 SubAgent 工具（search_subagent 受 BRAVE_SEARCH_API_KEY 条件控制）
+        assert "memory_subagent" in tool_names
+        assert "code_subagent" in tool_names
 
-        # 不包含上下文工具
+        # 不包含上下文工具（直接工具已移入 SubAgent 内部）
         assert "context_compact" not in tool_names
         assert "context_extract" not in tool_names
         assert "context_prune" not in tool_names
 
+        # 不直接包含底层工具（已封装在 SubAgent 内部）
+        assert "mem_cache" not in tool_names
+        assert "mem_update" not in tool_names
+        assert "mem_delete" not in tool_names
+
     @patch("apps.graph.agent.get_llm")
     @patch("apps.graph.agent.create_react_agent")
-    def test_chat_agent_no_checkpointer(
-        self, mock_create, mock_llm
-    ) -> None:
+    def test_chat_agent_no_checkpointer(self, mock_create, mock_llm) -> None:
         """chat 流程不使用 checkpointer（避免历史 tool 消息累积）"""
         mock_llm.return_value = MagicMock()
         mock_create.return_value = MagicMock()
@@ -148,9 +147,7 @@ class TestAgentFactories:
 
     @patch("apps.graph.agent.get_llm")
     @patch("apps.graph.agent.create_react_agent")
-    def test_chat_agent_with_extra_tools(
-        self, mock_create, mock_llm
-    ) -> None:
+    def test_chat_agent_with_extra_tools(self, mock_create, mock_llm) -> None:
         """chat 流程支持 extra_tools 扩展"""
         mock_llm.return_value = MagicMock()
         mock_create.return_value = MagicMock()
@@ -175,13 +172,11 @@ class TestAgentFactories:
         tool_names = {t.name for t in tools}
 
         assert "my_custom_tool" in tool_names
-        assert "mem_search" in tool_names  # 记忆工具仍存在
+        assert "memory_subagent" in tool_names  # SubAgent 工具仍存在
 
     @patch("apps.graph.agent.get_llm")
     @patch("apps.graph.agent.create_react_agent")
-    def test_chat_agent_with_prompt(
-        self, mock_create, mock_llm
-    ) -> None:
+    def test_chat_agent_with_prompt(self, mock_create, mock_llm) -> None:
         """chat 流程接受 prompt 参数"""
         mock_llm.return_value = MagicMock()
         mock_create.return_value = MagicMock()
@@ -269,9 +264,7 @@ class TestAgentFactories:
     @patch("apps.graph.agent.get_checkpointer")
     @patch("apps.graph.agent.get_llm")
     @patch("apps.graph.agent.create_react_agent")
-    def test_cronmem_agent_has_no_tools(
-        self, mock_create, mock_llm, mock_cp
-    ) -> None:
+    def test_cronmem_agent_has_no_tools(self, mock_create, mock_llm, mock_cp) -> None:
         """cronMem 流程无工具"""
         mock_cp.side_effect = _mock_checkpointer()
         mock_llm.return_value = MagicMock()

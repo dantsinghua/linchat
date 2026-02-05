@@ -18,9 +18,9 @@ import os
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
+from apps.graph.subagents import get_subagent_tools
 from apps.graph.tools.context import CONTEXT_TOOLS
 from apps.graph.tools.memory import MEMORY_TOOLS
-
 
 # ======== LLM（环境变量配置）========
 
@@ -28,7 +28,9 @@ from apps.graph.tools.memory import MEMORY_TOOLS
 def _get_llm() -> ChatOpenAI:
     """从环境变量创建 LLM 实例（独立模式专用）"""
     return ChatOpenAI(
-        base_url=os.environ.get("LLM_API_BASE", "https://ark.cn-beijing.volces.com/api/v3"),
+        base_url=os.environ.get(
+            "LLM_API_BASE", "https://ark.cn-beijing.volces.com/api/v3"
+        ),
         api_key=os.environ.get("LLM_API_KEY", "not-needed"),
         model=os.environ.get("LLM_MODEL_NAME", "deepseek-v3-1-terminus"),
         streaming=True,
@@ -47,7 +49,7 @@ _llm = _get_llm()
 
 chat_graph = create_react_agent(
     model=_llm,
-    tools=list(MEMORY_TOOLS),
+    tools=get_subagent_tools(),
     prompt=STANDALONE_SYSTEM_PROMPT,
 )
 
