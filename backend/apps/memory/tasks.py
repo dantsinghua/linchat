@@ -179,9 +179,11 @@ def _run_summary(primary_type: str, start, end, summary_type: str, summary_name:
                     created_at__gte=start, created_at__lt=end,
                 )
                 content = "\n\n".join(r.content for r in records)
+                source = primary_type
 
                 # 降级到 message 表
                 if not content:
+                    source = "message"
                     try:
                         from apps.chat.models import Message
                         msgs = Message.objects.filter(
@@ -192,14 +194,35 @@ def _run_summary(primary_type: str, start, end, summary_type: str, summary_name:
                         logger.warning("Failed to get messages for user %d: %s", user_id, e)
 
                 if not content:
+                    logger.debug(
+                        "%s: no content for user %d (source=%s, range=%s~%s)",
+                        summary_type, user_id, source, start, end,
+                    )
                     continue
 
-                loop.run_until_complete(MemoryService.summarize_and_store(
+                logger.info(
+                    "%s: processing user %d (source=%s, content_len=%d)",
+                    summary_type, user_id, source, len(content),
+                )
+                result = loop.run_until_complete(MemoryService.summarize_and_store(
                     user_id=user_id, content=content,
                     summary_type=summary_type, summary_name=summary_name,
                 ))
+                if result:
+                    logger.info(
+                        "%s: stored for user %d (memory_id=%d, content_len=%d)",
+                        summary_type, user_id, result.id, len(result.content),
+                    )
+                else:
+                    logger.warning(
+                        "%s: summarize returned None for user %d (content_len=%d)",
+                        summary_type, user_id, len(content),
+                    )
             except Exception as e:
-                logger.warning("%s failed for user %d: %s", summary_type, user_id, e)
+                logger.warning(
+                    "%s failed for user %d: %s: %s",
+                    summary_type, user_id, type(e).__name__, e,
+                )
     finally:
         loop.close()
 
