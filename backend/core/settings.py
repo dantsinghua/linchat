@@ -313,6 +313,18 @@ MONITOR_PUSH_INTERVAL = float(os.getenv("MONITOR_PUSH_INTERVAL", "0.5"))
 # ============ Brave Search 配置 ============
 BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "")
 
+# ============ Home Assistant 配置 ============
+# 参考: specs/007-home-assistant-tools/
+HA_URL = os.getenv("HA_URL", "")  # HA 实例地址，如 http://192.168.1.100:8123
+HA_TOKEN = os.getenv("HA_TOKEN", "")  # Long-Lived Access Token
+HA_REQUEST_TIMEOUT = int(os.getenv("HA_REQUEST_TIMEOUT", "10"))  # HTTP 请求超时（秒）
+HA_BLOCKED_ENTITIES = [
+    e.strip()
+    for e in os.getenv("HA_BLOCKED_ENTITIES", "").split(",")
+    if e.strip()
+]  # 黑名单设备列表
+HA_ENABLED = bool(HA_URL and HA_TOKEN)  # 有配置才启用
+
 
 # 日志配置
 LOGGING = {
