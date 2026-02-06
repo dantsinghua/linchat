@@ -5,13 +5,14 @@ import logging
 from django.conf import settings
 
 from apps.graph.tools.context import CONTEXT_TOOLS
+from apps.graph.tools.homeassistant import HA_TOOLS
 from apps.graph.tools.memory import MEMORY_TOOLS
 from apps.graph.tools.python_repl import REPL_TOOLS
 from apps.graph.tools.search import SEARCH_TOOLS
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["CONTEXT_TOOLS", "MEMORY_TOOLS", "SEARCH_TOOLS", "REPL_TOOLS", "cap_tool_result"]
+__all__ = ["CONTEXT_TOOLS", "HA_TOOLS", "MEMORY_TOOLS", "SEARCH_TOOLS", "REPL_TOOLS", "cap_tool_result"]
 
 
 def cap_tool_result(text: str, tool_name: str) -> str:

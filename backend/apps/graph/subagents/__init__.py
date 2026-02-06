@@ -32,4 +32,10 @@ def get_subagent_tools() -> list[BaseTool]:
 
     tools.append(code_subagent)
 
+    # Home Assistant SubAgent：需要 HA_ENABLED
+    if getattr(settings, "HA_ENABLED", False):
+        from .ha_agent import ha_subagent
+
+        tools.append(ha_subagent)
+
     return tools

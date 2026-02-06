@@ -218,6 +218,46 @@ services:
     networks:
       - linchat-network
 
+  # ============ 智能家居服务 ============
+
+  # Home Assistant 智能家居控制中心
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: linchat-homeassistant
+    restart: unless-stopped
+    privileged: true
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "8124:8123"
+    volumes:
+      - homeassistant_config:/config
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8123/api/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - linchat-network
+
+  # Node-RED 可视化自动化工具 (仅内网)
+  nodered:
+    image: nodered/node-red:latest
+    container_name: linchat-nodered
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:1880:1880"
+    volumes:
+      - nodered_data:/data
+    depends_on:
+      - homeassistant
+    networks:
+      - linchat-network
+
 volumes:
   postgres_data:
     driver: local
@@ -228,6 +268,10 @@ volumes:
   clickhouse_logs:
     driver: local
   minio_data:
+    driver: local
+  homeassistant_config:
+    driver: local
+  nodered_data:
     driver: local
 
 networks:
