@@ -1,3 +1,9 @@
-<claude-mem-context>
+# 006 checklists 指南
 
-</claude-mem-context>
+> SubAgent 工具特性的质量检查清单。
+
+## 文件
+
+| 文件 | 内容 |
+|------|------|
+| `requirements.md` | 需求验收检查清单 |
