@@ -13,7 +13,7 @@ import { trigger401Redirect, resetAuthGuard, isAuthRedirecting } from '@/service
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 
 interface SSEEvent {
-  type: 'logout' | 'message' | 'heartbeat' | 'connected' | 'context_status';
+  type: 'logout' | 'message' | 'heartbeat' | 'connected' | 'context_status' | 'doc_parse_progress';
   reason?: 'SSO_CONFLICT' | 'TOKEN_EXPIRED' | 'ADMIN_KICK';
   message?: string;
   [key: string]: unknown;
@@ -63,6 +63,14 @@ export function useAuth() {
       if (data.type === 'context_status') {
         window.dispatchEvent(
           new CustomEvent('context_status', { detail: data })
+        );
+        return;
+      }
+
+      // 文档解析进度事件 (T043a) — 分发给 useDocParse Hook
+      if (data.type === 'doc_parse_progress') {
+        window.dispatchEvent(
+          new CustomEvent('doc_parse_progress', { detail: data })
         );
         return;
       }
@@ -119,7 +127,7 @@ export function useAuth() {
             } else if (line.startsWith('data: ')) {
               try {
                 const data: SSEEvent = JSON.parse(line.slice(6));
-                if (currentEventType && ['logout', 'heartbeat', 'message', 'connected', 'context_status'].includes(currentEventType)) {
+                if (currentEventType && ['logout', 'heartbeat', 'message', 'connected', 'context_status', 'doc_parse_progress'].includes(currentEventType)) {
                   data.type = currentEventType as SSEEvent['type'];
                 }
                 handleSSEEvent(data);

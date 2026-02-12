@@ -51,6 +51,8 @@ export interface Message {
   request_id?: string | null;
   model_name?: string | null;
   response_time_ms?: number | null;
+  /** 媒体附件列表（多模态消息） */
+  attachments?: import('@/types/media').MediaAttachment[];
 }
 
 export interface ChatRequest {
@@ -66,6 +68,11 @@ export interface ChatStreamEvent {
   content: string;
   message_id?: number;
   request_id?: string; // 首个 chunk 返回，用于停止/继续生成
+  data?: {
+    gateway_error?: string; // E3001/E3002
+    retry_after?: number;   // E3002 模型切换等待秒数
+    content_control?: boolean; // 安全护栏触发标志
+  };
 }
 
 export interface HistoryResponse {

@@ -28,6 +28,10 @@ interface NetworkErrorProps {
   autoHideDuration?: number;
   /** 自定义样式类 */
   className?: string;
+  /** Gateway 模型切换倒计时（秒） */
+  gatewayRetryAfter?: number;
+  /** 倒计时结束/清零回调 */
+  onRetryAfterDone?: () => void;
 }
 
 /**
@@ -111,8 +115,11 @@ export const NetworkError = memo(function NetworkError({
   showRetry = true,
   autoHideDuration = 0,
   className = '',
+  gatewayRetryAfter = 0,
+  onRetryAfterDone,
 }: NetworkErrorProps) {
   const [visible, setVisible] = useState(false);
+  const [countdown, setCountdown] = useState(0);
 
   // 错误出现时显示
   useEffect(() => {
@@ -120,6 +127,26 @@ export const NetworkError = memo(function NetworkError({
       setVisible(true);
     }
   }, [error]);
+
+  // T067a: Gateway 模型切换倒计时
+  useEffect(() => {
+    if (gatewayRetryAfter > 0) {
+      setCountdown(gatewayRetryAfter);
+      const timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            onRetryAfterDone?.();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+    setCountdown(0);
+    return undefined;
+  }, [gatewayRetryAfter, onRetryAfterDone]);
 
   // 自动消失
   useEffect(() => {
@@ -153,6 +180,7 @@ export const NetworkError = memo(function NetworkError({
 
   const friendlyMessage = getErrorMessage(error);
   const canRetry = isRetryableError(error);
+  const isCountingDown = countdown > 0;
 
   return (
     <div
@@ -173,15 +201,27 @@ export const NetworkError = memo(function NetworkError({
               clipRule="evenodd"
             />
           </svg>
-          <span className="text-sm">{friendlyMessage}</span>
+          <span className="text-sm">
+            {friendlyMessage}
+            {isCountingDown && (
+              <span className="ml-1.5 font-medium">
+                （模型切换中，约 {countdown} 秒后可重试）
+              </span>
+            )}
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* 重试按钮 */}
+          {/* 重试按钮：倒计时中禁用，倒计时结束后可点击 */}
           {showRetry && canRetry && onRetry && (
             <button
               onClick={handleRetry}
-              className="rounded px-3 py-1 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-800/50"
+              disabled={isCountingDown}
+              className={`rounded px-3 py-1 text-sm font-medium transition-colors ${
+                isCountingDown
+                  ? 'cursor-not-allowed text-red-300 dark:text-red-600'
+                  : 'text-red-700 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-800/50'
+              }`}
             >
               重试
             </button>

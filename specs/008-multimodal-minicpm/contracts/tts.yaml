@@ -1,0 +1,161 @@
+openapi: 3.0.3
+info:
+  title: LinChat TTS API
+  description: AI 语音回复（TTS）相关接口
+  version: 1.0.0
+
+paths:
+  /api/v1/chat/tts/:
+    post:
+      summary: 获取 AI 回复的语音合成
+      description: |
+        将指定消息的 AI 回复文本转换为语音音频。
+        后端透传 Gateway 的 `/v1/audio/speech` 接口。
+
+        ⚠️ 注意：Gateway `/v1/audio/speech` 端点尚未在 upstream-integration-guide.md v2.0.0 中列出。
+        该接口为 MiniCPM-o 模型的 TTS 能力扩展，需与 Gateway 侧确认实现状态。
+        若 Gateway 尚未实现，后端应返回 503 TTS_SERVICE_UNAVAILABLE。
+
+        使用限制：
+        - 仅对 role=assistant 的消息可用
+        - 消息必须属于当前用户
+        - 单次合成文本长度不超过 2000 字符
+
+        Gateway 侧约束：
+        - 模型：minicpm-o（支持 TTS 能力）
+        - minicpm-v 和 minicpm-o 共用 GPU 端口 8006，可能触发热切换
+        - 模型不可用时返回 E3002（503，含 retry_after 字段）
+        - 模型不存在返回 E3001（404）
+        - 推理超时返回 E3003（504）
+
+        Gateway 错误格式映射：
+        - Gateway: {"error": {"code": "Exxxx", ...}} → LinChat: {"code": "...", "message": "...", "data": ...}
+
+        参考文档：docs/upstream-integration-guide.md §6.4（E3001/E3002/E3003 错误码）
+      tags:
+        - TTS
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TTSRequest'
+      responses:
+        '200':
+          description: 语音音频流
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: 'attachment; filename="tts_{message_uuid}.mp3"'
+        '400':
+          description: 请求错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                textTooLong:
+                  value:
+                    code: TEXT_TOO_LONG
+                    message: 文本长度超出限制（最大 2000 字符）
+                    data: null
+                invalidMessage:
+                  value:
+                    code: INVALID_MESSAGE
+                    message: 仅支持 AI 回复消息的语音合成
+                    data: null
+        '401':
+          description: 未认证
+        '403':
+          description: 无访问权限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: MESSAGE_ACCESS_DENIED
+                message: 无权访问该消息
+                data: null
+        '404':
+          description: 消息不存在
+        '503':
+          description: TTS 服务不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                modelUnavailable:
+                  value:
+                    code: TTS_SERVICE_UNAVAILABLE
+                    message: 语音合成服务暂时不可用，请稍后重试
+                    data:
+                      gateway_error: "E3002"
+                modelSwitching:
+                  value:
+                    code: TTS_MODEL_SWITCHING
+                    message: 模型正在切换中，请稍后重试
+                    data:
+                      gateway_error: "E3002"
+                      estimated_wait_seconds: 60
+                      retry_after: 60
+        '504':
+          description: Gateway 推理超时（E3003）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: TTS_TIMEOUT
+                message: 语音合成超时，请稍后重试
+                data:
+                  gateway_error: "E3003"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+
+  schemas:
+    TTSRequest:
+      type: object
+      required:
+        - message_uuid
+      properties:
+        message_uuid:
+          type: string
+          format: uuid
+          description: AI 回复消息的 UUID
+        voice:
+          type: string
+          description: 语音风格（预留扩展）
+          default: default
+          enum: [default]
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          description: 错误码
+        message:
+          type: string
+          description: 错误信息
+        data:
+          type: object
+          nullable: true
+          description: 附加数据

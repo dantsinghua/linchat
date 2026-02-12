@@ -5,19 +5,31 @@
  * - rule-model.md#R_MSG_001 - 消息长度限制 4000 字符
  * - rule-model.md#R_MSG_002 - 空消息拦截
  * - spec.md US2场景9 - 停止按钮
+ * - T029: 支持图片上传按钮（多模态附件）
  */
 'use client';
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
+import { AudioRecorder } from '@/components/chat/AudioRecorder';
+import {
+  MediaUploader,
+  type MediaUploaderRef,
+} from '@/components/chat/MediaUploader';
+import { uploadMedia } from '@/services/mediaApi';
+import { useUploadStore, createUploadTask } from '@/stores/uploadStore';
+import { MEDIA_LIMITS } from '@/types/media';
+import type { MediaAttachment } from '@/types/media';
+
 const MAX_LENGTH = 4000;
 const DEBOUNCE_MS = 300;
+const STOP_DEBOUNCE_MS = 500;
 
 interface MessageInputProps {
   isGenerating: boolean;
   disabled?: boolean;
   failedContent?: string | null;
-  onSend: (content: string) => Promise<void>;
+  onSend: (content: string, attachments?: MediaAttachment[]) => Promise<void>;
   onStop: () => Promise<void>;
   onClearFailedContent?: () => void;
 }
@@ -30,6 +42,7 @@ interface MessageInputProps {
  * - 长度限制（4000 字符）
  * - 发送按钮 / 停止按钮切换
  * - 防抖处理（300ms）
+ * - 多模态文件上传（T029）
  */
 export const MessageInput = memo(function MessageInput({
   isGenerating,
@@ -41,13 +54,26 @@ export const MessageInput = memo(function MessageInput({
 }: MessageInputProps) {
   const [content, setContent] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const lastSendTimeRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const uploaderRef = useRef<MediaUploaderRef>(null);
+
+  const uploadStore = useUploadStore();
+  const hasUploadingTasks = uploadStore.tasks.some(
+    (t) => t.status === 'uploading' || t.status === 'pending'
+  );
 
   const trimmedContent = content.trim();
   const isEmpty = trimmedContent.length === 0;
   const isOverLimit = content.length > MAX_LENGTH;
-  const canSend = !isEmpty && !isOverLimit && !disabled && !isGenerating && !isSending;
+  const canSend =
+    !isEmpty &&
+    !isOverLimit &&
+    !disabled &&
+    !isGenerating &&
+    !isSending &&
+    !hasUploadingTasks;
 
   // 自动调整文本框高度（最大170px，超出后出现内部滚动条）
   const adjustHeight = useCallback(() => {
@@ -102,21 +128,35 @@ export const MessageInput = memo(function MessageInput({
     }
     lastSendTimeRef.current = now;
 
+    // 收集已完成的附件数据
+    const completedTasks = uploadStore.tasks.filter(
+      (t) => t.status === 'completed' && t.attachment
+    );
+    const attachments =
+      completedTasks.length > 0
+        ? completedTasks.map((t) => t.attachment!)
+        : undefined;
+
     const sendContent = trimmedContent;
-    // 立即清空输入框并重置高度（出错时通过 failedContent 机制恢复）
+    // 立即清空输入框、上传列表并重置高度（出错时通过 failedContent 机制恢复）
     setContent('');
     resetTextarea();
+    uploadStore.clearTasks();
 
     setIsSending(true);
     try {
-      await onSend(sendContent);
+      await onSend(sendContent, attachments);
     } finally {
       setIsSending(false);
     }
-  }, [canSend, trimmedContent, onSend, resetTextarea]);
+  }, [canSend, trimmedContent, onSend, resetTextarea, uploadStore]);
 
-  // 停止生成
+  // 停止生成（T039: 500ms 防抖）
+  const lastStopTimeRef = useRef(0);
   const handleStop = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastStopTimeRef.current < STOP_DEBOUNCE_MS) return;
+    lastStopTimeRef.current = now;
     await onStop();
   }, [onStop]);
 
@@ -136,6 +176,42 @@ export const MessageInput = memo(function MessageInput({
     [isGenerating, handleSend, handleStop]
   );
 
+  // 打开文件选择器
+  const handleOpenPicker = useCallback(() => {
+    uploaderRef.current?.openFilePicker();
+  }, []);
+
+  // T057: 录音完成，创建上传任务并设置"[语音消息]"
+  const handleRecordingComplete = useCallback(
+    async (blob: Blob, _duration: number) => {
+      setIsRecording(false);
+      const file = new File([blob], `voice_${Date.now()}.webm`, {
+        type: 'audio/webm',
+      });
+      const task = createUploadTask(file);
+      uploadStore.addTask(task);
+
+      // 设置占位文本
+      setContent('[语音消息]');
+
+      // 上传文件
+      uploadStore.updateTaskStatus(task.id, 'uploading');
+      try {
+        const response = await uploadMedia(file, (progress) => {
+          uploadStore.updateTaskProgress(task.id, progress);
+        });
+        uploadStore.completeTask(task.id, response.data);
+      } catch (error) {
+        uploadStore.updateTaskStatus(
+          task.id,
+          'failed',
+          (error as Error).message
+        );
+      }
+    },
+    [uploadStore]
+  );
+
   return (
     <div className="border-t bg-white p-4 dark:bg-gray-800">
       <div className="mx-auto max-w-3xl">
@@ -148,6 +224,23 @@ export const MessageInput = memo(function MessageInput({
           >
             {content.length}/{MAX_LENGTH}
             {isOverLimit && ' 超出字符限制'}
+          </div>
+        )}
+
+        {/* 上传预览区域 */}
+        <MediaUploader
+          ref={uploaderRef}
+          disabled={disabled || isGenerating}
+        />
+
+        {/* T057: 语音录制面板 */}
+        {isRecording && (
+          <div className="mb-2">
+            <AudioRecorder
+              onRecordingComplete={handleRecordingComplete}
+              onCancel={() => setIsRecording(false)}
+              disabled={disabled}
+            />
           </div>
         )}
 
@@ -170,57 +263,135 @@ export const MessageInput = memo(function MessageInput({
           />
         </div>
 
-        {/* 发送/停止按钮 - 输入框下方右对齐 */}
-        <div className="mt-2 flex justify-end">
-          {isGenerating ? (
+        {/* 操作按钮行: 附件 + 发送/停止 */}
+        <div className="mt-2 flex items-center justify-between">
+          {/* 左侧: 附件按钮 */}
+          <div className="flex items-center gap-1">
             <button
-              onClick={handleStop}
-              className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
-              title="停止生成"
+              type="button"
+              onClick={handleOpenPicker}
+              disabled={
+                disabled ||
+                isGenerating ||
+                uploadStore.tasks.length >= MEDIA_LIMITS.MAX_ATTACHMENTS
+              }
+              className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
+                disabled ||
+                isGenerating ||
+                uploadStore.tasks.length >= MEDIA_LIMITS.MAX_ATTACHMENTS
+                  ? 'cursor-not-allowed text-gray-300'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-600'
+              }`}
+              title="上传文件"
             >
-              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                <rect x="6" y="6" width="8" height="8" rx="1" />
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                />
               </svg>
             </button>
-          ) : (
+
+            {/* 语音录制按钮 (T057) */}
             <button
-              onClick={handleSend}
-              disabled={!canSend}
+              type="button"
+              onClick={() => setIsRecording(true)}
+              disabled={disabled || isGenerating || isRecording}
               className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
-                canSend
-                  ? 'bg-primary-500 text-white hover:bg-primary-600'
-                  : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-gray-600'
+                disabled || isGenerating || isRecording
+                  ? 'cursor-not-allowed text-gray-300'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-600'
               }`}
-              title="发送消息"
+              title="语音录制"
             >
-              {isSending ? (
-                <svg
-                  className="h-5 w-5 animate-spin"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
-              ) : (
-                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-                </svg>
-              )}
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4M12 15a3 3 0 003-3V5a3 3 0 00-6 0v7a3 3 0 003 3z"
+                />
+              </svg>
             </button>
-          )}
+
+            {/* 上传中提示 */}
+            {hasUploadingTasks && (
+              <span className="text-xs text-gray-400">上传中...</span>
+            )}
+          </div>
+
+          {/* 右侧: 发送/停止按钮 */}
+          <div>
+            {isGenerating ? (
+              <button
+                onClick={handleStop}
+                className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600"
+                title="停止生成"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <rect x="6" y="6" width="8" height="8" rx="1" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                onClick={handleSend}
+                disabled={!canSend}
+                className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
+                  canSend
+                    ? 'bg-primary-500 text-white hover:bg-primary-600'
+                    : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-gray-600'
+                }`}
+                title="发送消息"
+              >
+                {isSending ? (
+                  <svg
+                    className="h-5 w-5 animate-spin"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="h-5 w-5"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                  </svg>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 提示信息 */}

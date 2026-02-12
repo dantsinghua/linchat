@@ -130,7 +130,7 @@ else:
 
 # Redis 配置
 # 参考: data-model.md#三、Redis缓存设计
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = os.getenv("REDIS_URL", "redis://:redis_linchat_123@localhost:6379/0")
 
 CACHES = {
     "default": {
@@ -324,6 +324,65 @@ HA_BLOCKED_ENTITIES = [
     if e.strip()
 ]  # 黑名单设备列表
 HA_ENABLED = bool(HA_URL and HA_TOKEN)  # 有配置才启用
+
+
+# ============ MinIO 对象存储配置 ============
+# 参考: specs/008-multimodal-minicpm/research.md
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9010")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
+MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() == "true"
+MINIO_BUCKET_MEDIA = os.getenv("MINIO_BUCKET_MEDIA", "linchat-media")
+MINIO_BUCKET_THUMBNAILS = os.getenv("MINIO_BUCKET_THUMBNAILS", "linchat-thumbnails")
+
+# ============ 多模态推理配置 ============
+# 参考: specs/008-multimodal-minicpm/spec.md, FR-032, T003
+LLM_GATEWAY_URL = os.getenv("LLM_GATEWAY_URL", "http://127.0.0.1:8100")
+LLM_GATEWAY_API_KEY = os.getenv("LLM_GATEWAY_API_KEY", "")
+LLM_GATEWAY_TIMEOUT = int(os.getenv("LLM_GATEWAY_TIMEOUT", "180"))  # 通用网关超时: 180秒
+
+# 命名超时常量 (FR-032: 6 种超时配置)
+LLM_GATEWAY_INFERENCE_TIMEOUT = int(os.getenv("LLM_GATEWAY_INFERENCE_TIMEOUT", "180"))  # 推理请求: 180秒
+LLM_GATEWAY_CANCEL_TIMEOUT = int(os.getenv("LLM_GATEWAY_CANCEL_TIMEOUT", "5"))  # 取消请求: 5秒
+LLM_GATEWAY_POLL_TIMEOUT = int(os.getenv("LLM_GATEWAY_POLL_TIMEOUT", "30"))  # 轮询查询: 30秒
+LLM_GATEWAY_DOC_PARSE_CREATE_TIMEOUT = int(os.getenv("LLM_GATEWAY_DOC_PARSE_CREATE_TIMEOUT", "30"))  # 文档解析创建: 30秒
+LLM_GATEWAY_DOC_PARSE_RESULT_TIMEOUT = int(os.getenv("LLM_GATEWAY_DOC_PARSE_RESULT_TIMEOUT", "30"))  # 文档解析结果: 30秒
+LLM_GATEWAY_GUARDRAILS_LEVEL = os.getenv("LLM_GATEWAY_GUARDRAILS_LEVEL", "fast")  # 护栏级别: fast (< 10ms)
+
+# 文档解析配置
+DOC_PARSE_MAX_FILE_SIZE = int(os.getenv("DOC_PARSE_MAX_FILE_SIZE", str(10 * 1024 * 1024)))  # 10MB
+DOC_PARSE_MAX_PAGES = int(os.getenv("DOC_PARSE_MAX_PAGES", "200"))
+DOC_PARSE_POLL_INTERVAL = int(os.getenv("DOC_PARSE_POLL_INTERVAL", "3"))  # 轮询间隔（秒）
+DOC_PARSE_POLL_MAX_WAIT = int(os.getenv("DOC_PARSE_POLL_MAX_WAIT", "900"))  # 最大等待（秒）
+DOC_PARSE_DEFAULT_MODEL = os.getenv("DOC_PARSE_DEFAULT_MODEL", "minicpm-o")
+DOC_PARSE_MAX_RESULT_LENGTH = int(os.getenv("DOC_PARSE_MAX_RESULT_LENGTH", "8000"))  # FR-034: 结果截断长度
+
+# 视频预处理配置 (MiniCPM-o 限制: 高分辨率+多帧会导致 vLLM 500 错误)
+VIDEO_PREPROCESS_WIDTH = int(os.getenv("VIDEO_PREPROCESS_WIDTH", "320"))  # 视频最大宽度(px)
+
+# 多模态模型路由配置
+MULTIMODAL_MODEL_VISION = os.getenv("MULTIMODAL_MODEL_VISION", "minicpm-o")  # 图片/视频（统一使用 minicpm-o）
+MULTIMODAL_MODEL_AUDIO = os.getenv("MULTIMODAL_MODEL_AUDIO", "minicpm-o")  # 音频
+
+# Django 文件上传大小限制（支持多模态大文件上传）
+FILE_UPLOAD_MAX_MEMORY_SIZE = 60 * 1024 * 1024  # 60MB（超此大小写临时文件）
+DATA_UPLOAD_MAX_MEMORY_SIZE = 60 * 1024 * 1024  # 60MB（请求体最大大小）
+
+# 媒体文件限制
+MEDIA_MAX_IMAGE_SIZE = int(os.getenv("MEDIA_MAX_IMAGE_SIZE", str(10 * 1024 * 1024)))  # 10MB
+MEDIA_MAX_VIDEO_SIZE = int(os.getenv("MEDIA_MAX_VIDEO_SIZE", str(50 * 1024 * 1024)))  # 50MB
+MEDIA_MAX_AUDIO_SIZE = int(os.getenv("MEDIA_MAX_AUDIO_SIZE", str(10 * 1024 * 1024)))  # 10MB
+MEDIA_MAX_DOCUMENT_SIZE = int(os.getenv("MEDIA_MAX_DOCUMENT_SIZE", str(10 * 1024 * 1024)))  # 10MB
+MEDIA_MAX_DURATION_SECONDS = int(os.getenv("MEDIA_MAX_DURATION_SECONDS", "60"))  # 60秒
+MEDIA_MAX_ATTACHMENTS = int(os.getenv("MEDIA_MAX_ATTACHMENTS", "5"))  # 单次最多5个附件
+MEDIA_EXPIRY_DAYS = int(os.getenv("MEDIA_EXPIRY_DAYS", "7"))  # 媒体文件7天过期
+
+# TTS 配置
+LLM_GATEWAY_TTS_TIMEOUT = int(os.getenv("LLM_GATEWAY_TTS_TIMEOUT", "60"))  # TTS 合成超时: 60秒
+TTS_MAX_TEXT_LENGTH = int(os.getenv("TTS_MAX_TEXT_LENGTH", "2000"))  # TTS 最大文本长度
+
+# 推理任务配置
+INFERENCE_TASK_TTL = int(os.getenv("INFERENCE_TASK_TTL", "300"))  # 推理任务TTL: 300秒
 
 
 # 日志配置

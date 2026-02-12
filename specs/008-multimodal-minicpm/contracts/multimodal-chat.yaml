@@ -1,0 +1,209 @@
+openapi: 3.0.3
+info:
+  title: LinChat Multimodal Chat API
+  description: 多模态聊天相关接口
+  version: 1.0.0
+
+paths:
+  /api/v1/chat/:
+    post:
+      summary: 发送消息（支持多模态）
+      description: |
+        发送聊天消息，支持携带媒体附件（图片、视频、音频）。
+        返回 SSE 流式响应。
+
+        注：document 类型附件不通过本接口的 attachments 参数发送，而是走独立的
+        文档解析流程（POST /api/v1/chat/documents/parse/），解析完成后将结果文本
+        拼入 content 字段与其余 image/video/audio 附件一并通过本接口发送。
+        详见 spec.md FR-012 和 contracts/document-parse.yaml。
+
+        媒体类型与模型路由：
+        - 纯文本：使用默认文本模型
+        - 图片/视频：使用 minicpm-v（上下文 4K，最大输入 3.5K）
+        - 包含音频：使用 minicpm-o（上下文 4K，最大输入 3.5K）
+        - minicpm-v 和 minicpm-o 共用 GPU 端口 8006，同一时间仅能运行其中一个
+
+        Gateway 错误格式映射：
+        - Gateway 返回 {"error": {"code": "Exxxx", "message": "...", "type": "...", "details": {}}}
+        - LinChat 后端必须映射为 {"code": "...", "message": "...", "data": ...} 标准响应格式
+        - E3002 → MULTIMODAL_SERVICE_UNAVAILABLE, E3003 → LLMTimeoutError, E3004 → CONTEXT_LENGTH_EXCEEDED
+        - E4001-E4005 安全护栏拦截 → 转化为 SSE error 事件推送友好提示
+
+        Gateway 护栏参数：
+        - LinChat 调用 Gateway 时默认使用 guardrails_level=fast（低延迟）
+        - 不向用户暴露护栏控制参数
+        - 流式响应中若收到 content_control 事件，丢弃已缓冲内容并使用 replacement 文本
+
+        请求追踪：
+        - LinChat 后端生成 request_id 后，通过 X-Request-ID 请求头传入 Gateway
+        - Gateway 响应头始终返回 X-Request-ID，用于跨系统问题排查
+
+        注：本项目为家庭场景单用户系统，不实现并发控制（宪法 9.2）。
+        用户如需中断当前推理，通过"停止"按钮手动取消后再发送新请求。
+
+        参考文档：docs/upstream-integration-guide.md §4.1, §5, §7
+      tags:
+        - Chat
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: SSE 流式响应
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                contentChunk:
+                  value: 'data: {"type": "content", "content": "这张图片", "request_id": "xxx"}\n\n'
+                done:
+                  value: 'data: {"type": "done", "message_id": "xxx", "request_id": "xxx"}\n\n'
+                error:
+                  value: 'data: {"type": "error", "content": "推理失败", "request_id": "xxx"}\n\n'
+                interrupted:
+                  value: 'data: {"type": "interrupted", "request_id": "xxx"}\n\n'
+        '400':
+          description: 请求错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                tooManyAttachments:
+                  value:
+                    code: TOO_MANY_ATTACHMENTS
+                    message: 单次最多上传 5 个附件
+                    data: null
+                attachmentNotFound:
+                  value:
+                    code: ATTACHMENT_NOT_FOUND
+                    message: 附件不存在
+                    data: null
+                attachmentExpired:
+                  value:
+                    code: ATTACHMENT_EXPIRED
+                    message: 附件已过期
+                    data: null
+                contentTooLong:
+                  value:
+                    code: CONTENT_TOO_LONG
+                    message: 消息内容超过长度限制（最大 4000 字符）
+                    data: null
+                # ATTACHMENT_ACCESS_DENIED 仅在 403 响应中定义，不在 400 中重复
+                # E3004 放在 400 而非 5xx：虽为 Gateway 返回的错误，但客户端可通过缩短内容修复，属于客户端可修正的请求错误
+                contextLengthExceeded:
+                  value:
+                    code: CONTEXT_LENGTH_EXCEEDED
+                    message: 消息内容超过模型上下文长度限制
+                    data:
+                      gateway_error: "E3004"
+        # '409' 并发冲突已移除（宪法 9.2 单用户场景不需要）
+        '401':
+          description: 未认证
+        '403':
+          description: 附件访问权限不足（附件不属于当前用户）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ATTACHMENT_ACCESS_DENIED
+                message: 无权访问该附件
+                data: null
+        '503':
+          description: 多模态服务暂时不可用（Gateway E3002 模型加载/切换中）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                modelUnavailable:
+                  value:
+                    code: MULTIMODAL_SERVICE_UNAVAILABLE
+                    message: 多模态服务暂时不可用，请稍后重试
+                    data:
+                      gateway_error: "E3002"
+                      retry_after: 10
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          description: 消息文本内容
+          maxLength: 4000
+        # 注: request_id 由后端生成（UUID），不由客户端传入。
+        # 后端在发起 Gateway 推理时生成 request_id，用于推理取消和 SSE 事件关联。
+        attachments:
+          type: array
+          description: |
+            媒体附件 UUID 列表（**仅接受 image/video/audio 类型**，document 类型禁止传入）。
+            document 类型附件不通过此字段发送，走独立文档解析流程（POST /api/v1/chat/documents/parse/）。
+            前端 MediaUploader 总附件数限制为 5 个（含 document），本字段 maxItems=5 为 API 层上限保护。
+            后端序列化器对传入的 UUID 校验 media_type ∈ {image, video, audio}，
+            传入 document 类型 UUID 返回 400 INVALID_ATTACHMENT_TYPE。
+          maxItems: 5
+          items:
+            type: string
+            format: uuid
+          example:
+            - "550e8400-e29b-41d4-a716-446655440000"
+            - "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+
+    StreamChunk:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [content, done, error, interrupted]
+          description: |
+            块类型：
+            - content: 增量内容块（携带 content + request_id）
+            - done: 响应完成（携带 message_id + request_id）
+            - error: 处理错误（携带 content 错误描述 + request_id）
+            - interrupted: 用户主动中断推理（携带 request_id，区别于 error，表示预期内的用户操作）
+        content:
+          type: string
+          description: 内容（content/error 类型时存在）
+        message_id:
+          type: string
+          description: 消息 UUID（done 类型时存在）
+        request_id:
+          type: string
+          description: 请求 ID（所有类型均携带）
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          description: 错误码
+        message:
+          type: string
+          description: 错误信息
+        data:
+          type: object
+          nullable: true
+          description: 附加数据

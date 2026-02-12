@@ -5,14 +5,16 @@
 - data-model.md#2.2 消息表（message）
 - behavior-model.md#2.3 加载历史消息（B_CHAT_003）
 - rule-model.md#R_DATA_001 用户数据隔离规则
+- specs/008-multimodal-minicpm/data-model.md#2.1 MediaAttachment
 """
 
+from datetime import datetime
 from typing import Optional
 
 from asgiref.sync import sync_to_async
 from django.db.models import Max
 
-from apps.chat.models import LangGraphExecution, Message
+from apps.chat.models import LangGraphExecution, MediaAttachment, Message
 
 
 class MessageRepository:
@@ -31,6 +33,15 @@ class MessageRepository:
         """根据ID获取消息 [R_DATA_001]"""
         try:
             return Message.objects.get(message_id=message_id, user_id=user_id)
+        except Message.DoesNotExist:
+            return None
+
+    @staticmethod
+    @sync_to_async
+    def get_by_uuid(message_uuid: str, user_id: int) -> Optional[Message]:
+        """根据 UUID 获取消息（含所有权校验）[R_DATA_001]"""
+        try:
+            return Message.objects.get(message_uuid=message_uuid, user_id=user_id)
         except Message.DoesNotExist:
             return None
 
@@ -89,9 +100,12 @@ class MessageRepository:
 
         返回倒序是为了获取"最新的N条"，调用方需 reverse() 得到正序
         [R_DATA_001] 通过 user_id 过滤确保数据隔离
+        使用 prefetch_related("attachments") 避免 N+1 查询
         """
         return list(
-            Message.objects.filter(user_id=user_id).order_by("-created_time")[:limit]
+            Message.objects.filter(user_id=user_id)
+            .prefetch_related("attachments")
+            .order_by("-created_time")[:limit]
         )
 
     @staticmethod
@@ -99,22 +113,31 @@ class MessageRepository:
     def find_by_user_before_sequence(
         user_id: int, before_sequence: int, limit: int = 50
     ) -> list[Message]:
-        """获取指定序号之前的消息（用于向上滚动加载更多），返回倒序"""
+        """获取指定序号之前的消息（用于向上滚动加载更多），返回倒序
+
+        使用 prefetch_related("attachments") 避免 N+1 查询
+        """
         return list(
             Message.objects.filter(
                 user_id=user_id, sequence__lt=before_sequence
-            ).order_by("-sequence")[:limit]
+            )
+            .prefetch_related("attachments")
+            .order_by("-sequence")[:limit]
         )
 
     @staticmethod
     @sync_to_async
     def find_generating_message(user_id: int) -> Optional[Message]:
         """查找用户正在生成中的消息（用于页面刷新时重连SSE）"""
-        return Message.objects.filter(
-            user_id=user_id,
-            role=Message.ROLE_ASSISTANT,
-            status=Message.STATUS_GENERATING,
-        ).first()
+        return (
+            Message.objects.filter(
+                user_id=user_id,
+                role=Message.ROLE_ASSISTANT,
+                status=Message.STATUS_GENERATING,
+            )
+            .prefetch_related("attachments")
+            .first()
+        )
 
 
 class ExecutionRepository:
@@ -135,6 +158,86 @@ class ExecutionRepository:
         return execution
 
 
+class MediaAttachmentRepository:
+    """媒体附件仓库 — 所有查询必须包含 user_id 过滤 [R_DATA_001]
+
+    参考: specs/008-multimodal-minicpm/data-model.md#2.1 MediaAttachment
+    """
+
+    @staticmethod
+    @sync_to_async
+    def create(attachment: MediaAttachment) -> MediaAttachment:
+        """创建媒体附件"""
+        attachment.save()
+        return attachment
+
+    @staticmethod
+    @sync_to_async
+    def get_by_uuid(attachment_uuid: str, user_id: int) -> Optional[MediaAttachment]:
+        """根据 UUID 获取附件（含所有权校验）[R_DATA_001]"""
+        try:
+            return MediaAttachment.objects.get(
+                attachment_uuid=attachment_uuid, user_id=user_id
+            )
+        except MediaAttachment.DoesNotExist:
+            return None
+
+    @staticmethod
+    @sync_to_async
+    def get_by_uuid_any_user(attachment_uuid: str) -> Optional[MediaAttachment]:
+        """根据 UUID 获取附件（不校验所有权，仅用于内部检查）"""
+        try:
+            return MediaAttachment.objects.get(attachment_uuid=attachment_uuid)
+        except MediaAttachment.DoesNotExist:
+            return None
+
+    @staticmethod
+    @sync_to_async
+    def get_by_uuids(attachment_uuids: list[str], user_id: int) -> list[MediaAttachment]:
+        """批量获取附件（含所有权校验）[R_DATA_001]"""
+        return list(
+            MediaAttachment.objects.filter(
+                attachment_uuid__in=attachment_uuids, user_id=user_id
+            )
+        )
+
+    @staticmethod
+    @sync_to_async
+    def update(attachment: MediaAttachment) -> MediaAttachment:
+        """更新媒体附件"""
+        attachment.save()
+        return attachment
+
+    @staticmethod
+    @sync_to_async
+    def associate_message(
+        attachment_ids: list[int], message_id: int, user_id: int
+    ) -> int:
+        """关联附件到消息 [R_DATA_001]"""
+        return MediaAttachment.objects.filter(
+            attachment_id__in=attachment_ids, user_id=user_id
+        ).update(message_id=message_id)
+
+    @staticmethod
+    @sync_to_async
+    def find_expired(before_date: datetime, limit: int = 100) -> list[MediaAttachment]:
+        """查找已过期但未标记的附件"""
+        return list(
+            MediaAttachment.objects.filter(
+                expires_at__lt=before_date, is_expired=False
+            )[:limit]
+        )
+
+    @staticmethod
+    @sync_to_async
+    def mark_expired(attachment_ids: list[int]) -> int:
+        """批量标记附件为已过期"""
+        return MediaAttachment.objects.filter(attachment_id__in=attachment_ids).update(
+            is_expired=True
+        )
+
+
 # 单例实例
 message_repo = MessageRepository()
 execution_repo = ExecutionRepository()
+media_attachment_repo = MediaAttachmentRepository()

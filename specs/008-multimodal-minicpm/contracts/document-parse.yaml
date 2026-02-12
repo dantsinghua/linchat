@@ -1,0 +1,432 @@
+openapi: 3.0.3
+info:
+  title: LinChat Document Parse API
+  description: |
+    文档解析相关接口（透传 Gateway 文档解析服务）。
+    Gateway 接口参考：docs/multimodal-api-guide.md
+  version: 1.0.0
+
+paths:
+  /api/v1/chat/documents/parse/:
+    post:
+      summary: 创建文档解析任务
+      description: |
+        接收已上传到 MinIO 的 PDF/DOCX 附件 UUID，后端从 MinIO 下载文件后
+        透传 Gateway `/v1/documents/parse` 创建异步解析任务。
+
+        交互时序：
+        1. 用户通过 MediaUploader 上传文档 → MinIO 存储 → 获得 attachment_uuid
+        2. 用户点击发送消息 → 前端根据上传响应的 media_type=document 识别为文档类型
+        3. 前端调用本接口 → 后端 DocumentParseService 下载 MinIO 文件 → 上传至 Gateway
+        4. Gateway 返回 task_id（HTTP 202），后端启动后台轮询
+        5. 轮询过程中通过 SSE DOC_PARSE_PROGRESS 事件推送进度
+        6. 解析完成后将 Markdown 结果作为文本上下文，使用默认文本模型问答
+
+        Gateway 侧约束（参考 docs/upstream-integration-guide.md §4.3）：
+        - model 参数必填，仅接受 VL 模型（qwen2.5-vl / minicpm-v / minicpm-o）
+        - 支持 pages 参数指定解析页码范围（语法如 "1,3-5,8"）
+        - 文件大小限制 ≤ 10MB（超限返回 E6001 HTTP 413）
+        - 文档页数限制 ≤ 200 页（超限返回 E6006 HTTP 400）
+        - 不支持加密文件（返回 E6004 HTTP 400）
+        - 页码越界返回 E6007 HTTP 400
+        - minicpm-v 和 minicpm-o 共用 GPU 端口 8006，可能触发热切换（切换期间请求等待）
+        - 建议轮询间隔：初始 2 秒，递增 1 秒，最大 10 秒
+
+        Gateway 错误格式映射：
+        - Gateway 返回 {"error": {"code": "Exxxx", "message": "...", "type": "...", "details": {}}}
+        - LinChat 后端必须映射为 {"code": "...", "message": "...", "data": ...} 标准格式
+
+        超时配置（参考 upstream-integration-guide.md §8.2）：
+        - 创建解析任务（上传文件至 Gateway）：30 秒
+        - 轮询任务状态：30 秒
+        - 获取解析结果：30 秒
+      tags:
+        - Document Parse
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentParseRequest'
+      responses:
+        '202':
+          description: 任务创建成功（Gateway 返回 202）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentParseTaskResponse'
+        '400':
+          description: 请求错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                attachmentNotFound:
+                  value:
+                    code: ATTACHMENT_NOT_FOUND
+                    message: 附件不存在
+                    data: null
+                notDocument:
+                  value:
+                    code: INVALID_DOCUMENT_TYPE
+                    message: 仅支持 PDF/DOCX 文档
+                    data:
+                      supported_types:
+                        - application/pdf
+                        - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+                gatewayFileCorrupt:
+                  value:
+                    code: DOCUMENT_PARSE_ERROR
+                    message: 文件已损坏，无法解析
+                    data:
+                      gateway_error: "E6003"
+                gatewayPageLimit:
+                  value:
+                    code: DOCUMENT_PARSE_ERROR
+                    message: 文档页数超过限制（最大 200 页），请使用 pages 参数指定范围或上传更短文档
+                    data:
+                      gateway_error: "E6006"
+                gatewayEncrypted:
+                  value:
+                    code: DOCUMENT_PARSE_ERROR
+                    message: 不支持加密文件，请移除密码后重试
+                    data:
+                      gateway_error: "E6004"
+                gatewayPageOutOfRange:
+                  value:
+                    code: DOCUMENT_PARSE_ERROR
+                    message: 指定页码超出文档范围
+                    data:
+                      gateway_error: "E6007"
+        '401':
+          description: 未认证
+        '403':
+          description: 无访问权限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ATTACHMENT_ACCESS_DENIED
+                message: 无权访问该附件
+                data: null
+        '503':
+          description: 文档解析服务不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                modelUnavailable:
+                  value:
+                    code: DOC_PARSE_SERVICE_UNAVAILABLE
+                    message: 文档解析服务暂时不可用，请稍后重试
+                    data:
+                      gateway_error: "E3002"
+                queueFull:
+                  value:
+                    code: DOC_PARSE_QUEUE_FULL
+                    message: 解析任务队列已满，请稍后重试
+                    data:
+                      gateway_error: "E6008"
+        '413':
+          description: 文件过大（Gateway E6001）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: FILE_TOO_LARGE
+                message: 文件大小超过 Gateway 限制（最大 10MB）
+                data:
+                  gateway_error: "E6001"
+                  file_size: 15000000
+                  max_size: 10485760
+
+  /api/v1/chat/documents/tasks/{task_id}/:
+    get:
+      summary: 查询文档解析任务状态
+      description: |
+        查询 Gateway 文档解析任务的当前状态和进度。
+        状态流转：pending → processing → completed / failed
+        注：通常不需要前端主动轮询此接口，后端通过 SSE DOC_PARSE_PROGRESS 事件自动推送进度。
+      tags:
+        - Document Parse
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Gateway 返回的任务 ID
+      responses:
+        '200':
+          description: 任务状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentParseStatusResponse'
+        '401':
+          description: 未认证
+        '403':
+          description: 无访问权限（任务不属于当前用户）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: TASK_ACCESS_DENIED
+                message: 无权访问该解析任务
+                data: null
+        '404':
+          description: 任务不存在
+        '410':
+          description: 任务已过期（Gateway 侧 >7 天自动清理）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: TASK_EXPIRED
+                message: 解析任务已过期，请重新提交
+                data:
+                  gateway_error: "E6009"
+
+  /api/v1/chat/documents/tasks/{task_id}/result/:
+    get:
+      summary: 获取文档解析结果
+      description: |
+        获取已完成任务的解析结果，支持 Markdown 和 JSON 两种格式。
+        - Markdown：纯文本，每页以 `<!-- Page N -->` 分隔
+        - JSON：逐页详情，含 token 用量和耗时
+      tags:
+        - Document Parse
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Gateway 返回的任务 ID
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [markdown, json]
+            default: markdown
+          description: 返回格式（默认 markdown）
+      responses:
+        '200':
+          description: 解析结果
+          content:
+            text/markdown:
+              schema:
+                type: string
+              example: |
+                <!-- Page 1 -->
+                # 文档标题
+                正文内容...
+                ---
+                <!-- Page 2 -->
+                | 列1 | 列2 |
+                |-----|-----|
+                | A   | B   |
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentParseResultJSON'
+        '401':
+          description: 未认证
+        '403':
+          description: 无访问权限（任务不属于当前用户）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: TASK_ACCESS_DENIED
+                message: 无权访问该解析任务
+                data: null
+        '404':
+          description: 任务不存在
+        '409':
+          description: 任务尚未完成
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: TASK_NOT_COMPLETED
+                message: 任务尚未完成，请等待解析完成
+                data:
+                  status: processing
+                  progress:
+                    current: 3
+                    total: 10
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+
+  schemas:
+    DocumentParseRequest:
+      type: object
+      required:
+        - attachment_uuid
+      properties:
+        attachment_uuid:
+          type: string
+          format: uuid
+          description: 文档附件 UUID（已通过 MediaUploader 上传到 MinIO 的 PDF/DOCX）
+        pages:
+          type: string
+          description: |
+            指定解析页码范围（语法同 Gateway：如 "1,3-5,8"）。
+            不传则解析全部页。页码从 1 开始。
+          example: "1-10"
+
+    DocumentParseTaskResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "SUCCESS"
+        message:
+          type: string
+          example: 解析任务创建成功
+        data:
+          type: object
+          required:
+            - task_id
+            - status
+          properties:
+            task_id:
+              type: string
+              description: Gateway 任务 ID
+            status:
+              type: string
+              enum: [pending, processing]
+              description: 初始状态（pending 或 processing）
+            model:
+              type: string
+              description: 使用的 VL 模型
+              example: minicpm-v
+            file_name:
+              type: string
+              description: 原始文件名
+            total_pages:
+              type: integer
+              description: 文档总页数
+            progress:
+              type: object
+              properties:
+                current:
+                  type: integer
+                  description: 已解析页数
+                total:
+                  type: integer
+                  description: 需解析总页数
+
+    DocumentParseStatusResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "SUCCESS"
+        message:
+          type: string
+          example: 操作成功
+        data:
+          type: object
+          required:
+            - task_id
+            - status
+          properties:
+            task_id:
+              type: string
+            status:
+              type: string
+              enum: [pending, processing, completed, failed]
+            model:
+              type: string
+            total_pages:
+              type: integer
+            progress:
+              type: object
+              properties:
+                current:
+                  type: integer
+                total:
+                  type: integer
+            error_message:
+              type: string
+              nullable: true
+              description: 失败时的错误信息
+
+    DocumentParseResultJSON:
+      type: object
+      properties:
+        task_id:
+          type: string
+        model:
+          type: string
+        total_pages:
+          type: integer
+        pages:
+          type: array
+          items:
+            type: object
+            properties:
+              page_number:
+                type: integer
+              markdown:
+                type: string
+              latency_ms:
+                type: number
+        usage:
+          type: object
+          properties:
+            total_prompt_tokens:
+              type: integer
+            total_completion_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+        total_latency_ms:
+          type: number
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          description: 错误码
+        message:
+          type: string
+          description: 错误信息
+        data:
+          type: object
+          nullable: true
+          description: 附加数据

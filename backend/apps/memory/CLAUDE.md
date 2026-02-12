@@ -337,3 +337,8 @@ assert memory.content == "原始内容"  # 确保操作失败后无副作用
 - 涉及用户数据 → 必须在 `test_isolation.py` 添加隔离测试
 - 涉及 Celery 任务 → 必须在 `test_tasks.py` 测试状态流转和异常处理
 - Service 层覆盖率目标 ≥ 95%，总体覆盖率 ≥ 80%
+
+
+<claude-mem-context>
+
+</claude-mem-context>

@@ -16,8 +16,10 @@ import {
   sendMessage,
   stopGeneration,
 } from '@/services/chatService';
+import { cancelInference } from '@/services/mediaApi';
 import { useChatStore } from '@/stores/chatStore';
-import type { Message, MessageStatus } from '@/types';
+import type { ChatStreamEvent, Message, MessageStatus } from '@/types';
+import type { MediaAttachment } from '@/types/media';
 
 interface UseChatStreamReturn {
   messages: Message[];
@@ -27,7 +29,8 @@ interface UseChatStreamReturn {
   hasMore: boolean;
   error: string | null;
   failedContent: string | null;
-  send: (content: string) => Promise<void>;
+  gatewayRetryAfter: number;
+  send: (content: string, attachments?: MediaAttachment[]) => Promise<void>;
   stop: () => Promise<void>;
   resume: (messageId: number) => Promise<void>;
   loadMore: () => Promise<void>;
@@ -122,11 +125,13 @@ export function useChatStream(): UseChatStreamReturn {
     }
   }, [store]);
 
-  /** 发送消息 */
-  const send = useCallback(async (content: string) => {
+  /** 发送消息（支持多模态附件） */
+  const send = useCallback(async (content: string, attachments?: MediaAttachment[]) => {
     if (store.isGenerating) return;
     store.setError(null);
     store.setFailedContent(null);
+
+    const attachmentUuids = attachments?.map((a) => a.attachment_uuid);
 
     const originalMessages = [...store.messages];
     const lastMsg = store.messages[store.messages.length - 1];
@@ -137,6 +142,7 @@ export function useChatStream(): UseChatStreamReturn {
       message_id: now, message_uuid: `temp-${now}`,
       role: 'user', content, status: 1, sequence: seq,
       created_time: new Date().toISOString(),
+      attachments: attachments || undefined,
     };
     const tempAssistant: Message = {
       message_id: now + 1, message_uuid: `temp-${now + 1}`,
@@ -151,15 +157,27 @@ export function useChatStream(): UseChatStreamReturn {
     const controller = newAbort();
     let realId: number | undefined;
 
-    const handleFail = (errMsg: string) => {
-      const friendly = getErrorMessage(errMsg);
+    const handleFail = (errMsg: string, data?: ChatStreamEvent['data']) => {
+      // T067a: Gateway 模型错误特殊处理
+      const gatewayError = data?.gateway_error;
+      let friendly: string;
+
+      if (gatewayError === 'E3001') {
+        friendly = '请求的模型不存在';
+      } else if (gatewayError === 'E3002') {
+        friendly = '多模态服务暂时不可用，请稍后重试';
+        if (data?.retry_after) {
+          store.setGatewayRetryAfter(data.retry_after);
+        }
+      } else {
+        friendly = getErrorMessage(errMsg);
+      }
+
       store.setError(friendly);
       if (!realId) {
-        // 服务端还没创建消息，安全回滚
         store.setMessages(originalMessages);
         store.setFailedContent(content);
       } else {
-        // 服务端已创建消息，标记错误状态但不回滚
         store.updateMessage(realId, { status: 0 as MessageStatus });
       }
       resetStream();
@@ -187,9 +205,9 @@ export function useChatStream(): UseChatStreamReturn {
           store.setIsCompacting(false);
           resetStream();
         },
-        onError: (err) => {
+        onError: (err, data) => {
           store.setIsCompacting(false);
-          handleFail(err);
+          handleFail(err, data);
         },
         onInterrupted: (msgId) => {
           store.updateMessage(msgId || realId || tempAssistant.message_id, { status: 3 as MessageStatus });
@@ -199,7 +217,7 @@ export function useChatStream(): UseChatStreamReturn {
         },
         onContextCompacting: () => store.setIsCompacting(true),
         onContextCompacted: () => store.setIsCompacting(false),
-      }, controller.signal);
+      }, controller.signal, attachmentUuids);
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         handleFail((err as Error).message || '发送失败');
@@ -209,11 +227,17 @@ export function useChatStream(): UseChatStreamReturn {
     }
   }, [store, resetStream, newAbort]);
 
-  /** 停止生成 */
+  /** 停止生成（T039: 同时调用推理取消 API） */
   const stop = useCallback(async () => {
     if (!store.isGenerating) return;
     abortRef.current?.abort();
-    if (reqIdRef.current) await stopGeneration(reqIdRef.current);
+    if (reqIdRef.current) {
+      // 并行调用：停止生成 + 推理取消（非多模态时 cancel 返回 404，无副作用）
+      await Promise.allSettled([
+        stopGeneration(reqIdRef.current),
+        cancelInference(reqIdRef.current),
+      ]);
+    }
     store.setIsGenerating(false);
     store.setCurrentRequestId(null);
     reqIdRef.current = null;
@@ -287,6 +311,7 @@ export function useChatStream(): UseChatStreamReturn {
     hasMore: store.hasMore,
     error: store.error,
     failedContent: store.failedContent,
+    gatewayRetryAfter: store.gatewayRetryAfter,
     send, stop, resume, loadMore, reload, clearFailedContent,
   };
 }

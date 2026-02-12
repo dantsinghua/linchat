@@ -1,0 +1,224 @@
+openapi: 3.0.3
+info:
+  title: LinChat Media Upload API
+  description: 媒体文件上传相关接口
+  version: 1.0.0
+
+paths:
+  /api/v1/chat/media/upload/:
+    post:
+      summary: 上传媒体文件
+      description: |
+        上传图片、视频、音频或文档文件，返回附件 UUID 用于后续消息发送。
+        文件限制：
+        - 图片：≤ 10MB，支持 jpg/png/gif/webp
+        - 视频：≤ 50MB，≤ 60秒，支持 mp4/mov/webm
+        - 音频：≤ 10MB，≤ 60秒，支持 webm/wav/mp3
+        - 文档：≤ 10MB，支持 pdf/docx（通过 DocumentParseService 异步解析）
+      tags:
+        - Media
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 媒体文件
+      responses:
+        '200':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaUploadResponse'
+        '400':
+          description: 请求错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidFileType:
+                  value:
+                    code: INVALID_FILE_TYPE
+                    message: 不支持的文件格式
+                    data:
+                      supported_formats:
+                        image: ["jpg", "png", "gif", "webp"]
+                        video: ["mp4", "mov", "webm"]
+                        audio: ["webm", "wav", "mp3"]
+                        document: ["pdf", "docx"]
+                fileTooLarge:
+                  value:
+                    code: FILE_TOO_LARGE
+                    message: 文件大小超出限制
+                    data: null
+                durationTooLong:
+                  value:
+                    code: DURATION_TOO_LONG
+                    message: 视频/音频时长超出限制
+                    data: null
+                durationTooShort:
+                  value:
+                    code: DURATION_TOO_SHORT
+                    message: 音频时长过短（最短 1 秒）
+                    data: null
+        '401':
+          description: 未认证
+        '429':
+          description: 请求过于频繁
+
+  /api/v1/chat/media/{uuid}/:
+    get:
+      summary: 获取媒体文件
+      description: |
+        获取原始媒体文件。
+        - 仅上传者可访问
+        - 文件过期后返回错误
+      tags:
+        - Media
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: 附件 UUID
+      responses:
+        '200':
+          description: 文件内容
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+            video/*:
+              schema:
+                type: string
+                format: binary
+            audio/*:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: 无访问权限
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ATTACHMENT_ACCESS_DENIED
+                message: 无权访问该文件
+                data: null
+        '404':
+          description: 文件不存在
+        '410':
+          description: 文件已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ATTACHMENT_EXPIRED
+                message: 文件已过期
+                data: null
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+
+  schemas:
+    MediaUploadResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "SUCCESS"
+        message:
+          type: string
+          example: 操作成功
+        data:
+          type: object
+          required:
+            - attachment_uuid
+            - media_type
+            - mime_type
+            - file_name
+            - file_size
+            - expires_at
+          properties:
+            attachment_uuid:
+              type: string
+              format: uuid
+              description: 附件 UUID
+            media_type:
+              type: string
+              enum: [image, video, audio, document]
+              description: 媒体类型
+            mime_type:
+              type: string
+              description: MIME 类型
+              example: image/jpeg
+            file_name:
+              type: string
+              description: 原始文件名
+            file_size:
+              type: integer
+              description: 文件大小（字节）
+            width:
+              type: integer
+              description: 宽度（像素，仅图片/视频）
+            height:
+              type: integer
+              description: 高度（像素，仅图片/视频）
+            duration_seconds:
+              type: number
+              description: 时长（秒，仅视频/音频）
+            expires_at:
+              type: string
+              format: date-time
+              description: 过期时间
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          description: 错误码
+        message:
+          type: string
+          description: 错误信息
+        data:
+          type: object
+          nullable: true
+          description: 附加数据

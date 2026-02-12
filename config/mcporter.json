@@ -8,6 +8,14 @@
       "env": {
         "TUSHARE_TOKEN": "03a53420850fc038f7691173fbfcd6c4eee7ad38d99d24ff75ada04c"
       }
+    },
+    "amap": {
+      "description": "高德地图 MCP - POI搜索/路线规划/地理编码/天气",
+      "command": "node",
+      "args": ["/home/dantsinghua/.nvm/versions/node/v22.22.0/lib/node_modules/@amap/amap-maps-mcp-server/build/index.js"],
+      "env": {
+        "AMAP_MAPS_API_KEY": "3c0439554980f131fe9768a234c71ceb"
+      }
     }
   }
 }

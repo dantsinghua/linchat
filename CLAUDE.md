@@ -281,7 +281,7 @@ docker compose down
 
 ```bash
 DATABASE_URL=postgresql://postgres:linchat_123@localhost:5432/linchat
-REDIS_URL=redis://localhost:6379/0
+REDIS_URL=redis://:redis_linchat_123@localhost:6379/0
 DJANGO_SECRET_KEY=linchat-dev-secret-key-change-in-production
 DJANGO_DEBUG=true
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,www.greydan.xin
@@ -330,7 +330,12 @@ source /home/dantsinghua/work/linchat/linchat/bin/activate
 cd /home/dantsinghua/work/linchat/backend
 nohup uvicorn core.asgi:application --host 0.0.0.0 --port 8002 > /tmp/linchat-backend.log 2>&1 &
 
-# 5. 启动 LinChat 前端 (必须先 build)
+# 5. 启动 Celery Worker 和 Beat (媒体过期清理定时任务)
+cd /home/dantsinghua/work/linchat/backend
+nohup celery -A core worker --loglevel=info > /tmp/linchat-celery-worker.log 2>&1 &
+nohup celery -A core beat --loglevel=info > /tmp/linchat-celery-beat.log 2>&1 &
+
+# 6. 启动 LinChat 前端 (必须先 build)
 cd /home/dantsinghua/work/linchat/frontend
 npm run build
 nohup npm run start -- -p 3784 &
@@ -481,7 +486,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 
 ```
 视图层 (views.py)      → 仅处理 HTTP 请求响应，禁止业务逻辑
-服务层 (services.py)   → 封装所有业务逻辑 ★核心
+服务层 (services.py 或 services/)  → 封装所有业务逻辑 ★核心
 数据层 (repositories.py) → 封装 ORM/ES/Redis 操作
 ```
 
@@ -613,6 +618,8 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 - PostgreSQL 15 (主存储), Redis (缓存/PubSub) (006-subagent-tools)
 - Python 3.11+ + Django 4.2+, LangGraph, LangChain, httpx, redis-py (async) (007-home-assistant-tools)
 - Redis（速率限制键） (007-home-assistant-tools)
+- Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, LangGraph, LangChain, Pillow (图像处理), ffmpeg-python (视频处理), httpx, redis-py (async), Next.js 14+, React 18+, Zustand (008-multimodal-minicpm)
+- PostgreSQL 15 (主存储, MediaAttachment 元数据), MinIO (媒体文件/缩略图), Redis (推理任务状态/事件推送) (008-multimodal-minicpm)
 
 ## Recent Changes
 - 001-llm-chat-page: Added Python 3.11+ (后端) / TypeScript 5.0+ (前端)

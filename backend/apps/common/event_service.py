@@ -18,6 +18,8 @@ class EventType(str, Enum):
     MESSAGE = "message"
     HEARTBEAT = "heartbeat"
     CONTEXT_STATUS = "context_status"
+    INFERENCE_CANCEL = "inference_cancel"  # 推理取消事件
+    DOC_PARSE_PROGRESS = "doc_parse_progress"  # 文档解析进度事件
 
 
 class LogoutReason(str, Enum):

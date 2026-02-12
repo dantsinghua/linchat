@@ -22,6 +22,7 @@ import {
 } from '@/components/chat/ContextMonitorPanel';
 import { useChatStream } from '@/hooks/useChatStream';
 import { useAuth } from '@/hooks/useAuth';
+import { useChatStore } from '@/stores/chatStore';
 
 export default function ChatPage() {
   const router = useRouter();
@@ -36,6 +37,7 @@ export default function ChatPage() {
     hasMore,
     error,
     failedContent,
+    gatewayRetryAfter,
     send,
     stop,
     resume,
@@ -142,6 +144,8 @@ export default function ChatPage() {
           onClear={handleClearError}
           onRetry={failedContent ? handleRetry : undefined}
           showRetry={!!failedContent}
+          gatewayRetryAfter={gatewayRetryAfter}
+          onRetryAfterDone={() => useChatStore.getState().setGatewayRetryAfter(0)}
         />
 
         {/* 聊天区域 */}

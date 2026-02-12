@@ -83,6 +83,8 @@ def make_sse_response(
                     data["message_id"] = chunk.message_id
                 if chunk.request_id:
                     data["request_id"] = chunk.request_id
+                if chunk.data:
+                    data["data"] = chunk.data
                 yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
         except asyncio.CancelledError:
             logger.info(f"{context_name} SSE connection cancelled for user {user_id}")

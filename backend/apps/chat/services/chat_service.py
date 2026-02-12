@@ -35,7 +35,21 @@ def _status_chunk(message: Message) -> Optional[StreamChunk]:
 class ChatService:
 
     @staticmethod
-    async def send_message(user_id: int, content: str) -> AsyncGenerator[StreamChunk, None]:
+    async def send_message(
+        user_id: int,
+        content: str,
+        attachment_uuids: Optional[list[str]] = None,
+    ) -> AsyncGenerator[StreamChunk, None]:
+        """发送消息（支持多模态附件）
+
+        Args:
+            user_id: 用户 ID
+            content: 消息内容
+            attachment_uuids: 附件 UUID 列表
+
+        Yields:
+            StreamChunk: 流式响应块
+        """
         from apps.graph.services import AgentService
 
         content = content.strip()
@@ -48,8 +62,11 @@ class ChatService:
         thread_id = get_thread_id(user_id)
 
         async for chunk in AgentService.execute(
-            user_id=user_id, thread_id=thread_id,
-            request_id=request_id, user_message=content,
+            user_id=user_id,
+            thread_id=thread_id,
+            request_id=request_id,
+            user_message=content,
+            attachment_uuids=attachment_uuids,
         ):
             yield chunk
 

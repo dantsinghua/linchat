@@ -203,7 +203,8 @@ describe('MessageInput', () => {
         await Promise.resolve();
       });
 
-      expect(mockOnSend).toHaveBeenCalledWith('hello');
+      expect(mockOnSend).toHaveBeenCalled();
+      expect(mockOnSend.mock.calls[0][0]).toBe('hello');
     });
 
     it('发送后应清空输入框', async () => {
@@ -247,7 +248,8 @@ describe('MessageInput', () => {
         await Promise.resolve();
       });
 
-      expect(mockOnSend).toHaveBeenCalledWith('hello');
+      expect(mockOnSend).toHaveBeenCalled();
+      expect(mockOnSend.mock.calls[0][0]).toBe('hello');
     });
   });
 
@@ -363,7 +365,8 @@ describe('MessageInput', () => {
         await Promise.resolve();
       });
 
-      expect(mockOnSend).toHaveBeenCalledWith('hello');
+      expect(mockOnSend).toHaveBeenCalled();
+      expect(mockOnSend.mock.calls[0][0]).toBe('hello');
     });
 
     it('Shift+Enter 不应发送消息', async () => {

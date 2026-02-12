@@ -4,13 +4,21 @@
  * 参考:
  * - spec.md US2场景5,6,8 - 历史消息显示和滚动
  * - data-model.md#2.2 消息表 - status 字段定义
+ * - T030: 扩展支持渲染带附件的消息
  */
 'use client';
 
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
+import { AudioPlayer } from './AudioPlayer';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { AttachmentList } from './MediaPreview';
+import { getMediaUrl } from '@/services/mediaApi';
+import { synthesizeTTS, TTSError } from '@/services/ttsApi';
 import type { Message } from '@/types';
+
+/** TTS 最大文本长度限制（与后端 TTS_MAX_TEXT_LENGTH 一致） */
+const TTS_MAX_TEXT_LENGTH = 2000;
 
 interface MessageListProps {
   messages: Message[];
@@ -30,6 +38,7 @@ interface MessageListProps {
  * - 滚动锚定（默认锚定最底部）
  * - 向上滚动加载更多
  * - 消息状态渲染（生成中、中断、失败）
+ * - 附件渲染（多模态消息）
  */
 export const MessageList = memo(function MessageList({
   messages,
@@ -44,6 +53,54 @@ export const MessageList = memo(function MessageList({
   const bottomRef = useRef<HTMLDivElement>(null);
   const isUserScrollingRef = useRef(false);
   const prevMessagesLengthRef = useRef(messages.length);
+
+  // T051a: 视频推理超时提示
+  const [showVideoHint, setShowVideoHint] = useState(false);
+  const videoHintTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // 清理旧计时器
+    if (videoHintTimerRef.current) {
+      clearTimeout(videoHintTimerRef.current);
+      videoHintTimerRef.current = null;
+    }
+    setShowVideoHint(false);
+
+    if (!_isGenerating || messages.length < 2) return;
+
+    // 找到最后一条生成中的 assistant 消息
+    const lastMsg = messages[messages.length - 1] as Message | undefined;
+    if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.status !== 2) return;
+
+    // 有内容说明已收到首个 content
+    if (lastMsg.content && lastMsg.content.trim().length > 0) return;
+
+    // 找前一条 user 消息中的视频附件
+    const userMsg = messages[messages.length - 2] as Message | undefined;
+    if (!userMsg || userMsg.role !== 'user' || !userMsg.attachments) return;
+
+    const videoAttachments = userMsg.attachments.filter(
+      (a) => a.media_type === 'video'
+    );
+    if (videoAttachments.length === 0) return;
+
+    // 取最大时长作为基准
+    const maxDuration = Math.max(
+      ...videoAttachments.map((a) => a.duration_seconds || 30)
+    );
+    const delayMs = maxDuration * 2 * 1000;
+
+    videoHintTimerRef.current = setTimeout(() => {
+      setShowVideoHint(true);
+    }, delayMs);
+
+    return () => {
+      if (videoHintTimerRef.current) {
+        clearTimeout(videoHintTimerRef.current);
+        videoHintTimerRef.current = null;
+      }
+    };
+  }, [_isGenerating, messages]);
 
   // 滚动到底部
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
@@ -157,6 +214,28 @@ export const MessageList = memo(function MessageList({
         ))}
       </div>
 
+      {/* T051a: 视频推理超时提示 */}
+      {showVideoHint && (
+        <div className="mx-auto max-w-3xl py-2">
+          <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-600 dark:bg-amber-900/20 dark:text-amber-400">
+            <svg
+              className="h-4 w-4 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <span>AI 正在分析视频，请耐心等待...</span>
+          </div>
+        </div>
+      )}
+
       {/* 上下文压缩状态提示 */}
       {isCompacting && (
         <div className="mx-auto max-w-3xl py-2">
@@ -208,6 +287,8 @@ const MessageBubble = memo(function MessageBubble({
   const isGenerating = message.status === 2;
   const isInterrupted = message.status === 3;
   const isFailed = message.status === 0;
+  const hasAttachments =
+    message.attachments && message.attachments.length > 0;
 
   // 移除内容中的 [已中断] 标记（如果有），由UI单独渲染
   const displayContent = message.content?.replace(/\[已中断\]$/, '') || '';
@@ -221,6 +302,27 @@ const MessageBubble = memo(function MessageBubble({
             : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100'
         }`}
       >
+        {/* 用户消息: 附件显示在文本上方 */}
+        {isUser && hasAttachments && (
+          <div className="mb-2">
+            {/* T058: 音频附件使用 AudioPlayer */}
+            {message.attachments!.map((att) =>
+              att.media_type === 'audio' ? (
+                <AudioPlayer
+                  key={att.attachment_uuid}
+                  src={getMediaUrl(att.attachment_uuid)}
+                  duration={att.duration_seconds}
+                />
+              ) : null
+            )}
+            <AttachmentList
+              attachments={message.attachments!.filter(
+                (a) => a.media_type !== 'audio'
+              )}
+            />
+          </div>
+        )}
+
         {/* 消息内容 */}
         {isUser ? (
           <p className="whitespace-pre-wrap">{message.content}</p>
@@ -232,6 +334,21 @@ const MessageBubble = memo(function MessageBubble({
               <span className="text-xs text-gray-400">[已中断]</span>
             )}
           </>
+        )}
+
+        {/* AI 消息: 附件显示在文本下方 */}
+        {!isUser && hasAttachments && (
+          <div className="mt-2">
+            <AttachmentList attachments={message.attachments!} />
+          </div>
+        )}
+
+        {/* AI 消息: TTS 播放按钮（仅已完成的 assistant 消息显示） */}
+        {!isUser && message.status === 1 && displayContent.trim().length > 0 && (
+          <TTSButton
+            messageUuid={message.message_uuid}
+            textLength={displayContent.length}
+          />
         )}
 
         {/* 生成中动画 */}
@@ -248,8 +365,8 @@ const MessageBubble = memo(function MessageBubble({
               onClick={() => onResume(message.message_id)}
               className="flex items-center gap-1 rounded border border-primary-500 bg-white px-3 py-1 text-xs text-primary-500 transition-colors hover:bg-primary-50"
             >
-              {/* ▶ 播放图标 */}
-              <span className="text-xs">▶</span>
+              {/* 播放图标 */}
+              <span className="text-xs">&#9654;</span>
               继续生成
             </button>
           </div>
@@ -262,6 +379,174 @@ const MessageBubble = memo(function MessageBubble({
           </div>
         )}
       </div>
+    </div>
+  );
+});
+
+/**
+ * TTS 播放按钮组件
+ *
+ * 在 AI 回复消息底部显示播放语音按钮。
+ * 文本超过 2000 字符时按钮置灰并显示 tooltip。
+ * 参考: specs/008-multimodal-minicpm/contracts/tts.yaml
+ */
+interface TTSButtonProps {
+  messageUuid: string;
+  textLength: number;
+}
+
+const TTSButton = memo(function TTSButton({
+  messageUuid,
+  textLength,
+}: TTSButtonProps) {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
+
+  const isTooLong = textLength > TTS_MAX_TEXT_LENGTH;
+
+  // 清理 Blob URL
+  const cleanupAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+  }, []);
+
+  // 组件卸载时清理
+  useEffect(() => {
+    return () => cleanupAudio();
+  }, [cleanupAudio]);
+
+  const handleClick = useCallback(async () => {
+    if (isTooLong) return;
+
+    // 正在播放 → 停止
+    if (status === 'playing') {
+      cleanupAudio();
+      setStatus('idle');
+      return;
+    }
+
+    // 正在加载 → 忽略
+    if (status === 'loading') return;
+
+    setStatus('loading');
+    setErrorMsg('');
+
+    try {
+      const blob = await synthesizeTTS(messageUuid);
+      const url = URL.createObjectURL(blob);
+      blobUrlRef.current = url;
+
+      const audio = new Audio(url);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setStatus('idle');
+        cleanupAudio();
+      };
+      audio.onerror = () => {
+        setStatus('error');
+        setErrorMsg('播放失败');
+        cleanupAudio();
+      };
+
+      await audio.play();
+      setStatus('playing');
+    } catch (e) {
+      setStatus('error');
+      if (e instanceof TTSError) {
+        if (e.code === 'TTS_MODEL_SWITCHING') {
+          setErrorMsg(`模型切换中，请 ${e.data?.retry_after || 60} 秒后重试`);
+        } else {
+          setErrorMsg(e.message);
+        }
+      } else {
+        setErrorMsg('语音合成失败');
+      }
+      cleanupAudio();
+    }
+  }, [messageUuid, status, isTooLong, cleanupAudio]);
+
+  return (
+    <div className="mt-1.5 flex items-center gap-1.5">
+      <button
+        onClick={handleClick}
+        disabled={isTooLong || status === 'loading'}
+        title={
+          isTooLong
+            ? '文本过长，暂不支持语音播放'
+            : status === 'playing'
+              ? '停止播放'
+              : '播放语音'
+        }
+        className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors ${
+          isTooLong || status === 'loading'
+            ? 'cursor-not-allowed text-gray-300 dark:text-gray-500'
+            : status === 'playing'
+              ? 'text-primary-500 hover:text-primary-600'
+              : status === 'error'
+                ? 'text-red-400 hover:text-red-500'
+                : 'text-gray-400 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-200'
+        }`}
+      >
+        {status === 'loading' ? (
+          <svg
+            className="h-3.5 w-3.5 animate-spin"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+        ) : status === 'playing' ? (
+          /* 停止图标 */
+          <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+            <rect x="6" y="6" width="12" height="12" rx="1" />
+          </svg>
+        ) : (
+          /* 扬声器图标 */
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15.536 8.464a5 5 0 010 7.072M17.95 6.05a8 8 0 010 11.9M6.5 8.8h-2a1 1 0 00-1 1v4.4a1 1 0 001 1h2l4.5 3.5V5.3L6.5 8.8z"
+            />
+          </svg>
+        )}
+        <span>
+          {status === 'loading'
+            ? '合成中...'
+            : status === 'playing'
+              ? '停止'
+              : status === 'error'
+                ? '重试'
+                : '播放语音'}
+        </span>
+      </button>
+      {/* 错误提示 */}
+      {status === 'error' && errorMsg && (
+        <span className="text-[10px] text-red-400">{errorMsg}</span>
+      )}
     </div>
   );
 });

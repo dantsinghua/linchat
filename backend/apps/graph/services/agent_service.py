@@ -3,6 +3,7 @@
 参考:
 - behavior-model.md#2.2 执行LangGraph Agent（B_CHAT_002）
 - behavior-model.md#2.5 继续生成（B_CHAT_005）
+- specs/008-multimodal-minicpm/plan.md
 """
 
 import asyncio
@@ -17,19 +18,124 @@ from django.utils import timezone
 from langchain_core.messages import HumanMessage
 from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
 
-from apps.chat.models import LangGraphExecution, Message
-from apps.chat.repositories import execution_repo, message_repo
+from apps.chat.models import LangGraphExecution, MediaAttachment, Message
+from apps.chat.repositories import execution_repo, media_attachment_repo, message_repo
 from apps.chat.services.generation import (map_llm_exception,
                                            register_generation,
                                            unregister_generation)
+from apps.chat.services.inference_service import inference_service
 from apps.chat.services.types import StreamChunk, _get_language_model_name
 from apps.common.exceptions import (LLMException, LLMInvalidResponseError,
                                     LLMTimeoutError)
-from apps.graph.agent import create_chat_agent, get_agent_config
+from apps.graph.agent import (build_multimodal_messages, create_chat_agent,
+                              create_multimodal_direct, get_agent_config)
 from apps.graph.prompts import PromptBuilder, PromptConfig, PromptModule
 from apps.users.repositories import user_repo
 
 logger = logging.getLogger(__name__)
+
+
+async def _monitor_cancel_signal(
+    user_id: int,
+    request_id: str,
+    stop_event: asyncio.Event,
+) -> None:
+    """后台监听推理取消信号 (T035)
+
+    优先使用 Redis Pub/Sub 监听 INFERENCE_CANCEL 事件，
+    Pub/Sub 连接异常时降级为轮询 Redis inference_task 键。
+
+    Args:
+        user_id: 用户 ID
+        request_id: 请求 ID
+        stop_event: 停止事件（设置后 SSE 循环中断）
+    """
+    import json
+
+    from core.redis import get_redis, get_user_events_channel
+
+    try:
+        client = await get_redis()
+        pubsub = client.pubsub()
+        channel = get_user_events_channel(user_id)
+
+        await pubsub.subscribe(channel)
+        try:
+            while not stop_event.is_set():
+                try:
+                    message = await asyncio.wait_for(
+                        pubsub.get_message(ignore_subscribe_messages=True),
+                        timeout=1.0,
+                    )
+                    if message and message["type"] == "message":
+                        data_str = message["data"]
+                        if isinstance(data_str, bytes):
+                            data_str = data_str.decode("utf-8")
+                        # 解析 SSE 格式中的 data 行
+                        for line in data_str.split("\n"):
+                            if line.startswith("data: "):
+                                try:
+                                    event_data = json.loads(line[6:])
+                                    if event_data.get("type") == "inference_cancel":
+                                        cancel_rid = event_data.get("request_id")
+                                        if not cancel_rid or cancel_rid == request_id:
+                                            logger.info(
+                                                "收到推理取消信号 (Pub/Sub): "
+                                                "user_id=%d, request_id=%s",
+                                                user_id,
+                                                request_id,
+                                            )
+                                            stop_event.set()
+                                            return
+                                except json.JSONDecodeError:
+                                    pass
+                except asyncio.TimeoutError:
+                    continue
+        finally:
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
+
+    except Exception as e:
+        # Pub/Sub 失败，降级为轮询 Redis 推理任务键
+        logger.warning(
+            "Pub/Sub 订阅失败，降级为轮询: user_id=%d, error=%s",
+            user_id,
+            e,
+        )
+        await _poll_cancel_signal(user_id, request_id, stop_event)
+
+
+async def _poll_cancel_signal(
+    user_id: int,
+    request_id: str,
+    stop_event: asyncio.Event,
+) -> None:
+    """降级轮询：检查 Redis 推理任务键是否被删除 (T035)
+
+    cancel_task() 步骤 1 删除键后，轮询检测到键不存在即视为取消信号。
+    轮询间隔 1 秒，与 Pub/Sub 超时对齐。
+    """
+    from core.redis import get_redis
+
+    key = f"user:{user_id}:inference_task"
+
+    try:
+        client = await get_redis()
+        while not stop_event.is_set():
+            task_data = await client.get(key)
+            if task_data is None:
+                logger.info(
+                    "收到推理取消信号 (轮询): user_id=%d, request_id=%s",
+                    user_id,
+                    request_id,
+                )
+                stop_event.set()
+                return
+            await asyncio.sleep(1.0)
+    except Exception as e:
+        logger.error(
+            "取消信号轮询失败: user_id=%d, error=%s", user_id, e
+        )
 
 
 async def _build_prompt_preamble(
@@ -143,8 +249,16 @@ async def _build_prompt_preamble(
     )
 
 
-def _init_langfuse(request_id: str) -> Optional[LangfuseCallbackHandler]:
-    """初始化 Langfuse 追踪"""
+def _init_langfuse(
+    request_id: str,
+    multimodal_metadata: Optional[dict] = None,
+) -> Optional[LangfuseCallbackHandler]:
+    """初始化 Langfuse 追踪
+
+    Args:
+        request_id: 请求 ID（用于 trace_id 关联）
+        multimodal_metadata: 多模态推理元数据（model、media_types、attachment_count）
+    """
     try:
         if not (settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY):
             return None
@@ -154,7 +268,22 @@ def _init_langfuse(request_id: str) -> Optional[LangfuseCallbackHandler]:
             ("LANGFUSE_HOST", settings.LANGFUSE_HOST),
         ]:
             os.environ.setdefault(key, val)
-        return LangfuseCallbackHandler()
+        handler = LangfuseCallbackHandler(
+            trace_context={"trace_id": request_id},
+        )
+
+        # T068: 多模态推理元数据注入到 Langfuse trace
+        if multimodal_metadata and handler.client:
+            try:
+                handler.client.trace(
+                    id=request_id,
+                    metadata=multimodal_metadata,
+                    tags=["multimodal"] + multimodal_metadata.get("media_types", []),
+                )
+            except Exception as e:
+                logger.debug("Langfuse multimodal metadata injection: %s", e)
+
+        return handler
     except Exception as e:
         logger.warning("Langfuse init failed: %s", e)
         return None
@@ -210,16 +339,177 @@ def _finalize_execution(
         execution.error_message = error_message
 
 
+def _extract_gateway_error(
+    e: Exception,
+) -> Optional[tuple[str, str, Optional[int]]]:
+    """从异常中提取 Gateway 模型错误信息 (T079)
+
+    解析 OpenAI SDK / httpx 异常中的 Gateway 错误码。
+
+    Returns:
+        (error_code, user_message, retry_after) 或 None
+        - E3001 → ("E3001", "请求的模型不存在", None)
+        - E3002 → ("E3002", "多模态服务暂时不可用，请稍后重试", retry_after)
+    """
+    import json as _json
+
+    # 提取错误体：openai.APIStatusError 携带 response.text
+    error_body = None
+    try:
+        if hasattr(e, "response") and hasattr(e.response, "text"):
+            error_body = _json.loads(e.response.text)
+        elif hasattr(e, "body") and isinstance(e.body, dict):
+            error_body = e.body
+    except Exception:
+        pass
+
+    if not error_body:
+        # 从异常消息中尝试提取
+        error_str = str(e)
+        if "E3001" in error_str:
+            return "E3001", "请求的模型不存在", None
+        if "E3002" in error_str:
+            return "E3002", "多模态服务暂时不可用，请稍后重试", None
+        return None
+
+    error_info = error_body.get("error", {})
+    error_code = error_info.get("code", "")
+    details = error_info.get("details", {})
+
+    if error_code == "E3001":
+        return "E3001", "请求的模型不存在", None
+    elif error_code == "E3002":
+        retry_after = details.get("retry_after")
+        return "E3002", "多模态服务暂时不可用，请稍后重试", retry_after
+
+    return None
+
+
+def _extract_content_control(e: Exception) -> Optional[str]:
+    """从异常中提取 Gateway content_control 事件信息 (T035)
+
+    当 Gateway 安全护栏触发时，发送 `event: content_control` SSE 事件，
+    OpenAI SDK 解析此非标准事件时可能抛出异常。
+
+    Returns:
+        replacement 文本，或 None（非 content_control 异常）
+    """
+    import json as _json
+
+    error_str = str(e)
+
+    # 检查异常消息中是否包含 content_control 相关信息
+    if "content_control" in error_str:
+        # 尝试从异常消息中提取 replacement 文本
+        try:
+            # 可能是 JSON 解析错误，包含原始 data
+            for part in error_str.split("data:"):
+                part = part.strip()
+                if part.startswith("{") and "content_control" in part:
+                    data = _json.loads(part.split("\n")[0])
+                    return data.get("replacement", "内容已被安全策略过滤")
+        except Exception:
+            pass
+        return "内容已被安全策略过滤"
+
+    # 检查异常体中的 content_control 信息
+    if hasattr(e, "body") and isinstance(e.body, dict):
+        if e.body.get("type") == "clear_previous":
+            return e.body.get("replacement", "内容已被安全策略过滤")
+
+    # 检查异常 response 体
+    try:
+        if hasattr(e, "response") and hasattr(e.response, "text"):
+            text = e.response.text
+            if "content_control" in text or "clear_previous" in text:
+                data = _json.loads(text)
+                return data.get("replacement", "内容已被安全策略过滤")
+    except Exception:
+        pass
+
+    return None
+
+
 class AgentService:
     """Agent 执行服务"""
 
     @staticmethod
     async def execute(
-        user_id: int, thread_id: str, request_id: str, user_message: str
+        user_id: int,
+        thread_id: str,
+        request_id: str,
+        user_message: str,
+        attachment_uuids: Optional[list[str]] = None,
     ) -> AsyncGenerator[StreamChunk, None]:
+        """执行 Agent（支持多模态）
+
+        Args:
+            user_id: 用户 ID
+            thread_id: 线程 ID
+            request_id: 请求 ID
+            user_message: 用户消息
+            attachment_uuids: 附件 UUID 列表（多模态支持）
+
+        Yields:
+            StreamChunk: 流式响应块
+        """
         execution_uuid = str(uuid.uuid4())
         start_time = timezone.now()
         stop_event = register_generation(request_id)
+
+        # 多模态：获取附件并注册推理任务
+        attachments: list[MediaAttachment] = []
+        is_multimodal = False
+        multimodal_model = ""
+        media_types: list[str] = []
+
+        if attachment_uuids:
+            attachments = await media_attachment_repo.get_by_uuids(
+                attachment_uuids, user_id
+            )
+            if attachments:
+                is_multimodal = True
+                # 检查附件是否过期
+                for att in attachments:
+                    if att.is_expired:
+                        yield StreamChunk(
+                            type="error",
+                            content=f"附件已过期: {att.file_name}",
+                        )
+                        return
+
+                # 构建多模态消息获取模型信息
+                _, multimodal_model, media_types = build_multimodal_messages(
+                    user_message, attachments
+                )
+
+                # 注册推理任务（并发控制）
+                # 注意：视图层已做并发检查并返回 HTTP 409，这里是竞态条件保护
+                registered = await inference_service.register_task(
+                    user_id=user_id,
+                    request_id=request_id,
+                    model=multimodal_model,
+                    media_types=media_types,
+                )
+                if not registered:
+                    # 竞态条件：视图层检查后、注册前有其他请求抢占
+                    logger.warning(
+                        f"推理任务注册失败（竞态条件）: user_id={user_id}, request_id={request_id}"
+                    )
+                    yield StreamChunk(
+                        type="error",
+                        content="推理任务冲突，请稍后重试",
+                    )
+                    return
+
+        # 构建 execution input_data（含多模态元数据 T068）
+        input_data: dict[str, Any] = {"message": user_message}
+        if is_multimodal:
+            input_data["multimodal"] = {
+                "model": multimodal_model,
+                "media_types": media_types,
+                "attachment_count": len(attachments),
+            }
 
         execution = LangGraphExecution(
             execution_uuid=execution_uuid,
@@ -229,7 +519,7 @@ class AgentService:
             graph_name="react_agent",
             status=LangGraphExecution.STATUS_PENDING,
             start_time=start_time,
-            input_data={"message": user_message},
+            input_data=input_data,
         )
         await execution_repo.create(execution)
 
@@ -242,16 +532,39 @@ class AgentService:
         first_token_received = False
         first_token_time = None
         max_seq: Optional[int] = None
+        cancel_monitor_task: Optional[asyncio.Task] = None
 
         try:
-            langfuse_handler = _init_langfuse(request_id)
+            # T035: 多模态请求启动后台取消信号监听
+            if is_multimodal:
+                cancel_monitor_task = asyncio.create_task(
+                    _monitor_cancel_signal(user_id, request_id, stop_event)
+                )
+            # T068: 初始化 Langfuse（多模态推理包含元数据）
+            multimodal_meta = (
+                {
+                    "model": multimodal_model,
+                    "media_types": media_types,
+                    "attachment_count": len(attachments),
+                    "gateway_request_id": request_id,
+                }
+                if is_multimodal
+                else None
+            )
+            langfuse_handler = _init_langfuse(request_id, multimodal_meta)
             max_seq = await message_repo.get_max_sequence(user_id)
             execution.status = LangGraphExecution.STATUS_RUNNING
             await execution_repo.update(execution)
 
             callbacks = [langfuse_handler] if langfuse_handler else None
             config = get_agent_config(user_id, callbacks)
-            input_message = {"messages": [HumanMessage(content=user_message)]}
+
+            # 构建输入消息（支持多模态）
+            if is_multimodal and attachments:
+                mm_message, _, _ = build_multimodal_messages(user_message, attachments)
+                input_message = {"messages": [mm_message]}
+            else:
+                input_message = {"messages": [HumanMessage(content=user_message)]}
             (
                 preamble,
                 preamble_tokens,
@@ -313,11 +626,28 @@ class AgentService:
             push_interval = getattr(settings, "MONITOR_PUSH_INTERVAL", 0.5)
             memory_modified = False
 
-            async with create_chat_agent(
-                prompt=preamble,
-                preamble_tokens=preamble_tokens,
-                effective_window=effective_window,
-            ) as agent:
+            # 选择 Agent 类型
+            if is_multimodal:
+                # 直接 httpx 调用 Gateway，绕过 LangChain video_url/audio_url 序列化问题
+                # LangChain ChatOpenAI 会将非标准内容类型序列化为 Python repr 字符串
+                system_prompt = "\n\n".join(
+                    m.content
+                    for m in preamble
+                    if hasattr(m, "content") and isinstance(m.content, str)
+                )
+                agent_context = create_multimodal_direct(
+                    content=mm_message.content,
+                    model_name=multimodal_model,
+                    system_prompt=system_prompt,
+                )
+            else:
+                agent_context = create_chat_agent(
+                    prompt=preamble,
+                    preamble_tokens=preamble_tokens,
+                    effective_window=effective_window,
+                )
+
+            async with agent_context as agent:
                 try:
                     async with asyncio.timeout(settings.AGENT_TOTAL_TIMEOUT):
                         async for event in agent.astream_events(
@@ -350,6 +680,12 @@ class AgentService:
                                             created_time=start_time,
                                         )
                                         await message_repo.create(user_msg)
+                                        # 多模态时使用多模态模型名称
+                                        msg_model_name = (
+                                            multimodal_model
+                                            if is_multimodal
+                                            else await _get_language_model_name()
+                                        )
                                         assistant_msg = Message(
                                             message_uuid=str(uuid.uuid4()),
                                             user_id=user_id,
@@ -358,10 +694,18 @@ class AgentService:
                                             request_id=request_id,
                                             sequence=max_seq + 2,
                                             status=Message.STATUS_GENERATING,
-                                            model_name=await _get_language_model_name(),
+                                            model_name=msg_model_name,
                                             created_time=first_token_time,
                                         )
                                         await message_repo.create(assistant_msg)
+
+                                        # 多模态：关联附件到用户消息
+                                        if is_multimodal and attachment_uuids:
+                                            await media_attachment_repo.associate_message(
+                                                attachment_ids=[a.attachment_id for a in attachments],
+                                                message_id=user_msg.message_id,
+                                                user_id=user_id,
+                                            )
 
                                     full_response += chunk.content
                                     chunk_data = StreamChunk(
@@ -548,6 +892,70 @@ class AgentService:
             raise
         except Exception as e:
             logger.exception(f"Agent execution error: {request_id}")
+
+            # T035: Gateway content_control 事件检测（安全护栏触发）
+            # OpenAI SDK 遇到非标准 SSE event: content_control 时可能抛出异常
+            content_control_info = _extract_content_control(e)
+            if content_control_info:
+                replacement_text = content_control_info
+                logger.warning(
+                    "Gateway content_control triggered: "
+                    "user_id=%d, request_id=%s, replacement=%s",
+                    user_id,
+                    request_id,
+                    replacement_text,
+                )
+                end_time = timezone.now()
+                duration_ms = int(
+                    (end_time - start_time).total_seconds() * 1000
+                )
+                _finalize_execution(
+                    execution,
+                    LangGraphExecution.STATUS_FAILED,
+                    end_time,
+                    duration_ms,
+                    error_type="ContentControl",
+                    error_message="safety_violation",
+                )
+                await execution_repo.update(execution)
+                if assistant_msg:
+                    assistant_msg.status = Message.STATUS_FAILED
+                    assistant_msg.content = replacement_text
+                    await message_repo.update(assistant_msg)
+                yield StreamChunk(
+                    type="error",
+                    content=replacement_text,
+                    data={"content_control": True},
+                )
+                return
+
+            # T079: Gateway 模型错误识别 (E3001/E3002)
+            gateway_error = _extract_gateway_error(e)
+            if gateway_error:
+                error_code, error_msg, retry_after = gateway_error
+                end_time = timezone.now()
+                duration_ms = int((end_time - start_time).total_seconds() * 1000)
+                _finalize_execution(
+                    execution,
+                    LangGraphExecution.STATUS_FAILED,
+                    end_time,
+                    duration_ms,
+                    error_type=f"GatewayError_{error_code}",
+                    error_message=error_msg,
+                )
+                await execution_repo.update(execution)
+                if assistant_msg:
+                    assistant_msg.status = Message.STATUS_FAILED
+                    assistant_msg.content = full_response or ""
+                    await message_repo.update(assistant_msg)
+                error_data: dict[str, Any] = {
+                    "gateway_error": error_code,
+                }
+                if retry_after is not None:
+                    error_data["retry_after"] = retry_after
+                yield StreamChunk(type="error", content=error_msg, data=error_data)
+                return
+
             _finalize_execution(
                 execution,
                 LangGraphExecution.STATUS_FAILED,
@@ -564,6 +972,16 @@ class AgentService:
             raise map_llm_exception(e)
         finally:
             unregister_generation(request_id)
+            # T035: 清理取消信号监听任务
+            if cancel_monitor_task and not cancel_monitor_task.done():
+                cancel_monitor_task.cancel()
+                try:
+                    await cancel_monitor_task
+                except asyncio.CancelledError:
+                    pass
+            # 多模态：完成推理任务（清理 Redis InferenceTask 键）
+            if is_multimodal:
+                await inference_service.complete_task(user_id, request_id)
             if langfuse_handler and langfuse_handler.client:
                 try:
                     langfuse_handler.client.flush()

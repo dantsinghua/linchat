@@ -1,0 +1,257 @@
+openapi: "3.1.0"
+info:
+  title: "LLM Gateway - Document Parse API (004-multi-vl-model)"
+  version: "2.0.0"
+  description: |
+    文档解析 API — 多 VL 模型支持版本。
+    破坏性变更：model 参数从可选改为必填。
+
+paths:
+  /v1/documents/parse:
+    post:
+      summary: 上传文件创建解析任务
+      description: |
+        上传 PDF 或 DOCX 文件，创建异步解析任务。
+        调用方必须通过 model 参数显式指定 VL 模型。
+      operationId: createParseTask
+      tags: [Documents]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, model]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF 或 DOCX 文件（最大 10MB）
+                model:
+                  type: string
+                  description: VL 模型 ID（必填）。可通过错误响应获取可用模型列表。
+                  example: "qwen2.5-vl"
+                pages:
+                  type: string
+                  nullable: true
+                  description: 页码范围，如 "1,3-5,8"
+                  example: "1-5"
+      responses:
+        "202":
+          description: 任务已创建
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParseTaskResponse"
+        "400":
+          description: |
+            参数错误。可能原因：
+            - model 参数缺失
+            - 指定的模型不是 VL 模型
+            - 指定的模型不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                model_missing:
+                  summary: 缺少 model 参数
+                  value:
+                    error:
+                      code: "E1001"
+                      message: "model 参数为必填项"
+                      type: "validation_error"
+                      details:
+                        available_vl_models: ["qwen2.5-vl", "minicpm-v"]
+                model_not_vl:
+                  summary: 指定的模型不是 VL 模型
+                  value:
+                    error:
+                      code: "E3001"
+                      message: "模型 qwen3-8b 不是 VL 模型"
+                      type: "model_not_found"
+                      details:
+                        available_vl_models: ["qwen2.5-vl", "minicpm-v"]
+        "413":
+          description: 文件过大（超过 10MB）
+        "503":
+          description: 文档解析服务未就绪
+
+  /v1/documents/tasks/{task_id}:
+    get:
+      summary: 查询任务状态
+      operationId: getTaskStatus
+      tags: [Documents]
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 任务状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParseTaskStatusResponse"
+        "404":
+          description: 任务不存在
+        "410":
+          description: 任务已过期（超过 7 天）
+
+  /v1/documents/tasks/{task_id}/result:
+    get:
+      summary: 获取解析结果
+      operationId: getTaskResult
+      tags: [Documents]
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [markdown, json]
+            default: markdown
+      responses:
+        "200":
+          description: 解析结果
+          content:
+            text/markdown:
+              schema:
+                type: string
+                description: 完整 Markdown 文本（format=markdown）
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskResultResponse"
+        "404":
+          description: 任务不存在或结果为空
+        "409":
+          description: 任务尚未完成
+        "410":
+          description: 任务已过期
+
+components:
+  schemas:
+    ParseTaskResponse:
+      type: object
+      required: [task_id, status]
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/ParseTaskStatus"
+        model:
+          type: string
+          description: 实际使用的 VL 模型 ID
+        file_name:
+          type: string
+        file_type:
+          type: string
+        total_pages:
+          type: integer
+        requested_pages:
+          type: string
+          nullable: true
+        progress:
+          $ref: "#/components/schemas/ProgressInfo"
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ParseTaskStatusResponse:
+      allOf:
+        - $ref: "#/components/schemas/ParseTaskResponse"
+        - type: object
+          properties:
+            suggestion:
+              type: string
+              nullable: true
+              description: 失败时的建议操作
+
+    TaskResultResponse:
+      type: object
+      properties:
+        task_id:
+          type: string
+        model:
+          type: string
+          description: 实际使用的 VL 模型 ID
+        total_pages:
+          type: integer
+        pages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PageResult"
+        usage:
+          $ref: "#/components/schemas/UsageInfo"
+        total_latency_ms:
+          type: number
+
+    PageResult:
+      type: object
+      properties:
+        page_number:
+          type: integer
+        markdown:
+          type: string
+        confidence:
+          type: number
+          nullable: true
+        latency_ms:
+          type: number
+          nullable: true
+
+    ProgressInfo:
+      type: object
+      properties:
+        current:
+          type: integer
+        total:
+          type: integer
+
+    UsageInfo:
+      type: object
+      properties:
+        total_prompt_tokens:
+          type: integer
+        total_completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+
+    ParseTaskStatus:
+      type: string
+      enum: [pending, processing, completed, failed]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            type:
+              type: string
+            request_id:
+              type: string
+            details:
+              type: object
+              nullable: true

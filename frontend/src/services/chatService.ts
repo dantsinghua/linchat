@@ -24,7 +24,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
 interface StreamCallbacks {
   onChunk?: (chunk: ChatStreamEvent) => void;
   onDone?: (messageId?: number) => void;
-  onError?: (error: string) => void;
+  onError?: (error: string, data?: ChatStreamEvent['data']) => void;
   onInterrupted?: (messageId?: number) => void;
   onContextCompacting?: () => void;
   onContextCompacted?: () => void;
@@ -79,7 +79,7 @@ async function streamSSE(
           switch (data.type) {
             case 'content':            onChunk?.(data); break;
             case 'done':               onDone?.(data.message_id); break;
-            case 'error':              onError?.(data.content || errorLabel); break;
+            case 'error':              onError?.(data.content || errorLabel, data.data); break;
             case 'interrupted':        onInterrupted?.(data.message_id); break;
             case 'context_compacting': onContextCompacting?.(); break;
             case 'context_compacted':  onContextCompacted?.(); break;
@@ -139,16 +139,26 @@ export async function stopGeneration(requestId: string): Promise<boolean> {
 
 /**
  * 发送消息并获取流式响应
+ *
+ * @param content 消息文本
+ * @param callbacks SSE 流回调
+ * @param signal 取消信号
+ * @param attachmentUuids 附件 UUID 列表（多模态消息）
  */
 export async function sendMessage(
   content: string,
   callbacks: StreamCallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  attachmentUuids?: string[]
 ): Promise<void> {
+  const body: Record<string, unknown> = { content };
+  if (attachmentUuids && attachmentUuids.length > 0) {
+    body.attachments = attachmentUuids;
+  }
   await streamSSE('/chat/', {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
     signal,
   }, callbacks, '发送失败');
 }

@@ -99,7 +99,7 @@ class TestConcurrentGenerationManagement(TestCase):
 class TestConcurrentChatService(TestCase):
     """并发聊天服务测试"""
 
-    @patch("apps.chat.services.agent_service.AgentService.execute")
+    @patch("apps.graph.services.agent_service.AgentService.execute")
     def test_concurrent_empty_message_validation(self, mock_execute):
         """测试并发空消息验证"""
         async def test_empty():
@@ -124,7 +124,7 @@ class TestConcurrentChatService(TestCase):
         # AgentService.execute 不应该被调用
         mock_execute.assert_not_called()
 
-    @patch("apps.chat.services.agent_service.AgentService.execute")
+    @patch("apps.graph.services.agent_service.AgentService.execute")
     def test_concurrent_message_length_validation(self, mock_execute):
         """测试并发消息长度验证"""
         from django.conf import settings
@@ -230,7 +230,7 @@ class TestConcurrencyStressSmoke(TestCase):
         from apps.chat.services import _active_generations
         _active_generations.clear()
 
-    @patch("apps.chat.services.agent_service.AgentService.execute")
+    @patch("apps.graph.services.agent_service.AgentService.execute")
     def test_10_users_concurrent_send(self, mock_execute):
         """SC-004: 10 用户并发发送消息，验证无死锁"""
         from apps.chat.services import StreamChunk

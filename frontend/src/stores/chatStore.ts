@@ -25,6 +25,8 @@ interface ChatState {
   failedContent: string | null;
   // 是否正在压缩上下文
   isCompacting: boolean;
+  // Gateway 模型切换倒计时（秒），0 表示无需等待
+  gatewayRetryAfter: number;
 
   // Actions
   setMessages: (messages: Message[]) => void;
@@ -39,6 +41,7 @@ interface ChatState {
   setError: (error: string | null) => void;
   setFailedContent: (content: string | null) => void;
   setIsCompacting: (compacting: boolean) => void;
+  setGatewayRetryAfter: (seconds: number) => void;
   clearMessages: () => void;
   reset: () => void;
 }
@@ -52,6 +55,7 @@ const initialState = {
   error: null,
   failedContent: null,
   isCompacting: false,
+  gatewayRetryAfter: 0,
 };
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -98,6 +102,8 @@ export const useChatStore = create<ChatState>((set) => ({
   setFailedContent: (failedContent) => set({ failedContent }),
 
   setIsCompacting: (isCompacting) => set({ isCompacting }),
+
+  setGatewayRetryAfter: (gatewayRetryAfter) => set({ gatewayRetryAfter }),
 
   clearMessages: () => set({ messages: [] }),
 

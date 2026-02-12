@@ -1,0 +1,126 @@
+openapi: 3.0.3
+info:
+  title: LinChat Inference Control API
+  description: 推理任务控制相关接口
+  version: 1.0.0
+
+paths:
+  /api/v1/chat/inference/cancel/:
+    post:
+      summary: 取消推理任务
+      description: |
+        取消当前用户正在进行的多模态推理任务。
+        - 取消必须在 500ms 内生效
+        - 已生成的内容保留显示
+        - 同时向网关发送取消请求
+
+        ⚠️ 注意：Gateway `/v1/chat/cancel` 端点尚未在 upstream-integration-guide.md v2.0.0 中列出。
+        需与 Gateway 侧确认实现状态。若 Gateway 不支持取消，后端仅执行 Redis 侧清理（发布
+        INFERENCE_CANCEL 事件 → AgentService 停止消费 SSE 流），已生成内容保留，模型侧推理
+        将自行完成（浪费计算资源但不影响用户体验）。
+
+        调用时机（参见 spec.md User Story 2 术语说明）：
+        - 用户点击"停止生成"按钮（cancel_inference）：后端中断 SSE 流 + Gateway 取消推理
+        - 注：语音对话中用户点击"打断"按钮（interrupt_playback）仅停止前端 TTS 音频播放，不调用此接口
+        - 本接口对应 cancel_request 内部机制：InferenceService → Redis Pub/Sub INFERENCE_CANCEL → AgentService 响应
+
+        Gateway 错误格式映射：
+        - Gateway: {"error": {"code": "Exxxx", ...}} → LinChat: {"code": "...", "message": "...", "data": ...}
+
+        参考文档：docs/upstream-integration-guide.md §6（错误码完整参考）
+      tags:
+        - Inference
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                request_id:
+                  type: string
+                  description: |
+                    要取消的请求 ID（可选）。
+                    如不提供，取消当前用户进行中的任务。
+      responses:
+        '200':
+          description: 取消成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelResponse'
+              example:
+                code: SUCCESS
+                message: 操作成功
+                data:
+                  cancelled: true
+                  request_id: "550e8400-e29b-41d4-a716-446655440000"
+        '404':
+          description: 无进行中的任务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: NO_ACTIVE_INFERENCE
+                message: 没有进行中的推理任务
+                data: null
+        '401':
+          description: 未认证
+
+  # /api/v1/chat/inference/status/ 已移除（宪法 9.2 单用户场景不需要并发检测端点）
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+
+  schemas:
+    CancelResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          example: "SUCCESS"
+        message:
+          type: string
+          example: 操作成功
+        data:
+          type: object
+          required:
+            - cancelled
+          properties:
+            cancelled:
+              type: boolean
+              description: 是否成功取消
+            request_id:
+              type: string
+              description: 被取消的请求 ID
+
+    # InferenceStatusResponse 已移除（宪法 9.2 单用户场景不需要）
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - data
+      properties:
+        code:
+          type: string
+          description: 错误码
+        message:
+          type: string
+          description: 错误信息
+        data:
+          type: object
+          nullable: true
+          description: 附加数据

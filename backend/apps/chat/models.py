@@ -135,6 +135,111 @@ class Message(models.Model):
         return f"Message({self.message_id}, {self.role}, user={self.user_id})"
 
 
+class MediaAttachment(models.Model):
+    """媒体文件附件表
+
+    参考: specs/008-multimodal-minicpm/data-model.md#2.1 MediaAttachment
+    存储用户上传的图片、视频、音频元数据
+    """
+
+    # 媒体类型常量
+    TYPE_IMAGE = "image"
+    TYPE_VIDEO = "video"
+    TYPE_AUDIO = "audio"
+    TYPE_DOCUMENT = "document"
+
+    TYPE_CHOICES = [
+        (TYPE_IMAGE, "图片"),
+        (TYPE_VIDEO, "视频"),
+        (TYPE_AUDIO, "音频"),
+        (TYPE_DOCUMENT, "文档"),
+    ]
+
+    # ========== 主键 ==========
+    attachment_id = models.BigAutoField(primary_key=True, verbose_name="附件ID")
+    attachment_uuid = models.CharField(
+        max_length=36,
+        unique=True,
+        db_index=True,
+        verbose_name="附件UUID（公开标识）",
+    )
+
+    # ========== 关联字段 ==========
+    message = models.ForeignKey(
+        "Message",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="attachments",
+        verbose_name="关联消息",
+    )
+    user_id = models.BigIntegerField(
+        db_index=True,
+        verbose_name="上传用户ID（数据隔离键）",
+    )
+
+    # ========== 媒体信息 ==========
+    media_type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES,
+        verbose_name="媒体类型",
+    )
+    mime_type = models.CharField(
+        max_length=100,
+        verbose_name="MIME类型",
+    )
+    file_name = models.CharField(
+        max_length=255,
+        verbose_name="原始文件名",
+    )
+    file_size = models.BigIntegerField(verbose_name="文件大小（字节）")
+
+    # ========== 存储路径 ==========
+    storage_path = models.CharField(
+        max_length=500,
+        verbose_name="MinIO存储路径",
+    )
+    # ========== 媒体属性 ==========
+    width = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="宽度（像素）",
+    )
+    height = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="高度（像素）",
+    )
+    duration_seconds = models.FloatField(
+        null=True,
+        blank=True,
+        verbose_name="时长（秒）",
+    )
+
+    # ========== 过期状态 ==========
+    is_expired = models.BooleanField(
+        default=False,
+        verbose_name="原始文件是否已过期",
+    )
+    created_at = models.DateTimeField(verbose_name="上传时间")
+    expires_at = models.DateTimeField(verbose_name="过期时间")
+
+    class Meta:
+        db_table = "media_attachment"
+        verbose_name = "媒体附件"
+        verbose_name_plural = "媒体附件"
+        indexes = [
+            models.Index(fields=["user_id"], name="idx_attachment_user"),
+            models.Index(fields=["message_id"], name="idx_attachment_message"),
+            models.Index(
+                fields=["expires_at", "is_expired"], name="idx_attachment_expires"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"MediaAttachment({self.attachment_id}, {self.media_type}, user={self.user_id})"
+
+
 class LangGraphExecution(models.Model):
     """LangGraph 执行监控表
 
