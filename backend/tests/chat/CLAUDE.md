@@ -59,3 +59,14 @@ pytest tests/chat/ --cov=apps/chat --cov-report=term-missing
 - `httpx.AsyncClient` — 外部 HTTP 调用（TTS / DocumentParse / Gateway）
 - `inference_service` — Redis 推理任务管理
 - `EventService.publish_event` — SSE 事件推送
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 13, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1048 | 11:01 AM | 🔵 | Model Routing Tests Expect Wrong Default Values Confirming Agent3 Bug | ~597 |
+</claude-mem-context>

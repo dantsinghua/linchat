@@ -21,7 +21,6 @@ from apps.chat.services.generation import (_active_generations, get_stop_event,
 from apps.chat.services.inference_service import InferenceService, inference_service
 from apps.chat.services.media_service import MediaService, MediaUploadError, media_service
 from apps.chat.services.minio_service import MinioService, minio_service
-from apps.chat.services.tts_service import TTSError, TTSService, tts_service
 from apps.chat.services.types import (InferenceTask, MessageVO, StreamChunk,
                                       _get_language_model_name)
 
@@ -49,7 +48,4 @@ __all__ = [
     "DocumentParseService",
     "DocumentParseError",
     "document_parse_service",
-    "TTSService",
-    "TTSError",
-    "tts_service",
 ]

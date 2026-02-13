@@ -40,7 +40,4 @@ urlpatterns = [
     path("documents/tasks/<str:task_id>/", views.get_parse_task_status, name="parse_task_status"),
     # GET /api/v1/chat/documents/tasks/{task_id}/result/ - 获取解析结果
     path("documents/tasks/<str:task_id>/result/", views.get_parse_task_result, name="parse_task_result"),
-    # ============ TTS 语音合成相关 ============
-    # POST /api/v1/chat/tts/ - 获取 AI 回复的语音合成
-    path("tts/", views.get_tts_audio, name="get_tts_audio"),
 ]

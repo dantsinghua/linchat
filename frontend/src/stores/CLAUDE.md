@@ -14,3 +14,15 @@
 - Store 通过 `create<State>()` 定义
 - 组件通过 `useXxxStore()` 消费状态
 - 外部访问（非 React 上下文）使用 `useXxxStore.getState()`
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 13, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1049 | 11:01 AM | 🔵 | Frontend failedContent Recovery Only Restores Text Not Attachments | ~608 |
+| #1046 | 11:00 AM | 🔵 | Upload Store clearTasks() Confirms Agent3 Finding on User Data Loss | ~516 |
+</claude-mem-context>

@@ -857,24 +857,26 @@ class AgentService:
                         user_id, total_prompt_tokens + total_completion_tokens
                     )
 
-                    # Agent 完成后，如果记忆被修改，重新搜索并推送最终监控数据
-                    if memory_modified and monitor_data is not None:
+                    # Agent 完成后推送最终监控数据（含正确的 token 用量）
+                    if monitor_data is not None:
                         try:
-                            from apps.memory.services import MemoryService
+                            final_memory = memory_results
+                            if memory_modified:
+                                from apps.memory.services import MemoryService
 
-                            fresh_results = await MemoryService.search_memory(
-                                user_id=user_id,
-                                query=user_message,
-                                limit=settings.MEMORY_SEARCH_TOP_K,
-                                skip_vector=False,
-                            )
+                                final_memory = await MemoryService.search_memory(
+                                    user_id=user_id,
+                                    query=user_message,
+                                    limit=settings.MEMORY_SEARCH_TOP_K,
+                                    skip_vector=False,
+                                )
                             monitor_data = ContextMonitor.build_monitor_data(
                                 breakdown=breakdown,
                                 max_tokens=max_context_window,
                                 model_name=model_name,
                                 input_tokens=total_prompt_tokens,
                                 output_tokens=total_completion_tokens,
-                                memory_results=fresh_results,
+                                memory_results=final_memory,
                                 tool_processes=tool_processes,
                             )
                             monitor_data["request_id"] = request_id
@@ -882,7 +884,7 @@ class AgentService:
                                 user_id, "context_status", monitor_data
                             )
                         except Exception as e:
-                            logger.warning("Final memory refresh failed: %s", e)
+                            logger.warning("Final monitor push failed: %s", e)
 
                     yield StreamChunk(
                         type="done", content="", message_id=assistant_msg.message_id

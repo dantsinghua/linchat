@@ -19,3 +19,14 @@ idle → sending → generating → done/interrupted/error
 - `send()`: 乐观更新（临时消息）→ SSE 流 → 替换为真实消息
 - `stop()`: 并行调用 stopGeneration + cancelInference
 - Gateway 错误：检测 `data.gateway_error` 设置 `gatewayRetryAfter` 倒计时
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 13, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1049 | 11:01 AM | 🔵 | Frontend failedContent Recovery Only Restores Text Not Attachments | ~608 |
+</claude-mem-context>

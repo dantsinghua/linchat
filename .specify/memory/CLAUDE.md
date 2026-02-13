@@ -11,3 +11,8 @@
 ## 注意
 
 宪法是所有开发行为的最高约束，修改宪法使用 `/speckit.constitution` 命令。
+
+
+<claude-mem-context>
+
+</claude-mem-context>

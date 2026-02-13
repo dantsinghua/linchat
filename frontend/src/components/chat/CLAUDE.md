@@ -31,3 +31,14 @@ NetworkError → getErrorMessage (错误映射)
 MediaUploader → uploadStore, mediaApi
 AudioRecorder → useAudioRecorder Hook
 ```
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 13, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1049 | 11:01 AM | 🔵 | Frontend failedContent Recovery Only Restores Text Not Attachments | ~608 |
+</claude-mem-context>

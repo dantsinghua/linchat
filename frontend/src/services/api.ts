@@ -18,41 +18,6 @@ import axios, {
 import { ApiError, ApiResponse } from '@/types';
 import { isAuthRedirecting, trigger401Redirect } from '@/services/authGuard';
 
-// ============ 工具函数 ============
-
-/**
- * 将 snake_case 转换为 camelCase
- *
- * 后端返回 snake_case，前端使用 camelCase
- */
-function snakeToCamel(str: string): string {
-  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-}
-
-/**
- * 递归转换对象的键名从 snake_case 到 camelCase
- */
-function transformKeysToCamelCase<T>(obj: unknown): T {
-  if (obj === null || obj === undefined) {
-    return obj as T;
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map((item) => transformKeysToCamelCase(item)) as T;
-  }
-
-  if (typeof obj === 'object') {
-    const transformed: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-      const camelKey = snakeToCamel(key);
-      transformed[camelKey] = transformKeysToCamelCase(value);
-    }
-    return transformed as T;
-  }
-
-  return obj as T;
-}
-
 // API 基础 URL
 // 生产环境: /linchat/api/v1 (nginx 重写为 /api/v1)
 // 开发环境: /api/v1 (直连后端)
@@ -90,14 +55,7 @@ apiClient.interceptors.request.use(
  * 响应拦截器
  */
 apiClient.interceptors.response.use(
-  (response: AxiosResponse) => {
-    // 将响应数据从 snake_case 转换为 camelCase
-    // 参考: 后端返回 user_id/expire_time，前端期望 userId/expireTime
-    if (response.data) {
-      response.data = transformKeysToCamelCase(response.data);
-    }
-    return response;
-  },
+  (response: AxiosResponse) => response,
   (error: AxiosError<ApiError>) => {
     // 处理 401 未授权错误
     if (error.response?.status === 401) {
@@ -106,7 +64,7 @@ apiClient.interceptors.response.use(
 
     // 处理 429 频率限制
     if (error.response?.status === 429) {
-      const retryAfter = error.response.data?.retryAfter || 60;
+      const retryAfter = error.response.data?.retry_after || 60;
       console.warn(`Rate limited. Retry after ${retryAfter} seconds.`);
     }
 

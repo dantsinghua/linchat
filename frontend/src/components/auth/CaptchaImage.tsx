@@ -43,7 +43,7 @@ export function CaptchaImage({ onCaptchaChange, className = '' }: CaptchaImagePr
     try {
       const result = await getCaptcha();
       setCaptcha(result);
-      onCaptchaChange(result.captchaId);
+      onCaptchaChange(result.captcha_id);
     } catch (err) {
       setError('获取验证码失败，点击重试');
       console.error('Failed to get captcha:', err);
@@ -129,7 +129,7 @@ export function CaptchaImage({ onCaptchaChange, className = '' }: CaptchaImagePr
         </div>
       ) : captcha ? (
         <img
-          src={captcha.captchaImage}
+          src={captcha.captcha_image}
           alt="验证码"
           className="w-[120px] h-[40px] rounded border border-gray-200"
         />

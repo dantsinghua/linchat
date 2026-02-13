@@ -378,10 +378,6 @@ MEDIA_MAX_DURATION_SECONDS = int(os.getenv("MEDIA_MAX_DURATION_SECONDS", "60")) 
 MEDIA_MAX_ATTACHMENTS = int(os.getenv("MEDIA_MAX_ATTACHMENTS", "5"))  # 单次最多5个附件
 MEDIA_EXPIRY_DAYS = int(os.getenv("MEDIA_EXPIRY_DAYS", "7"))  # 媒体文件7天过期
 
-# TTS 配置
-LLM_GATEWAY_TTS_TIMEOUT = int(os.getenv("LLM_GATEWAY_TTS_TIMEOUT", "60"))  # TTS 合成超时: 60秒
-TTS_MAX_TEXT_LENGTH = int(os.getenv("TTS_MAX_TEXT_LENGTH", "2000"))  # TTS 最大文本长度
-
 # 推理任务配置
 INFERENCE_TASK_TTL = int(os.getenv("INFERENCE_TASK_TTL", "300"))  # 推理任务TTL: 300秒
 

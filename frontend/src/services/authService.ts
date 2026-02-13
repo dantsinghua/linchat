@@ -10,9 +10,9 @@ import { CaptchaResponse, User } from '@/types';
 import { sm4Encrypt } from '@/utils/crypto';
 
 interface LoginResponse {
-  userId: number;
+  user_id: number;
   username: string;
-  expireTime: string;
+  expire_time: string;
 }
 
 /**

@@ -72,3 +72,15 @@ from core.redis import get_redis, get_user_events_channel
 client = await get_redis()  # 获取异步 Redis 客户端
 channel = get_user_events_channel(user_id)  # → "events:user:{user_id}"
 ```
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 12, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1003 | 4:26 PM | 🔵 | Complete LLM Gateway Configuration Settings | ~415 |
+| #1002 | " | 🔵 | Django Settings LLM Gateway Configuration | ~271 |
+</claude-mem-context>

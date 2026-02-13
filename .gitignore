@@ -54,3 +54,17 @@ sysmon_enhanced.py
 
 # Project images (screenshots, etc.)
 linchat.png
+*.png
+!frontend/public/**/*.png
+
+# Test / temporary files
+test-audio.mp3
+test-video.mp4
+test-document.pdf
+test-multimodal.png
+minicpm-o-video-test.tar.gz
+
+# Binary / large files
+*.tar.gz
+*.mp4
+*.mp3

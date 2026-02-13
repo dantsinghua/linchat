@@ -15,7 +15,7 @@ export interface ApiResponse<T = unknown> {
 // ============ 用户相关类型 ============
 
 export interface User {
-  userId: number;
+  user_id: number;
   username: string;
 }
 
@@ -27,8 +27,8 @@ export interface LoginRequest {
 }
 
 export interface CaptchaResponse {
-  captchaId: string;
-  captchaImage: string; // base64
+  captcha_id: string;
+  captcha_image: string; // base64
 }
 
 // ============ 聊天相关类型 ============
@@ -141,6 +141,6 @@ export interface ContextStatus extends MonitorData {
 export interface ApiError {
   code: string;
   message: string;
-  retryAfter?: number;
-  remainingSeconds?: number;
+  retry_after?: number;
+  remaining_seconds?: number;
 }

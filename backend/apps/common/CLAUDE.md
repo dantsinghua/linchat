@@ -67,3 +67,15 @@
 - Token 存储在 httpOnly Cookie 中（禁止 localStorage）
 - `TokenAuthMiddleware` 每次请求校验 Cookie → 设置 `request.user_id` / `request.user_type`
 - SSE 视图使用 `async_csrf_exempt` 绕过 CSRF（Cookie 自动携带）
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 13, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1053 | 11:03 AM | 🔵 | gateway_utils.py Imports Constitutional Exception Classes | ~569 |
+| #1045 | 11:00 AM | 🔵 | Gateway Utils Already Defines Required LLM Exception Classes | ~577 |
+</claude-mem-context>

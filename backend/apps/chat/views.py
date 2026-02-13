@@ -35,9 +35,7 @@ from apps.chat.services import (
     HistoryService,
     MediaService,
     MediaUploadError,
-    TTSError,
     inference_service,
-    tts_service,
 )
 from apps.chat.sse import first_validation_error, make_sse_response, parse_sse_request
 from apps.common.responses import ApiResponse
@@ -432,57 +430,3 @@ def get_parse_task_result(request: Request, task_id: str) -> Response:
     except Exception as e:
         logger.error(f"获取解析结果异常: task_id={task_id}, error={e}")
         return ApiResponse.error(message="获取解析结果失败")
-
-
-# ============ TTS 语音合成相关视图 ============
-
-
-@api_view(["POST"])
-def get_tts_audio(request: Request) -> Response:
-    """
-    获取 AI 回复的语音合成
-
-    POST /api/v1/chat/tts/
-
-    参考: specs/008-multimodal-minicpm/contracts/tts.yaml
-    """
-    user_id = request.user_id
-    message_uuid = request.data.get("message_uuid")
-    voice = request.data.get("voice", "default")
-
-    if not message_uuid:
-        return ApiResponse.validation_error(message="message_uuid 为必填参数")
-
-    try:
-        audio_bytes = async_to_sync(tts_service.synthesize)(
-            user_id=user_id,
-            message_uuid=message_uuid,
-            voice=voice,
-        )
-
-        return FileResponse(
-            BytesIO(audio_bytes),
-            content_type="audio/mpeg",
-            filename=f"tts_{message_uuid}.mp3",
-        )
-
-    except TTSError as e:
-        logger.warning(
-            f"TTS 合成失败: user_id={user_id}, "
-            f"message_uuid={message_uuid}, code={e.code}"
-        )
-        return ApiResponse.error(
-            code=e.code,
-            message=e.message,
-            data=e.data,
-            status_code=e.status_code,
-        )
-    except Exception as e:
-        logger.error(
-            f"TTS 合成异常: user_id={user_id}, "
-            f"message_uuid={message_uuid}, error={e}"
-        )
-        return ApiResponse.error(
-            message="语音合成失败，请稍后重试",
-            status_code=503,
-        )

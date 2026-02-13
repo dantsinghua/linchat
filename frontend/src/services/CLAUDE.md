@@ -24,3 +24,8 @@
 
 `ttsApi.ts` 使用原生 `fetch`（非 axios），因为响应是 `audio/mpeg` 二进制流。
 错误响应解析为 `TTSError`，包含 `code`、`statusCode`、`data`（含 retry_after）。
+
+
+<claude-mem-context>
+
+</claude-mem-context>
