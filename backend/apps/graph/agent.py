@@ -457,6 +457,9 @@ async def stream_multimodal_httpx(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": content})
 
+    # 多模态模型上下文有限（图片 token 占用大量容量），需控制 max_tokens
+    mm_max_tokens = getattr(settings, "MULTIMODAL_MAX_TOKENS", 1024)
+
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(gateway_timeout, connect=30.0),
     ) as client:
@@ -471,8 +474,7 @@ async def stream_multimodal_httpx(
                 "model": model_name,
                 "messages": messages,
                 "stream": True,
-                "stream_options": {"include_usage": True},
-                "max_tokens": 4096,
+                "max_tokens": mm_max_tokens,
             },
         ) as response:
             if response.status_code != 200:
@@ -491,6 +493,20 @@ async def stream_multimodal_httpx(
                     break
                 try:
                     chunk = _json.loads(data_str)
+                    # 检测 SSE 数据中的 Gateway 错误
+                    # Gateway 在流式模式下可能返回 200 但在 SSE 中包含 error 对象
+                    error_obj = chunk.get("error")
+                    if error_obj:
+                        code = error_obj.get("code", "")
+                        msg = error_obj.get("message", "未知错误")
+                        logger.error(
+                            "多模态 SSE 收到 Gateway 错误: code=%s, message=%s",
+                            code,
+                            msg,
+                        )
+                        raise RuntimeError(
+                            f"Gateway 多模态推理错误 ({code}): {msg}"
+                        )
                     choices = chunk.get("choices", [])
                     delta_content = ""
                     if choices:
