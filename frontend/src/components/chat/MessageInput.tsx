@@ -29,6 +29,7 @@ interface MessageInputProps {
   isGenerating: boolean;
   disabled?: boolean;
   failedContent?: string | null;
+  failedAttachments?: MediaAttachment[] | null;
   onSend: (content: string, attachments?: MediaAttachment[]) => Promise<void>;
   onStop: () => Promise<void>;
   onClearFailedContent?: () => void;
@@ -48,6 +49,7 @@ export const MessageInput = memo(function MessageInput({
   isGenerating,
   disabled = false,
   failedContent,
+  failedAttachments,
   onSend,
   onStop,
   onClearFailedContent,
@@ -91,6 +93,19 @@ export const MessageInput = memo(function MessageInput({
   useEffect(() => {
     if (failedContent) {
       setContent(failedContent);
+      // 恢复附件到 uploadStore（附件已在 MinIO 中，无需重新上传）
+      if (failedAttachments && failedAttachments.length > 0) {
+        failedAttachments.forEach((att) => {
+          uploadStore.addTask({
+            id: att.attachment_uuid,
+            file: new File([], att.file_name),
+            previewUrl: '',
+            progress: { percent: 100, stage: 'uploading', status: '已恢复' },
+            status: 'completed',
+            attachment: att,
+          });
+        });
+      }
       onClearFailedContent?.();
       // 聚焦到输入框并调整高度
       requestAnimationFrame(() => {
@@ -98,7 +113,7 @@ export const MessageInput = memo(function MessageInput({
         textareaRef.current?.focus();
       });
     }
-  }, [failedContent, onClearFailedContent, adjustHeight]);
+  }, [failedContent, failedAttachments, onClearFailedContent, adjustHeight, uploadStore]);
 
   // 处理输入变化
   const handleChange = useCallback(

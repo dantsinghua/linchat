@@ -108,15 +108,17 @@ class MinioService:
         Returns:
             文件字节数据
         """
+        response = None
         try:
             response = self.client.get_object(bucket, object_name)
-            data = response.read()
-            response.close()
-            response.release_conn()
-            return data
+            return response.read()
         except S3Error as e:
             logger.error(f"下载文件失败: {bucket}/{object_name}, 错误: {e}")
             raise
+        finally:
+            if response is not None:
+                response.close()
+                response.release_conn()
 
     def get_object_stream(self, bucket: str, object_name: str) -> BinaryIO:
         """获取对象流（用于大文件流式读取）

@@ -37,6 +37,7 @@ export default function ChatPage() {
     hasMore,
     error,
     failedContent,
+    failedAttachments,
     gatewayRetryAfter,
     send,
     stop,
@@ -54,10 +55,11 @@ export default function ChatPage() {
   const handleRetry = useCallback(async () => {
     if (failedContent) {
       const content = failedContent;
+      const attachments = failedAttachments ?? undefined;
       clearFailedContent();
-      await send(content);
+      await send(content, attachments);
     }
-  }, [failedContent, clearFailedContent, send]);
+  }, [failedContent, failedAttachments, clearFailedContent, send]);
 
   // 处理登出
   const handleLogout = useCallback(async () => {
@@ -166,6 +168,7 @@ export default function ChatPage() {
             <MessageInput
               isGenerating={isGenerating}
               failedContent={failedContent}
+              failedAttachments={failedAttachments}
               onSend={send}
               onStop={stop}
               onClearFailedContent={clearFailedContent}

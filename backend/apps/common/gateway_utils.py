@@ -137,7 +137,21 @@ def map_httpx_exception(e: Exception) -> Exception:
         return LLMTimeoutError(f"Gateway 请求超时: {e}")
     elif isinstance(e, httpx.ConnectError):
         return LLMConnectionError(f"Gateway 连接失败: {e}")
-    elif isinstance(e, (LLMConnectionError, LLMTimeoutError)):
+    elif isinstance(e, httpx.HTTPStatusError):
+        if e.response.status_code == 429:
+            retry_after = int(e.response.headers.get("Retry-After", "60"))
+            return LLMRateLimitError(
+                f"Gateway 频率限制: {e}", retry_after=retry_after
+            )
+        elif e.response.status_code == 400:
+            body = e.response.text
+            if "content_filter" in body or "content_control" in body:
+                return LLMContentFilterError(f"内容审核拦截: {body[:200]}")
+        return LLMConnectionError(f"Gateway HTTP {e.response.status_code}: {e}")
+    elif isinstance(e, (
+        LLMConnectionError, LLMTimeoutError,
+        LLMRateLimitError, LLMContentFilterError,
+    )):
         return e
     else:
         return LLMConnectionError(f"Gateway 请求异常: {e}")

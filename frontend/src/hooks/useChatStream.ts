@@ -29,6 +29,7 @@ interface UseChatStreamReturn {
   hasMore: boolean;
   error: string | null;
   failedContent: string | null;
+  failedAttachments: MediaAttachment[] | null;
   gatewayRetryAfter: number;
   send: (content: string, attachments?: MediaAttachment[]) => Promise<void>;
   stop: () => Promise<void>;
@@ -177,6 +178,7 @@ export function useChatStream(): UseChatStreamReturn {
       if (!realId) {
         store.setMessages(originalMessages);
         store.setFailedContent(content);
+        store.setFailedAttachments(attachments ?? null);
       } else {
         store.updateMessage(realId, { status: 0 as MessageStatus });
       }
@@ -294,6 +296,7 @@ export function useChatStream(): UseChatStreamReturn {
 
   const clearFailedContent = useCallback(() => {
     store.setFailedContent(null);
+    store.setFailedAttachments(null);
   }, [store]);
 
   // 挂载时加载历史，卸载时取消请求
@@ -311,6 +314,7 @@ export function useChatStream(): UseChatStreamReturn {
     hasMore: store.hasMore,
     error: store.error,
     failedContent: store.failedContent,
+    failedAttachments: store.failedAttachments,
     gatewayRetryAfter: store.gatewayRetryAfter,
     send, stop, resume, loadMore, reload, clearFailedContent,
   };

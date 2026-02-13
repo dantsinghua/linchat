@@ -167,26 +167,33 @@ class MediaService:
             content_type=mime_type,
         )
 
-        # 创建数据库记录
-        now = timezone.now()
-        expiry_days = getattr(settings, "MEDIA_EXPIRY_DAYS", 7)
-        expires_at = now + timedelta(days=expiry_days)
+        # 创建数据库记录（失败时补偿删除 MinIO 文件）
+        try:
+            now = timezone.now()
+            expiry_days = getattr(settings, "MEDIA_EXPIRY_DAYS", 7)
+            expires_at = now + timedelta(days=expiry_days)
 
-        attachment = MediaAttachment(
-            attachment_uuid=attachment_uuid,
-            user_id=user_id,
-            media_type=media_type,
-            mime_type=mime_type,
-            file_name=file_name,
-            file_size=file_size,
-            storage_path=storage_path,
-            width=width,
-            height=height,
-            created_at=now,
-            expires_at=expires_at,
-        )
+            attachment = MediaAttachment(
+                attachment_uuid=attachment_uuid,
+                user_id=user_id,
+                media_type=media_type,
+                mime_type=mime_type,
+                file_name=file_name,
+                file_size=file_size,
+                storage_path=storage_path,
+                width=width,
+                height=height,
+                created_at=now,
+                expires_at=expires_at,
+            )
 
-        attachment = await media_attachment_repo.create(attachment)
+            attachment = await media_attachment_repo.create(attachment)
+        except Exception:
+            if not minio_service.delete_file(settings.MINIO_BUCKET_MEDIA, storage_path):
+                logger.critical(
+                    f"MinIO 补偿删除失败，需人工清理: {storage_path}"
+                )
+            raise
         logger.info(f"上传图片成功: user_id={user_id}, uuid={attachment_uuid}")
 
         return attachment
@@ -261,27 +268,34 @@ class MediaService:
             content_type=mime_type,
         )
 
-        # 创建数据库记录
-        now = timezone.now()
-        expiry_days = getattr(settings, "MEDIA_EXPIRY_DAYS", 7)
-        expires_at = now + timedelta(days=expiry_days)
+        # 创建数据库记录（失败时补偿删除 MinIO 文件）
+        try:
+            now = timezone.now()
+            expiry_days = getattr(settings, "MEDIA_EXPIRY_DAYS", 7)
+            expires_at = now + timedelta(days=expiry_days)
 
-        attachment = MediaAttachment(
-            attachment_uuid=attachment_uuid,
-            user_id=user_id,
-            media_type=media_type,
-            mime_type=mime_type,
-            file_name=file_name,
-            file_size=file_size,
-            storage_path=storage_path,
-            width=width,
-            height=height,
-            duration_seconds=duration_seconds,
-            created_at=now,
-            expires_at=expires_at,
-        )
+            attachment = MediaAttachment(
+                attachment_uuid=attachment_uuid,
+                user_id=user_id,
+                media_type=media_type,
+                mime_type=mime_type,
+                file_name=file_name,
+                file_size=file_size,
+                storage_path=storage_path,
+                width=width,
+                height=height,
+                duration_seconds=duration_seconds,
+                created_at=now,
+                expires_at=expires_at,
+            )
 
-        attachment = await media_attachment_repo.create(attachment)
+            attachment = await media_attachment_repo.create(attachment)
+        except Exception:
+            if not minio_service.delete_file(settings.MINIO_BUCKET_MEDIA, storage_path):
+                logger.critical(
+                    f"MinIO 补偿删除失败，需人工清理: {storage_path}"
+                )
+            raise
         logger.info(
             f"上传{media_type}成功: user_id={user_id}, uuid={attachment_uuid}, "
             f"file_name={file_name}, file_size={file_size / 1024:.1f}KB"

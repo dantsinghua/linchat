@@ -353,7 +353,7 @@ def build_multimodal_messages(
     if has_audio:
         model_name = getattr(settings, "MULTIMODAL_MODEL_AUDIO", "minicpm-o")
     else:
-        model_name = getattr(settings, "MULTIMODAL_MODEL_VISION", "minicpm-v")
+        model_name = getattr(settings, "MULTIMODAL_MODEL_VISION", "minicpm-o")
 
     return HumanMessage(content=content), model_name, media_types
 

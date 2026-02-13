@@ -3,8 +3,8 @@
 
 覆盖:
 - 纯文本 → 默认模型（空字符串）
-- 图片附件 → minicpm-v
-- 视频附件 → minicpm-v
+- 图片附件 → minicpm-o
+- 视频附件 → minicpm-o
 - 音频附件 → minicpm-o
 - 混合媒体（图片+音频）→ minicpm-o（音频优先）
 - 语音消息占位文本替换逻辑
@@ -53,11 +53,11 @@ class TestBuildMultimodalMessages:
     @patch("apps.chat.services.minio_service.minio_service")
     @patch("apps.graph.agent.settings")
     def test_image_attachment_routes_to_vision(self, mock_settings, mock_minio):
-        """图片附件 → minicpm-v"""
+        """图片附件 → minicpm-o"""
         from apps.graph.agent import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
-        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-v"
+        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
         mock_settings.MULTIMODAL_MODEL_AUDIO = "minicpm-o"
         mock_minio.download_file.return_value = b"fake-image-data"
 
@@ -72,7 +72,7 @@ class TestBuildMultimodalMessages:
             attachments=[attachment],
         )
 
-        assert model_name == "minicpm-v"
+        assert model_name == "minicpm-o"
         assert media_types == ["image"]
         assert isinstance(message.content, list)
         # 应包含 text 和 image_url 两个内容块
@@ -86,11 +86,11 @@ class TestBuildMultimodalMessages:
     def test_video_attachment_routes_to_vision(
         self, mock_settings, mock_minio, mock_preprocess
     ):
-        """视频附件 → minicpm-v (视频经预处理后以 video_url 发送)"""
+        """视频附件 → minicpm-o (视频经预处理后以 video_url 发送)"""
         from apps.graph.agent import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
-        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-v"
+        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
         mock_settings.MULTIMODAL_MODEL_AUDIO = "minicpm-o"
         mock_minio.download_file.return_value = b"fake-video-data"
 
@@ -105,7 +105,7 @@ class TestBuildMultimodalMessages:
             attachments=[attachment],
         )
 
-        assert model_name == "minicpm-v"
+        assert model_name == "minicpm-o"
         assert media_types == ["video"]
         content_types = [c["type"] for c in message.content]
         assert "video_url" in content_types
@@ -118,7 +118,7 @@ class TestBuildMultimodalMessages:
         from apps.graph.agent import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
-        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-v"
+        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
         mock_settings.MULTIMODAL_MODEL_AUDIO = "minicpm-o"
         mock_minio.download_file.return_value = b"fake-audio-data"
 
@@ -147,7 +147,7 @@ class TestBuildMultimodalMessages:
         from apps.graph.agent import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
-        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-v"
+        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
         mock_settings.MULTIMODAL_MODEL_AUDIO = "minicpm-o"
         mock_minio.download_file.return_value = b"fake-data"
 
@@ -181,7 +181,7 @@ class TestBuildMultimodalMessages:
         from apps.graph.agent import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
-        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-v"
+        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
         mock_settings.MULTIMODAL_MODEL_AUDIO = "minicpm-o"
         mock_minio.download_file.return_value = b"fake-audio"
 
@@ -210,7 +210,7 @@ class TestBuildMultimodalMessages:
         from apps.graph.agent import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
-        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-v"
+        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
         mock_settings.MULTIMODAL_MODEL_AUDIO = "minicpm-o"
         mock_minio.download_file.return_value = b"fake-image"
 
@@ -226,7 +226,7 @@ class TestBuildMultimodalMessages:
         )
 
         # 无 audio 附件，即使文本恰好为 "[语音消息]" 也保留
-        assert model_name == "minicpm-v"
+        assert model_name == "minicpm-o"
         content_types = [c["type"] for c in message.content]
         assert "text" in content_types
         text_blocks = [c for c in message.content if c["type"] == "text"]
@@ -241,7 +241,7 @@ class TestBuildMultimodalMessages:
         from apps.graph.agent import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
-        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-v"
+        mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
         mock_settings.MULTIMODAL_MODEL_AUDIO = "minicpm-o"
         mock_minio.download_file.side_effect = Exception("MinIO unavailable")
 
@@ -257,7 +257,7 @@ class TestBuildMultimodalMessages:
         )
 
         # 仍然路由到 vision 模型
-        assert model_name == "minicpm-v"
+        assert model_name == "minicpm-o"
         # 应包含错误提示文本
         text_blocks = [
             c for c in message.content

@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 
 import type { Message } from '@/types';
+import type { MediaAttachment } from '@/types/media';
 
 interface ChatState {
   // 消息列表
@@ -23,6 +24,8 @@ interface ChatState {
   error: string | null;
   // 发送失败时保留的输入内容（用于恢复）
   failedContent: string | null;
+  // 发送失败时保留的附件（用于恢复）
+  failedAttachments: MediaAttachment[] | null;
   // 是否正在压缩上下文
   isCompacting: boolean;
   // Gateway 模型切换倒计时（秒），0 表示无需等待
@@ -40,6 +43,7 @@ interface ChatState {
   setHasMore: (hasMore: boolean) => void;
   setError: (error: string | null) => void;
   setFailedContent: (content: string | null) => void;
+  setFailedAttachments: (attachments: MediaAttachment[] | null) => void;
   setIsCompacting: (compacting: boolean) => void;
   setGatewayRetryAfter: (seconds: number) => void;
   clearMessages: () => void;
@@ -54,6 +58,7 @@ const initialState = {
   hasMore: true,
   error: null,
   failedContent: null,
+  failedAttachments: null,
   isCompacting: false,
   gatewayRetryAfter: 0,
 };
@@ -100,6 +105,8 @@ export const useChatStore = create<ChatState>((set) => ({
   setError: (error) => set({ error }),
 
   setFailedContent: (failedContent) => set({ failedContent }),
+
+  setFailedAttachments: (failedAttachments) => set({ failedAttachments }),
 
   setIsCompacting: (isCompacting) => set({ isCompacting }),
 
