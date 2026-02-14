@@ -24,11 +24,10 @@ from apps.chat.services.generation import (map_llm_exception,
                                            register_generation,
                                            unregister_generation)
 from apps.chat.services.inference_service import inference_service
-from apps.chat.services.types import StreamChunk, _get_language_model_name
+from apps.chat.services.types import StreamChunk, _get_tool_model_name
 from apps.common.exceptions import (LLMException, LLMInvalidResponseError,
                                     LLMTimeoutError)
-from apps.graph.agent import (build_multimodal_messages, create_chat_agent,
-                              create_multimodal_direct, get_agent_config)
+from apps.graph.agent import create_chat_agent, get_agent_config
 from apps.graph.prompts import PromptBuilder, PromptConfig, PromptModule
 from apps.users.repositories import user_repo
 
@@ -154,7 +153,7 @@ async def _build_prompt_preamble(
     from apps.context.types import TokenBreakdown
     from apps.models.services import model_service
 
-    config_data = await sync_to_async(model_service.get_active_model)("language")
+    config_data = await sync_to_async(model_service.get_active_model)("tool")
     max_context_window = (
         config_data.get("max_context_window", 128000) if config_data else 128000
     )
@@ -199,7 +198,10 @@ async def _build_prompt_preamble(
     )
 
     # 从 DB 拉取对话历史，转为 dict 列表
-    history_msgs = await message_repo.find_latest_by_user(user_id, limit=50)
+    history_rounds = getattr(settings, "CONTEXT_HISTORY_ROUNDS", 10)
+    history_msgs = await message_repo.find_latest_by_user(
+        user_id, limit=history_rounds * 2
+    )
     history_msgs.reverse()
     history_dicts: list[dict[str, str]] = []
     for m in history_msgs:
@@ -460,7 +462,6 @@ class AgentService:
         # 多模态：获取附件并注册推理任务
         attachments: list[MediaAttachment] = []
         is_multimodal = False
-        multimodal_model = ""
         media_types: list[str] = []
 
         if attachment_uuids:
@@ -478,21 +479,17 @@ class AgentService:
                         )
                         return
 
-                # 构建多模态消息获取模型信息
-                _, multimodal_model, media_types = build_multimodal_messages(
-                    user_message, attachments
-                )
+                # 从附件提取媒体类型
+                media_types = list(set(a.media_type for a in attachments))
 
                 # 注册推理任务（并发控制）
-                # 注意：视图层已做并发检查并返回 HTTP 409，这里是竞态条件保护
                 registered = await inference_service.register_task(
                     user_id=user_id,
                     request_id=request_id,
-                    model=multimodal_model,
+                    model="multimodal",
                     media_types=media_types,
                 )
                 if not registered:
-                    # 竞态条件：视图层检查后、注册前有其他请求抢占
                     logger.warning(
                         f"推理任务注册失败（竞态条件）: user_id={user_id}, request_id={request_id}"
                     )
@@ -506,7 +503,7 @@ class AgentService:
         input_data: dict[str, Any] = {"message": user_message}
         if is_multimodal:
             input_data["multimodal"] = {
-                "model": multimodal_model,
+                "model": "multimodal",
                 "media_types": media_types,
                 "attachment_count": len(attachments),
             }
@@ -543,7 +540,7 @@ class AgentService:
             # T068: 初始化 Langfuse（多模态推理包含元数据）
             multimodal_meta = (
                 {
-                    "model": multimodal_model,
+                    "model": "multimodal",
                     "media_types": media_types,
                     "attachment_count": len(attachments),
                     "gateway_request_id": request_id,
@@ -559,10 +556,22 @@ class AgentService:
             callbacks = [langfuse_handler] if langfuse_handler else None
             config = get_agent_config(user_id, callbacks)
 
-            # 构建输入消息（支持多模态）
+            # 传入 attachment_uuids、stop_event、request_id 到 config（供 SubAgent 使用）
+            if attachment_uuids:
+                config["configurable"]["attachment_uuids"] = attachment_uuids
+            config["configurable"]["stop_event"] = stop_event
+            config["configurable"]["request_id"] = request_id
+
+            # 构建输入消息 — 有附件时附加文件信息
             if is_multimodal and attachments:
-                mm_message, _, _ = build_multimodal_messages(user_message, attachments)
-                input_message = {"messages": [mm_message]}
+                files_desc = "、".join(
+                    f"{a.file_name}({a.media_type})" for a in attachments
+                )
+                display_message = (
+                    f"{user_message}\n\n"
+                    f"[用户上传了 {len(attachments)} 个附件: {files_desc}]"
+                )
+                input_message = {"messages": [HumanMessage(content=display_message)]}
             else:
                 input_message = {"messages": [HumanMessage(content=user_message)]}
             (
@@ -604,7 +613,10 @@ class AgentService:
             try:
                 from apps.chat.services.context_service import ContextService
 
-                history_msgs = await message_repo.find_latest_by_user(user_id, limit=50)
+                ctx_history_limit = getattr(settings, "CONTEXT_HISTORY_ROUNDS", 10) * 2
+                history_msgs = await message_repo.find_latest_by_user(
+                    user_id, limit=ctx_history_limit
+                )
                 context_messages = [
                     {"role": m.role, "content": m.content} for m in history_msgs
                 ]
@@ -626,30 +638,22 @@ class AgentService:
             push_interval = getattr(settings, "MONITOR_PUSH_INTERVAL", 0.5)
             memory_modified = False
 
-            # 选择 Agent 类型
-            if is_multimodal:
-                # 直接 httpx 调用 Gateway，绕过 LangChain video_url/audio_url 序列化问题
-                # LangChain ChatOpenAI 会将非标准内容类型序列化为 Python repr 字符串
-                system_prompt = "\n\n".join(
-                    m.content
-                    for m in preamble
-                    if hasattr(m, "content") and isinstance(m.content, str)
-                )
-                agent_context = create_multimodal_direct(
-                    content=mm_message.content,
-                    model_name=multimodal_model,
-                    system_prompt=system_prompt,
-                )
-            else:
-                agent_context = create_chat_agent(
-                    prompt=preamble,
-                    preamble_tokens=preamble_tokens,
-                    effective_window=effective_window,
-                )
+            # 统一使用工具模型（多模态由 SubAgent 内部处理）
+            agent_context = create_chat_agent(
+                prompt=preamble,
+                preamble_tokens=preamble_tokens,
+                effective_window=effective_window,
+            )
 
             async with agent_context as agent:
                 try:
-                    async with asyncio.timeout(settings.AGENT_TOTAL_TIMEOUT):
+                    # 含文档附件时使用更长超时（GPU 模型切换 + 文档解析耗时）
+                    agent_timeout = settings.AGENT_TOTAL_TIMEOUT
+                    if is_multimodal and "document" in media_types:
+                        agent_timeout = getattr(
+                            settings, "AGENT_MULTIMODAL_TIMEOUT", 1500
+                        )
+                    async with asyncio.timeout(agent_timeout):
                         async for event in agent.astream_events(
                             input_message, config=config, version="v2"
                         ):
@@ -680,12 +684,7 @@ class AgentService:
                                             created_time=start_time,
                                         )
                                         await message_repo.create(user_msg)
-                                        # 多模态时使用多模态模型名称
-                                        msg_model_name = (
-                                            multimodal_model
-                                            if is_multimodal
-                                            else await _get_language_model_name()
-                                        )
+                                        msg_model_name = await _get_tool_model_name()
                                         assistant_msg = Message(
                                             message_uuid=str(uuid.uuid4()),
                                             user_id=user_id,

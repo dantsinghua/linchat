@@ -20,7 +20,11 @@ import httpx
 from django.conf import settings
 
 from apps.common.event_service import EventService, EventType
-from apps.common.gateway_utils import build_gateway_headers, record_gateway_span
+from apps.common.gateway_utils import (
+    build_gateway_headers,
+    parse_gateway_error,
+    record_gateway_span,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +99,102 @@ class DocumentParseService:
             )
 
     @staticmethod
+    async def _gateway_request(
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        timeout: float,
+        success_status: int,
+        request_type: str,
+        model: str = "",
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """通用 Gateway 请求（统一异常处理和 span 记录）
+
+        Args:
+            method: HTTP 方法 (get/post)
+            url: 请求 URL
+            headers: 请求头
+            timeout: 超时秒数
+            success_status: 期望的成功状态码
+            request_type: 请求类型标识（Langfuse span 用）
+            model: 模型名称
+            **kwargs: 传给 httpx 的额外参数
+
+        Returns:
+            httpx.Response（仅当状态码 == success_status）
+
+        Raises:
+            DocumentParseError: 任何失败场景
+        """
+        request_id = headers.get("X-Request-ID", "")
+        start_time = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await getattr(client, method)(
+                    url, headers=headers, **kwargs
+                )
+
+            duration = time.monotonic() - start_time
+
+            if response.status_code == success_status:
+                record_gateway_span(
+                    request_type=request_type,
+                    model=model,
+                    duration=duration,
+                    status_code=success_status,
+                    request_id=request_id,
+                )
+                return response
+
+            record_gateway_span(
+                request_type=request_type,
+                model=model,
+                duration=duration,
+                status_code=response.status_code,
+                request_id=request_id,
+                error=f"Gateway HTTP {response.status_code}",
+            )
+            gw_err = parse_gateway_error(response)
+            raise DocumentParseError(
+                code=gw_err.code,
+                message=gw_err.message,
+                details=gw_err.details or None,
+            )
+
+        except DocumentParseError:
+            raise
+        except httpx.TimeoutException:
+            duration = time.monotonic() - start_time
+            record_gateway_span(
+                request_type=request_type,
+                model=model,
+                duration=duration,
+                status_code=504,
+                request_id=request_id,
+                error="timeout",
+            )
+            raise DocumentParseError(
+                code="GATEWAY_TIMEOUT",
+                message="文档解析请求超时",
+            )
+        except Exception as e:
+            duration = time.monotonic() - start_time
+            logger.error(f"Gateway 请求失败 ({request_type}): {e}")
+            record_gateway_span(
+                request_type=request_type,
+                model=model,
+                duration=duration,
+                status_code=503,
+                request_id=request_id,
+                error=str(e),
+            )
+            raise DocumentParseError(
+                code="GATEWAY_ERROR",
+                message=f"网关请求失败: {e}",
+            )
+
+    @staticmethod
     async def create_parse_task(
         file_data: bytes,
         file_name: str,
@@ -118,79 +218,24 @@ class DocumentParseService:
         gateway_url = DocumentParseService._get_gateway_url()
         headers = build_gateway_headers()
         timeout = getattr(settings, "LLM_GATEWAY_DOC_PARSE_CREATE_TIMEOUT", 30)
-        request_id = headers.get("X-Request-ID", "")
-
-        url = f"{gateway_url}/v1/documents/parse"
 
         files = {"file": (file_name, file_data)}
         data: dict[str, str] = {"model": model}
         if pages:
             data["pages"] = pages
 
-        start_time = time.monotonic()
-        try:
-            async with httpx.AsyncClient(timeout=float(timeout)) as client:
-                response = await client.post(
-                    url,
-                    files=files,
-                    data=data,
-                    headers=headers,
-                )
-
-            duration = time.monotonic() - start_time
-
-            if response.status_code == 202:
-                record_gateway_span(
-                    request_type="document_parse",
-                    model=model,
-                    duration=duration,
-                    status_code=202,
-                    request_id=request_id,
-                )
-                return response.json()
-
-            record_gateway_span(
-                request_type="document_parse",
-                model=model,
-                duration=duration,
-                status_code=response.status_code,
-                request_id=request_id,
-                error=f"Gateway HTTP {response.status_code}",
-            )
-            # 处理错误响应
-            DocumentParseService._handle_error_response(response)
-
-        except DocumentParseError:
-            raise
-        except httpx.TimeoutException:
-            duration = time.monotonic() - start_time
-            record_gateway_span(
-                request_type="document_parse",
-                model=model,
-                duration=duration,
-                status_code=504,
-                request_id=request_id,
-                error="timeout",
-            )
-            raise DocumentParseError(
-                code="GATEWAY_TIMEOUT",
-                message="文档解析请求超时",
-            )
-        except Exception as e:
-            duration = time.monotonic() - start_time
-            logger.error(f"创建解析任务失败: {e}")
-            record_gateway_span(
-                request_type="document_parse",
-                model=model,
-                duration=duration,
-                status_code=503,
-                request_id=request_id,
-                error=str(e),
-            )
-            raise DocumentParseError(
-                code="GATEWAY_ERROR",
-                message=f"网关请求失败: {e}",
-            )
+        response = await DocumentParseService._gateway_request(
+            method="post",
+            url=f"{gateway_url}/v1/documents/parse",
+            headers=headers,
+            timeout=float(timeout),
+            success_status=202,
+            request_type="document_parse",
+            model=model,
+            files=files,
+            data=data,
+        )
+        return response.json()
 
     @staticmethod
     async def poll_task_status(task_id: str) -> dict[str, Any]:
@@ -207,27 +252,17 @@ class DocumentParseService:
         """
         gateway_url = DocumentParseService._get_gateway_url()
         headers = build_gateway_headers()
+        poll_timeout = getattr(settings, "LLM_GATEWAY_POLL_TIMEOUT", 30)
 
-        url = f"{gateway_url}/v1/documents/tasks/{task_id}"
-
-        try:
-            poll_timeout = getattr(settings, "LLM_GATEWAY_POLL_TIMEOUT", 30)
-            async with httpx.AsyncClient(timeout=float(poll_timeout)) as client:
-                response = await client.get(url, headers=headers)
-
-            if response.status_code == 200:
-                return response.json()
-
-            DocumentParseService._handle_error_response(response)
-
-        except DocumentParseError:
-            raise
-        except Exception as e:
-            logger.error(f"查询任务状态失败: task_id={task_id}, error={e}")
-            raise DocumentParseError(
-                code="GATEWAY_ERROR",
-                message=f"查询任务状态失败: {e}",
-            )
+        response = await DocumentParseService._gateway_request(
+            method="get",
+            url=f"{gateway_url}/v1/documents/tasks/{task_id}",
+            headers=headers,
+            timeout=float(poll_timeout),
+            success_status=200,
+            request_type="document_parse_poll",
+        )
+        return response.json()
 
     @staticmethod
     async def get_task_result(
@@ -248,47 +283,41 @@ class DocumentParseService:
         """
         gateway_url = DocumentParseService._get_gateway_url()
         headers = build_gateway_headers()
+        result_timeout = getattr(settings, "LLM_GATEWAY_DOC_PARSE_RESULT_TIMEOUT", 30)
 
-        url = f"{gateway_url}/v1/documents/tasks/{task_id}/result"
-        params = {"format": format}
+        response = await DocumentParseService._gateway_request(
+            method="get",
+            url=f"{gateway_url}/v1/documents/tasks/{task_id}/result",
+            headers=headers,
+            timeout=float(result_timeout),
+            success_status=200,
+            request_type="document_parse_result",
+            params={"format": format},
+        )
 
-        try:
-            result_timeout = getattr(settings, "LLM_GATEWAY_DOC_PARSE_RESULT_TIMEOUT", 30)
-            async with httpx.AsyncClient(timeout=float(result_timeout)) as client:
-                response = await client.get(url, headers=headers, params=params)
-
-            if response.status_code == 200:
-                content_type = response.headers.get("content-type", "")
-                if "text/markdown" in content_type or format == "markdown":
-                    return response.text
-                return response.json()
-
-            DocumentParseService._handle_error_response(response)
-
-        except DocumentParseError:
-            raise
-        except Exception as e:
-            logger.error(f"获取解析结果失败: task_id={task_id}, error={e}")
-            raise DocumentParseError(
-                code="GATEWAY_ERROR",
-                message=f"获取解析结果失败: {e}",
-            )
+        content_type = response.headers.get("content-type", "")
+        if "text/markdown" in content_type or format == "markdown":
+            return response.text
+        return response.json()
 
     @staticmethod
     async def parse_document(
         user_id: int,
         attachment_uuid: str,
         pages: Optional[str] = None,
+        skip_background_poll: bool = False,
     ) -> dict[str, Any]:
         """主方法: 校验附件 → 下载 MinIO → 创建 Gateway 任务 → 后台轮询
 
-        从 MediaAttachment 获取元数据，使用 settings.LLM_GATEWAY_DOC_PARSE_MODEL
-        作为 model 参数（默认 minicpm-v）。
+        从 MediaAttachment 获取元数据，使用 settings.DOC_PARSE_DEFAULT_MODEL
+        作为 model 参数（默认 minicpm-o）。
 
         Args:
             user_id: 用户 ID（用于事件推送和所有权校验）
             attachment_uuid: 已上传到 MinIO 的文档附件 UUID
             pages: 页码范围（可选，语法如 "1,3-5,8"）
+            skip_background_poll: 跳过后台轮询（Agent 内部调用时为 True，
+                避免与工具内同步轮询重复）
 
         Returns:
             {"task_id": "...", "status": "pending", ...}
@@ -334,7 +363,7 @@ class DocumentParseService:
         )
 
         # 3. 创建 Gateway 解析任务
-        model = getattr(settings, "LLM_GATEWAY_DOC_PARSE_MODEL", "minicpm-v")
+        model = getattr(settings, "DOC_PARSE_DEFAULT_MODEL", "minicpm-o")
         result = await DocumentParseService.create_parse_task(
             file_data=file_data,
             file_name=attachment.file_name,
@@ -357,10 +386,11 @@ class DocumentParseService:
         except Exception as e:
             logger.warning(f"写入文档解析所有权键失败: task_id={task_id}, error={e}")
 
-        # 5. 启动后台轮询协程
-        asyncio.create_task(
-            DocumentParseService._poll_and_notify(user_id, task_id)
-        )
+        # 5. 启动后台轮询协程（Agent 内部调用时跳过，由工具内同步轮询）
+        if not skip_background_poll:
+            asyncio.create_task(
+                DocumentParseService._poll_and_notify(user_id, task_id)
+            )
 
         return result
 
@@ -448,26 +478,6 @@ class DocumentParseService:
                 },
             )
 
-    @staticmethod
-    def _handle_error_response(response: httpx.Response) -> None:
-        """处理 Gateway 错误响应
-
-        将 Gateway 错误码映射为 DocumentParseError。
-        """
-        status_code = response.status_code
-
-        try:
-            body = response.json()
-            error_info = body.get("error", {})
-            code = error_info.get("code", f"HTTP_{status_code}")
-            message = error_info.get("message", f"Gateway 返回 {status_code}")
-            details = error_info.get("details")
-        except Exception:
-            code = f"HTTP_{status_code}"
-            message = f"Gateway 返回 {status_code}"
-            details = None
-
-        raise DocumentParseError(code=code, message=message, details=details)
 
 
 # 单例实例

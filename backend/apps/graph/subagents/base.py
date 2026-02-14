@@ -94,6 +94,7 @@ async def run_subagent(
     prompt: str,
     llm: Optional[ChatOpenAI] = None,
     name: str = "subagent",
+    timeout: Optional[int] = None,
 ) -> str:
     """SubAgent 工厂函数。
 
@@ -107,12 +108,13 @@ async def run_subagent(
         prompt: SubAgent 内部 system prompt
         llm: 可选的 LLM 实例，默认从 get_llm() 获取
         name: Agent 名称，用于 Langfuse trace 区分
+        timeout: 可选的超时秒数，默认使用 SUBAGENT_TIMEOUT (60s)
 
     Returns:
         SubAgent 执行结果文本
     """
     user_id = _get_user_id(config)
-    timeout = getattr(settings, "SUBAGENT_TIMEOUT", 60)
+    timeout = timeout or getattr(settings, "SUBAGENT_TIMEOUT", 60)
 
     model = await _get_llm_instance(llm)
 
@@ -123,10 +125,13 @@ async def run_subagent(
     agent = create_react_agent(model=model, tools=all_tools, prompt=prompt, name=name)
 
     try:
+        # 转发父 config 的全部 configurable 键（支持 attachment_uuids/stop_event 等）
+        configurable = dict(config.get("configurable", {}))
+        configurable["user_id"] = user_id
         async with asyncio.timeout(timeout):
             result = await agent.ainvoke(
                 {"messages": [HumanMessage(content=task)]},
-                config={"configurable": {"user_id": user_id}},
+                config={"configurable": configurable},
             )
         return result["messages"][-1].content
     except asyncio.TimeoutError:
