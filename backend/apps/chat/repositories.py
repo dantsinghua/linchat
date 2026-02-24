@@ -8,11 +8,12 @@
 - specs/008-multimodal-minicpm/data-model.md#2.1 MediaAttachment
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from asgiref.sync import sync_to_async
 from django.db.models import Max
+from django.utils import timezone
 
 from apps.chat.models import LangGraphExecution, MediaAttachment, Message
 
@@ -85,6 +86,15 @@ class MessageRepository:
 
     @staticmethod
     @sync_to_async
+    def update_content(message_id: int, content: str) -> bool:
+        """仅更新消息内容（用于语音 STT 转写回填，不改变 status）"""
+        updated = Message.objects.filter(message_id=message_id).update(
+            content=content
+        )
+        return updated > 0
+
+    @staticmethod
+    @sync_to_async
     def get_max_sequence(user_id: int) -> int:
         """获取用户消息的最大序号，若无消息则返回 0"""
         result = Message.objects.filter(user_id=user_id).aggregate(
@@ -124,6 +134,30 @@ class MessageRepository:
             .prefetch_related("attachments")
             .order_by("-sequence")[:limit]
         )
+
+    @staticmethod
+    @sync_to_async
+    def search_messages(
+        user_id: int,
+        keyword: str = "",
+        days: int = 30,
+        limit: int = 20,
+    ) -> list[Message]:
+        """搜索用户历史消息 [R_DATA_001]
+
+        Args:
+            user_id: 用户 ID
+            keyword: 搜索关键词（模糊匹配 content）
+            days: 时间范围（天数），0 表示不限
+            limit: 返回数量上限
+        """
+        qs = Message.objects.filter(user_id=user_id, status=1)
+        if keyword:
+            qs = qs.filter(content__icontains=keyword)
+        if days > 0:
+            cutoff = timezone.now() - timedelta(days=days)
+            qs = qs.filter(created_time__gte=cutoff)
+        return list(qs.order_by("-created_time")[:limit])
 
     @staticmethod
     @sync_to_async

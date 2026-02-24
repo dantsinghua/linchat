@@ -205,9 +205,10 @@ function transformResponse(response: MediaUploadResponse): MediaUploadResponse {
   };
 }
 
-export default {
+const mediaApi = {
   uploadMedia,
   getMediaUrl,
   downloadMedia,
   cancelInference,
 };
+export default mediaApi;

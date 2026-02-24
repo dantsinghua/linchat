@@ -22,7 +22,7 @@ from apps.chat.services.inference_service import InferenceService, inference_ser
 from apps.chat.services.media_service import MediaService, MediaUploadError, media_service
 from apps.chat.services.minio_service import MinioService, minio_service
 from apps.chat.services.types import (InferenceTask, MessageVO, StreamChunk,
-                                      _get_language_model_name)
+                                      _get_tool_model_name)
 
 __all__ = [
     "ChatService",
@@ -37,7 +37,7 @@ __all__ = [
     "map_llm_exception",
     "_active_generations",
     "ContextService",
-    "_get_language_model_name",
+    "_get_tool_model_name",
     "MinioService",
     "minio_service",
     "InferenceService",

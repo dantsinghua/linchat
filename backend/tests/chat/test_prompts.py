@@ -42,7 +42,7 @@ class TestPromptConfig:
         config = PromptConfig()
         assert config.max_context_window == 128000
         assert config.effective_window_ratio == 0.9
-        assert config.keep_recent_rounds == 2
+        assert config.keep_recent_rounds == 10
         assert config.max_memory_items == 5
 
     def test_effective_window(self) -> None:

@@ -2,15 +2,16 @@
 聊天集成测试 (T030)
 
 覆盖:
-- agent.py get_llm() 从数据库读取 language 模型配置
+- agent.py get_llm() 从数据库读取 tool 模型配置
 - get_llm() 仅传入非 NULL 选填参数（FR-007）
 - get_llm() 无 lru_cache 时配置变更即时生效
 - get_llm() 使用 max_context_window 原始值而非 effective_context_window
-- chat/services.py _get_language_model_name() 取自数据库配置
-- 管理员修改模型名称后 _get_language_model_name() 返回新值
+- chat/services.py _get_tool_model_name() 取自数据库配置
+- 管理员修改模型名称后 _get_tool_model_name() 返回新值
 """
 from unittest.mock import MagicMock, patch
 
+from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.test import TestCase
 
@@ -26,7 +27,7 @@ class TestGetLlmFromDatabase(TestCase):
         ModelConfig.objects.all().delete()
         self.api_key_plain = "test-api-key-for-llm-12345"
         self.model = ModelConfig.objects.create(
-            type=ModelConfig.TYPE_LANGUAGE,
+            type=ModelConfig.TYPE_TOOL,
             name="deepseek-v3-test",
             url="https://api.test.com/v1",
             api_key=sm4_encrypt(self.api_key_plain),
@@ -42,11 +43,11 @@ class TestGetLlmFromDatabase(TestCase):
 
     @patch("apps.graph.agent.ChatOpenAI")
     def test_get_llm_reads_from_database(self, mock_chat_openai):
-        """测试 get_llm() 从数据库读取 language 模型配置"""
+        """测试 get_llm() 从数据库读取 tool 模型配置"""
         from apps.graph.agent import get_llm
 
         mock_chat_openai.return_value = MagicMock()
-        get_llm()
+        async_to_sync(get_llm)()
 
         mock_chat_openai.assert_called_once()
         call_kwargs = mock_chat_openai.call_args[1]
@@ -61,7 +62,7 @@ class TestGetLlmFromDatabase(TestCase):
         from apps.graph.agent import get_llm
 
         mock_chat_openai.return_value = MagicMock()
-        get_llm()
+        async_to_sync(get_llm)()
 
         call_kwargs = mock_chat_openai.call_args[1]
 
@@ -83,7 +84,7 @@ class TestGetLlmFromDatabase(TestCase):
         self.model.save()
 
         mock_chat_openai.return_value = MagicMock()
-        get_llm()
+        async_to_sync(get_llm)()
 
         call_kwargs = mock_chat_openai.call_args[1]
         self.assertEqual(call_kwargs["temperature"], 0)
@@ -97,7 +98,7 @@ class TestGetLlmFromDatabase(TestCase):
         mock_chat_openai.return_value = MagicMock()
 
         # 第一次调用
-        get_llm()
+        async_to_sync(get_llm)()
         first_call_kwargs = mock_chat_openai.call_args[1]
         self.assertEqual(first_call_kwargs["model"], "deepseek-v3-test")
 
@@ -106,7 +107,7 @@ class TestGetLlmFromDatabase(TestCase):
         self.model.save()
 
         # 第二次调用应该使用新配置
-        get_llm()
+        async_to_sync(get_llm)()
         second_call_kwargs = mock_chat_openai.call_args[1]
         self.assertEqual(second_call_kwargs["model"], "deepseek-v3-updated")
 
@@ -120,12 +121,12 @@ class TestGetLlmFromDatabase(TestCase):
         from apps.graph.agent import get_llm
 
         mock_chat_openai.return_value = MagicMock()
-        get_llm()
+        async_to_sync(get_llm)()
 
         # get_llm 不应传入 max_context_window 到 ChatOpenAI
         # (ChatOpenAI 不接受此参数)
         # 但底层配置读取的是 max_context_window 而非 effective_context_window
-        config = model_service.get_active_model("language")
+        config = model_service.get_active_model("tool")
         self.assertEqual(config["max_context_window"], 65536)
         self.assertEqual(config["effective_context_window"], int(65536 * 0.9))
         # 两者不同，确认区分
@@ -139,18 +140,18 @@ class TestGetLlmFromDatabase(TestCase):
 
         ModelConfig.objects.all().delete()
         with self.assertRaises(RuntimeError) as ctx:
-            get_llm()
-        self.assertIn("未找到激活的语言模型配置", str(ctx.exception))
+            async_to_sync(get_llm)()
+        self.assertIn("未找到激活的工具模型配置", str(ctx.exception))
 
 
-class TestGetLanguageModelName(TestCase):
-    """_get_language_model_name() 测试"""
+class TestGetToolModelName(TestCase):
+    """_get_tool_model_name() 测试"""
 
     def setUp(self):
         ModelConfig.objects.all().delete()
         self.model = ModelConfig.objects.create(
-            type=ModelConfig.TYPE_LANGUAGE,
-            name="test-lang-model",
+            type=ModelConfig.TYPE_TOOL,
+            name="test-tool-model",
             url="https://api.example.com/v1",
             api_key=sm4_encrypt("test-key-for-name-12345"),
             max_context_window=65536,
@@ -161,28 +162,28 @@ class TestGetLanguageModelName(TestCase):
 
     def test_returns_model_name_from_database(self):
         """测试 model_name 取自数据库模型配置"""
-        from apps.chat.services import _get_language_model_name
+        from apps.chat.services import _get_tool_model_name
 
-        name = _get_language_model_name()
-        self.assertEqual(name, "test-lang-model")
+        name = async_to_sync(_get_tool_model_name)()
+        self.assertEqual(name, "test-tool-model")
 
     def test_returns_updated_name_after_change(self):
         """测试管理员修改模型名称后返回新值"""
-        from apps.chat.services import _get_language_model_name
+        from apps.chat.services import _get_tool_model_name
 
         # 初始名称
-        self.assertEqual(_get_language_model_name(), "test-lang-model")
+        self.assertEqual(async_to_sync(_get_tool_model_name)(), "test-tool-model")
 
         # 模拟管理员修改
         model_service.update_model(self.model.id, {"name": "renamed-model"})
 
         # 应返回新名称
-        self.assertEqual(_get_language_model_name(), "renamed-model")
+        self.assertEqual(async_to_sync(_get_tool_model_name)(), "renamed-model")
 
     def test_returns_unknown_when_no_active_model(self):
         """测试无激活模型时返回 'unknown'"""
-        from apps.chat.services import _get_language_model_name
+        from apps.chat.services import _get_tool_model_name
 
         ModelConfig.objects.all().delete()
-        name = _get_language_model_name()
+        name = async_to_sync(_get_tool_model_name)()
         self.assertEqual(name, "unknown")

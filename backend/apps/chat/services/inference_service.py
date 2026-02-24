@@ -202,6 +202,9 @@ class InferenceService:
         headers = build_gateway_headers(request_id=request_id)
         start_time = time.monotonic()
 
+        status_code = 503
+        error = None
+        success = False
         try:
             cancel_timeout = getattr(settings, "LLM_GATEWAY_CANCEL_TIMEOUT", 5)
             async with httpx.AsyncClient(timeout=cancel_timeout) as client:
@@ -210,47 +213,33 @@ class InferenceService:
                     json={"request_id": request_id},
                     headers=headers,
                 )
-                duration = time.monotonic() - start_time
-                record_gateway_span(
-                    request_type="inference_cancel",
-                    model="",
-                    duration=duration,
-                    status_code=response.status_code,
-                    request_id=request_id,
-                )
-                if response.status_code == 200:
+                status_code = response.status_code
+                if status_code == 200:
                     logger.info(f"网关取消成功: request_id={request_id}")
-                    return True
+                    success = True
                 else:
+                    error = f"Gateway HTTP {status_code}"
                     logger.warning(
                         f"网关取消失败: request_id={request_id}, "
-                        f"status={response.status_code}"
+                        f"status={status_code}"
                     )
-                    return False
         except httpx.TimeoutException:
-            duration = time.monotonic() - start_time
+            status_code = 504
+            error = "timeout"
             logger.warning(f"网关取消超时: request_id={request_id}")
-            record_gateway_span(
-                request_type="inference_cancel",
-                model="",
-                duration=duration,
-                status_code=504,
-                request_id=request_id,
-                error="timeout",
-            )
-            return False
         except Exception as e:
-            duration = time.monotonic() - start_time
+            error = str(e)
             logger.warning(f"网关取消异常: request_id={request_id}, error={e}")
+        finally:
             record_gateway_span(
                 request_type="inference_cancel",
                 model="",
-                duration=duration,
-                status_code=503,
+                duration=time.monotonic() - start_time,
+                status_code=status_code,
                 request_id=request_id,
-                error=str(e),
+                error=error,
             )
-            return False
+        return success
 
     @staticmethod
     async def refresh_task_ttl(user_id: int) -> bool:

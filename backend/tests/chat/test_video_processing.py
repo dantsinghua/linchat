@@ -164,7 +164,7 @@ class TestVideoUpload:
 
     @patch("apps.chat.services.media_service.media_attachment_repo")
     @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_video_duration")
+    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
     def test_upload_video_success(self, mock_duration, mock_minio, mock_repo):
         """视频上传成功"""
         mock_duration.return_value = 30.0
@@ -191,7 +191,7 @@ class TestVideoUpload:
 
     @patch("apps.chat.services.media_service.media_attachment_repo")
     @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_video_duration")
+    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
     def test_upload_video_duration_too_long(self, mock_duration, mock_minio, mock_repo):
         """视频时长超过 60 秒拒绝上传"""
         mock_duration.return_value = 75.0
@@ -215,7 +215,7 @@ class TestVideoUpload:
 
     @patch("apps.chat.services.media_service.media_attachment_repo")
     @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_video_duration")
+    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
     def test_upload_video_at_duration_limit(self, mock_duration, mock_minio, mock_repo):
         """视频恰好 60 秒上传成功"""
         mock_duration.return_value = 60.0
@@ -235,7 +235,7 @@ class TestVideoUpload:
 
     @patch("apps.chat.services.media_service.media_attachment_repo")
     @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_video_duration")
+    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
     def test_upload_video_duration_detection_fails(
         self, mock_duration, mock_minio, mock_repo
     ):
@@ -310,7 +310,7 @@ class TestVideoUpload:
 
     @patch("apps.chat.services.media_service.media_attachment_repo")
     @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_video_duration")
+    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
     def test_upload_video_storage_path_format(
         self, mock_duration, mock_minio, mock_repo
     ):
@@ -354,11 +354,10 @@ class TestBuildMultimodalMessagesVideo:
         attachment.file_name = "test.mp4"
         attachment.attachment_uuid = "test-uuid"
 
-        msg, model_name, media_types = build_multimodal_messages(
+        msg, media_types = build_multimodal_messages(
             "视频里有什么？", [attachment]
         )
 
-        assert model_name == "minicpm-o"
         assert "video" in media_types
         # 检查消息内容包含 video_url
         content = msg.content
@@ -384,8 +383,7 @@ class TestBuildMultimodalMessagesVideo:
         video_att.file_name = "v.mp4"
         video_att.attachment_uuid = "v-uuid"
 
-        _, model_name, media_types = build_multimodal_messages("描述", [video_att])
-        assert model_name == "minicpm-o"
+        _, media_types = build_multimodal_messages("描述", [video_att])
         assert media_types == ["video"]
 
     @patch("apps.graph.agent._preprocess_video", return_value=b"processed")
@@ -410,10 +408,9 @@ class TestBuildMultimodalMessagesVideo:
         video_att.file_name = "vid.mp4"
         video_att.attachment_uuid = "vid-uuid"
 
-        _, model_name, media_types = build_multimodal_messages(
+        _, media_types = build_multimodal_messages(
             "对比", [img_att, video_att]
         )
-        assert model_name == "minicpm-o"
         assert "image" in media_types
         assert "video" in media_types
 
@@ -439,10 +436,9 @@ class TestBuildMultimodalMessagesVideo:
         audio_att.file_name = "aud.wav"
         audio_att.attachment_uuid = "aud-uuid"
 
-        _, model_name, media_types = build_multimodal_messages(
+        _, media_types = build_multimodal_messages(
             "分析", [video_att, audio_att]
         )
-        assert model_name == "minicpm-o"
         assert "video" in media_types
         assert "audio" in media_types
 
@@ -460,7 +456,7 @@ class TestBuildMultimodalMessagesVideo:
         video_att.file_name = "clip.mp4"
         video_att.attachment_uuid = "fail-uuid"
 
-        msg, model_name, media_types = build_multimodal_messages(
+        msg, media_types = build_multimodal_messages(
             "描述", [video_att]
         )
 
@@ -492,13 +488,12 @@ class TestVideoLangfuseTrace:
         video_att.file_name = "vid.mp4"
         video_att.attachment_uuid = "vid-uuid"
 
-        _, model_name, media_types = build_multimodal_messages(
+        _, media_types = build_multimodal_messages(
             "分析视频", [video_att]
         )
 
         # Langfuse trace 中应记录的元数据
         assert "video" in media_types
-        assert model_name == "minicpm-o"
 
     @patch("apps.graph.agent._preprocess_video", return_value=b"processed")
     @patch("apps.chat.services.minio_service.minio_service")
@@ -515,11 +510,10 @@ class TestVideoLangfuseTrace:
         video_att.file_name = "vid.webm"
         video_att.attachment_uuid = "webm-uuid"
 
-        _, model_name, media_types = build_multimodal_messages(
+        _, media_types = build_multimodal_messages(
             "描述视频", [video_att]
         )
 
-        assert model_name == "minicpm-o"
         assert media_types == ["video"]
 
 

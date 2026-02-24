@@ -328,9 +328,10 @@ class TestInferenceService:
         )
 
     @pytest.mark.asyncio
+    @patch("apps.chat.services.document_parse_service.asyncio.create_task")
     @patch("apps.chat.services.inference_service.httpx.AsyncClient")
     @patch("apps.chat.services.inference_service.settings")
-    async def test_call_gateway_cancel_failure(self, mock_settings, mock_client_class, inference_service):
+    async def test_call_gateway_cancel_failure(self, mock_settings, mock_client_class, mock_create_task, inference_service):
         """测试网关取消失败"""
         mock_settings.LLM_GATEWAY_URL = "http://gateway:8080"
         mock_settings.LLM_GATEWAY_API_KEY = "test-key"

@@ -26,7 +26,7 @@ class TestModelResponseSerializer(TestCase):
         """构造响应数据"""
         data = {
             "id": 1,
-            "type": "language",
+            "type": "tool",
             "name": "test-model",
             "url": "https://api.example.com/v1",
             "api_key": "test****5678",
@@ -100,7 +100,7 @@ class TestModelUpdateSerializer(TestCase):
         data.update(overrides)
         return data
 
-    def _validate(self, data, model_type="language"):
+    def _validate(self, data, model_type="tool"):
         """执行校验"""
         serializer = ModelUpdateSerializer(
             data=data,
@@ -267,19 +267,19 @@ class TestModelUpdateSerializer(TestCase):
 
     # ===== 跨字段校验 =====
 
-    def test_language_model_embedding_dimensions_null_accepted(self):
-        """测试语言模型 embedding_dimensions=null 被接受"""
+    def test_tool_model_embedding_dimensions_null_accepted(self):
+        """测试工具模型 embedding_dimensions=null 被接受"""
         s = self._validate(
             self._make_data(embedding_dimensions=None),
-            model_type="language",
+            model_type="tool",
         )
         self.assertTrue(s.is_valid(), s.errors)
 
-    def test_language_model_embedding_dimensions_rejected(self):
-        """测试语言模型设置 embedding_dimensions 被拒绝"""
+    def test_tool_model_embedding_dimensions_rejected(self):
+        """测试工具模型设置 embedding_dimensions 被拒绝"""
         s = self._validate(
             self._make_data(embedding_dimensions=1536),
-            model_type="language",
+            model_type="tool",
         )
         self.assertFalse(s.is_valid())
         self.assertIn("embedding_dimensions", s.errors)

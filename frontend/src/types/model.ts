@@ -5,7 +5,7 @@
  */
 
 /** 模型类型 */
-export type ModelType = 'language' | 'embedding';
+export type ModelType = 'tool' | 'multimodal' | 'embedding';
 
 /** 模型配置（GET 响应） */
 export interface ModelConfig {

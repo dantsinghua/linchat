@@ -57,7 +57,7 @@ class PromptConfig:
     model_name: str = ""
     max_context_window: int = 128000
     effective_window_ratio: float = 0.9
-    keep_recent_rounds: int = 2
+    keep_recent_rounds: int = 10
     max_memory_items: int = 5
     memory_token_budget: int = 2000
     user_id: int = 0

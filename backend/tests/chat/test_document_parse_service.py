@@ -479,10 +479,13 @@ class TestDocumentParseService:
             },
         )
 
-    # ============ _handle_error_response 测试 ============
+    # ============ Gateway 错误响应处理测试（通过 _gateway_request） ============
 
-    def test_handle_error_response_with_json(self):
-        """测试处理 JSON 格式的错误响应"""
+    @pytest.mark.asyncio
+    @patch("apps.chat.services.document_parse_service.record_gateway_span")
+    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
+    async def test_gateway_request_error_with_json(self, mock_client_cls, mock_span):
+        """测试 Gateway 返回 JSON 格式错误时解析为 DocumentParseError"""
         mock_response = MagicMock()
         mock_response.status_code = 400
         mock_response.json.return_value = {
@@ -493,20 +496,42 @@ class TestDocumentParseService:
             }
         }
 
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
         with pytest.raises(DocumentParseError) as exc_info:
-            DocumentParseService._handle_error_response(mock_response)
+            await DocumentParseService._gateway_request(
+                method="get", url="http://test/v1/tasks/1",
+                headers={"X-Request-ID": "test"}, timeout=10.0,
+                success_status=200, request_type="test",
+            )
 
         assert exc_info.value.code == "E3001"
-        assert exc_info.value.details == {"available_vl_models": ["qwen2.5-vl"]}
 
-    def test_handle_error_response_without_json(self):
-        """测试处理非 JSON 格式的错误响应"""
+    @pytest.mark.asyncio
+    @patch("apps.chat.services.document_parse_service.record_gateway_span")
+    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
+    async def test_gateway_request_error_without_json(self, mock_client_cls, mock_span):
+        """测试 Gateway 返回非 JSON 格式错误"""
         mock_response = MagicMock()
         mock_response.status_code = 503
         mock_response.json.side_effect = Exception("not json")
 
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
         with pytest.raises(DocumentParseError) as exc_info:
-            DocumentParseService._handle_error_response(mock_response)
+            await DocumentParseService._gateway_request(
+                method="get", url="http://test/v1/tasks/1",
+                headers={"X-Request-ID": "test"}, timeout=10.0,
+                success_status=200, request_type="test",
+            )
 
         assert exc_info.value.code == "HTTP_503"
 

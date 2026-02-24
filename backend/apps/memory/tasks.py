@@ -29,7 +29,7 @@ def _warmup_language_model() -> None:
     from apps.models.services import model_service
 
     try:
-        config = model_service.get_active_model("language")
+        config = model_service.get_active_model("tool")
         if not config:
             return
         client = httpx.Client(timeout=60.0)
@@ -192,6 +192,31 @@ def _run_summary(primary_type: str, start, end, summary_type: str, summary_name:
                         content = "\n".join(f"{m.role}: {m.content}" for m in msgs)
                     except Exception as e:
                         logger.warning("Failed to get messages for user %d: %s", user_id, e)
+
+                # T049: 附加 unknown 用户的语音背景对话（RECORD_ONLY 消息）
+                try:
+                    from apps.chat.models import Message
+                    from apps.users.models import SysUser
+                    unknown_user = SysUser.objects.filter(username="unknown").first()
+                    if unknown_user:
+                        bg_msgs = Message.objects.filter(
+                            user_id=unknown_user.user_id,
+                            is_voice=True,
+                            created_time__gte=start,
+                            created_time__lt=end,
+                        ).order_by("created_time")[:50]
+                        if bg_msgs:
+                            bg_content = "\n".join(
+                                f"背景对话（未识别说话人）: {m.content}"
+                                for m in bg_msgs if m.content
+                            )
+                            if bg_content:
+                                content = (content + "\n\n" + bg_content) if content else bg_content
+                except Exception as e:
+                    logger.warning(
+                        "Failed to append unknown user voice messages for user %d: %s",
+                        user_id, e,
+                    )
 
                 if not content:
                     logger.debug(

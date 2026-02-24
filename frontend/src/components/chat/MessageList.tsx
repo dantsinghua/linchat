@@ -9,10 +9,17 @@
 'use client';
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 
 import { AudioPlayer } from './AudioPlayer';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { AttachmentList } from './MediaPreview';
+
+// T055b: 语音消息组件动态导入，拆分 chunk 减小首次加载体积
+const VoiceMessageBubble = dynamic(
+  () => import('@/components/voice/VoiceMessageBubble').then((mod) => mod.VoiceMessageBubble),
+  { ssr: false },
+);
 import { getMediaUrl } from '@/services/mediaApi';
 import type { Message } from '@/types';
 
@@ -298,42 +305,49 @@ const MessageBubble = memo(function MessageBubble({
             : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100'
         }`}
       >
-        {/* 用户消息: 附件显示在文本上方 */}
-        {isUser && hasAttachments && (
-          <div className="mb-2">
-            {/* T058: 音频附件使用 AudioPlayer */}
-            {message.attachments!.map((att) =>
-              att.media_type === 'audio' ? (
-                <AudioPlayer
-                  key={att.attachment_uuid}
-                  src={getMediaUrl(att.attachment_uuid)}
-                  duration={att.duration_seconds}
-                />
-              ) : null
-            )}
-            <AttachmentList
-              attachments={message.attachments!.filter(
-                (a) => a.media_type !== 'audio'
-              )}
-            />
-          </div>
-        )}
-
-        {/* 消息内容 */}
-        {isUser ? (
-          <p className="whitespace-pre-wrap">{message.content}</p>
+        {/* 语音消息: 使用 VoiceMessageBubble 渲染 */}
+        {message.is_voice ? (
+          <VoiceMessageBubble message={message} isUser={isUser} />
         ) : (
           <>
-            <MarkdownRenderer content={displayContent} />
-            {/* [已中断]标记：显示在消息内容末尾（内联） */}
-            {isInterrupted && (
-              <span className="text-xs text-gray-400">[已中断]</span>
+            {/* 用户消息: 附件显示在文本上方 */}
+            {isUser && hasAttachments && (
+              <div className="mb-2">
+                {/* T058: 音频附件使用 AudioPlayer */}
+                {message.attachments!.map((att) =>
+                  att.media_type === 'audio' ? (
+                    <AudioPlayer
+                      key={att.attachment_uuid}
+                      src={getMediaUrl(att.attachment_uuid)}
+                      duration={att.duration_seconds}
+                    />
+                  ) : null
+                )}
+                <AttachmentList
+                  attachments={message.attachments!.filter(
+                    (a) => a.media_type !== 'audio'
+                  )}
+                />
+              </div>
+            )}
+
+            {/* 消息内容 */}
+            {isUser ? (
+              <p className="whitespace-pre-wrap">{message.content}</p>
+            ) : (
+              <>
+                <MarkdownRenderer content={displayContent} />
+                {/* [已中断]标记：显示在消息内容末尾（内联） */}
+                {isInterrupted && (
+                  <span className="text-xs text-gray-400">[已中断]</span>
+                )}
+              </>
             )}
           </>
         )}
 
-        {/* AI 消息: 附件显示在文本下方 */}
-        {!isUser && hasAttachments && (
+        {/* AI 消息: 附件显示在文本下方（语音消息已在 VoiceMessageBubble 内处理） */}
+        {!isUser && hasAttachments && !message.is_voice && (
           <div className="mt-2">
             <AttachmentList attachments={message.attachments!} />
           </div>

@@ -92,13 +92,13 @@ class ModelUpdateSerializer(serializers.Serializer):
     def validate(self, data: dict) -> dict:
         """跨字段校验
 
-        当模型类型为 language 时，embedding_dimensions 必须为 NULL。
+        非 embedding 类型的模型，embedding_dimensions 必须为 NULL。
         参考: spec.md 假设中 embedding_dimensions 仅对 embedding 类型有意义
         """
         # 注意：type 不在更新字段中，需要从上下文获取
         model_type = self.context.get("model_type")
-        if model_type == "language" and data.get("embedding_dimensions") is not None:
+        if model_type != "embedding" and data.get("embedding_dimensions") is not None:
             raise serializers.ValidationError(
-                {"embedding_dimensions": "语言模型的 embedding_dimensions 必须为空"}
+                {"embedding_dimensions": "非向量模型的 embedding_dimensions 必须为空"}
             )
         return data

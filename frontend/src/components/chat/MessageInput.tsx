@@ -30,9 +30,13 @@ interface MessageInputProps {
   disabled?: boolean;
   failedContent?: string | null;
   failedAttachments?: MediaAttachment[] | null;
+  /** 语音模式是否开启 */
+  voiceMode?: boolean;
   onSend: (content: string, attachments?: MediaAttachment[]) => Promise<void>;
   onStop: () => Promise<void>;
   onClearFailedContent?: () => void;
+  /** 切换语音模式 */
+  onToggleVoiceMode?: () => void;
 }
 
 /**
@@ -50,10 +54,42 @@ export const MessageInput = memo(function MessageInput({
   disabled = false,
   failedContent,
   failedAttachments,
+  voiceMode = false,
   onSend,
   onStop,
   onClearFailedContent,
+  onToggleVoiceMode,
 }: MessageInputProps) {
+  // 语音模式开启时不渲染文字输入区（由 VoiceModePanel 替代）
+  if (voiceMode) {
+    return null;
+  }
+
+  return (
+    <MessageInputInner
+      isGenerating={isGenerating}
+      disabled={disabled}
+      failedContent={failedContent}
+      failedAttachments={failedAttachments}
+      onSend={onSend}
+      onStop={onStop}
+      onClearFailedContent={onClearFailedContent}
+      onToggleVoiceMode={onToggleVoiceMode}
+    />
+  );
+});
+
+/** 内部消息输入组件（语音模式关闭时显示） */
+const MessageInputInner = memo(function MessageInputInner({
+  isGenerating,
+  disabled = false,
+  failedContent,
+  failedAttachments,
+  onSend,
+  onStop,
+  onClearFailedContent,
+  onToggleVoiceMode,
+}: Omit<MessageInputProps, 'voiceMode'>) {
   const [content, setContent] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -340,6 +376,35 @@ export const MessageInput = memo(function MessageInput({
                 />
               </svg>
             </button>
+
+            {/* 语音模式切换按钮 (T025) */}
+            {onToggleVoiceMode && (
+              <button
+                type="button"
+                onClick={onToggleVoiceMode}
+                disabled={disabled || isGenerating}
+                className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
+                  disabled || isGenerating
+                    ? 'cursor-not-allowed text-gray-300'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-600'
+                }`}
+                title="语音模式"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707A1 1 0 0112 5.586v12.828a1 1 0 01-1.707.707L5.586 15z"
+                  />
+                </svg>
+              </button>
+            )}
 
             {/* 上传中提示 */}
             {hasUploadingTasks && (

@@ -127,7 +127,7 @@ class MediaService:
         mime_type: str,
         file_size: int,
     ) -> MediaAttachment:
-        """上传图片文件
+        """上传图片文件（委托给 upload()）
 
         Args:
             user_id: 用户 ID
@@ -138,65 +138,27 @@ class MediaService:
 
         Returns:
             媒体附件对象
+
+        Raises:
+            MediaUploadError: 非图片类型或验证失败
         """
-        # 验证文件
+        import warnings
+
+        warnings.warn(
+            "upload_image() 已弃用，请使用 upload()",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # 预检查类型，保持原有错误码兼容
         media_type = MediaService.validate_file(file_name, mime_type, file_size)
         if media_type != MediaAttachment.TYPE_IMAGE:
             raise MediaUploadError(
                 code="INVALID_FILE_TYPE",
                 message="该接口仅支持图片上传",
             )
-
-        # 读取文件内容
-        file_bytes = file_data.read()
-
-        # 获取图片尺寸
-        width, height = MediaService._get_image_dimensions(file_bytes)
-
-        # 生成存储路径
-        attachment_uuid = str(uuid.uuid4())
-        date_prefix = timezone.now().strftime("%Y-%m-%d")
-        ext = Path(file_name).suffix.lower() or ".jpg"
-        storage_path = f"media/{user_id}/{date_prefix}/{attachment_uuid}{ext}"
-
-        # 上传原始文件
-        minio_service.upload_bytes(
-            bucket=settings.MINIO_BUCKET_MEDIA,
-            object_name=storage_path,
-            data=file_bytes,
-            content_type=mime_type,
-        )
-
-        # 创建数据库记录（失败时补偿删除 MinIO 文件）
-        try:
-            now = timezone.now()
-            expiry_days = getattr(settings, "MEDIA_EXPIRY_DAYS", 7)
-            expires_at = now + timedelta(days=expiry_days)
-
-            attachment = MediaAttachment(
-                attachment_uuid=attachment_uuid,
-                user_id=user_id,
-                media_type=media_type,
-                mime_type=mime_type,
-                file_name=file_name,
-                file_size=file_size,
-                storage_path=storage_path,
-                width=width,
-                height=height,
-                created_at=now,
-                expires_at=expires_at,
-            )
-
-            attachment = await media_attachment_repo.create(attachment)
-        except Exception:
-            if not minio_service.delete_file(settings.MINIO_BUCKET_MEDIA, storage_path):
-                logger.critical(
-                    f"MinIO 补偿删除失败，需人工清理: {storage_path}"
-                )
-            raise
-        logger.info(f"上传图片成功: user_id={user_id}, uuid={attachment_uuid}")
-
-        return attachment
+        # 重置文件指针后委托
+        file_data.seek(0)
+        return await MediaService.upload(user_id, file_data, file_name, mime_type, file_size)
 
     @staticmethod
     async def upload(
@@ -234,14 +196,14 @@ class MediaService:
         if media_type == MediaAttachment.TYPE_IMAGE:
             width, height = MediaService._get_image_dimensions(file_bytes)
         elif media_type == MediaAttachment.TYPE_VIDEO:
-            duration_seconds = MediaService._get_video_duration(file_bytes)
+            duration_seconds = MediaService._get_media_duration(file_bytes, suffix=".mp4")
             if duration_seconds is not None and duration_seconds > MAX_VIDEO_DURATION:
                 raise MediaUploadError(
                     code="DURATION_TOO_LONG",
                     message=f"视频时长超过限制（最大 {MAX_VIDEO_DURATION} 秒）",
                 )
         elif media_type == MediaAttachment.TYPE_AUDIO:
-            duration_seconds = MediaService._get_audio_duration(file_bytes)
+            duration_seconds = MediaService._get_media_duration(file_bytes, suffix=".wav")
             if duration_seconds is not None:
                 if duration_seconds < MIN_AUDIO_DURATION:
                     raise MediaUploadError(
@@ -254,13 +216,52 @@ class MediaService:
                         message=f"音频时长超过限制（最大 {MAX_AUDIO_DURATION} 秒）",
                     )
 
-        # 生成存储路径
+        # 持久化：MinIO 上传 + DB 创建（带补偿）
+        return await MediaService._upload_and_persist(
+            user_id=user_id,
+            file_bytes=file_bytes,
+            file_name=file_name,
+            mime_type=mime_type,
+            file_size=file_size,
+            media_type=media_type,
+            width=width,
+            height=height,
+            duration_seconds=duration_seconds,
+        )
+
+    @staticmethod
+    async def _upload_and_persist(
+        user_id: int,
+        file_bytes: bytes,
+        file_name: str,
+        mime_type: str,
+        file_size: int,
+        media_type: str,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+        duration_seconds: Optional[float] = None,
+    ) -> MediaAttachment:
+        """上传到 MinIO 并创建 DB 记录（失败时补偿删除）
+
+        Args:
+            user_id: 用户 ID
+            file_bytes: 文件字节
+            file_name: 文件名
+            mime_type: MIME 类型
+            file_size: 文件大小
+            media_type: 媒体类型
+            width: 图片宽度
+            height: 图片高度
+            duration_seconds: 媒体时长
+
+        Returns:
+            媒体附件对象
+        """
         attachment_uuid = str(uuid.uuid4())
         date_prefix = timezone.now().strftime("%Y-%m-%d")
         ext = Path(file_name).suffix.lower() or ".bin"
         storage_path = f"media/{user_id}/{date_prefix}/{attachment_uuid}{ext}"
 
-        # 上传到 MinIO
         minio_service.upload_bytes(
             bucket=settings.MINIO_BUCKET_MEDIA,
             object_name=storage_path,
@@ -268,7 +269,6 @@ class MediaService:
             content_type=mime_type,
         )
 
-        # 创建数据库记录（失败时补偿删除 MinIO 文件）
         try:
             now = timezone.now()
             expiry_days = getattr(settings, "MEDIA_EXPIRY_DAYS", 7)
@@ -296,29 +296,30 @@ class MediaService:
                     f"MinIO 补偿删除失败，需人工清理: {storage_path}"
                 )
             raise
+
         logger.info(
             f"上传{media_type}成功: user_id={user_id}, uuid={attachment_uuid}, "
             f"file_name={file_name}, file_size={file_size / 1024:.1f}KB"
             + (f", duration={duration_seconds}s" if duration_seconds else "")
             + (f", dimensions={width}x{height}" if width and height else "")
         )
-
         return attachment
 
     @staticmethod
-    def _get_video_duration(file_bytes: bytes) -> Optional[float]:
-        """使用 ffprobe 获取视频时长
+    def _get_media_duration(file_bytes: bytes, suffix: str = ".bin") -> Optional[float]:
+        """使用 ffprobe 获取媒体时长
 
         Args:
-            file_bytes: 视频字节数据
+            file_bytes: 媒体字节数据
+            suffix: 临时文件后缀（如 ".mp4"、".wav"）
 
         Returns:
-            视频时长（秒），检测失败返回 None
+            媒体时长（秒），检测失败返回 None
         """
         import tempfile
 
         try:
-            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=True) as tmp:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp:
                 tmp.write(file_bytes)
                 tmp.flush()
 
@@ -343,49 +344,12 @@ class MediaService:
                 duration = float(data["format"]["duration"])
                 return round(duration, 2)
         except Exception as e:
-            logger.warning(f"获取视频时长失败: {e}")
+            logger.warning(f"获取媒体时长失败: {e}")
             return None
 
-    @staticmethod
-    def _get_audio_duration(file_bytes: bytes) -> Optional[float]:
-        """使用 ffprobe 获取音频时长
-
-        Args:
-            file_bytes: 音频字节数据
-
-        Returns:
-            音频时长（秒），检测失败返回 None
-        """
-        import tempfile
-
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
-                tmp.write(file_bytes)
-                tmp.flush()
-
-                result = subprocess.run(
-                    [
-                        "ffprobe",
-                        "-v", "quiet",
-                        "-print_format", "json",
-                        "-show_format",
-                        tmp.name,
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-
-                if result.returncode != 0:
-                    logger.warning(f"ffprobe 音频执行失败: {result.stderr}")
-                    return None
-
-                data = json.loads(result.stdout)
-                duration = float(data["format"]["duration"])
-                return round(duration, 2)
-        except Exception as e:
-            logger.warning(f"获取音频时长失败: {e}")
-            return None
+    # 向后兼容别名（测试可能直接引用）
+    _get_video_duration = staticmethod(lambda file_bytes: MediaService._get_media_duration(file_bytes, suffix=".mp4"))
+    _get_audio_duration = staticmethod(lambda file_bytes: MediaService._get_media_duration(file_bytes, suffix=".wav"))
 
     @staticmethod
     def _get_image_dimensions(file_bytes: bytes) -> tuple[int, int]:

@@ -1,12 +1,28 @@
+<!--
+Sync Impact Report
+===================
+Version change: 1.7.0 → 1.8.0
+Modified principles:
+  - 4.1 身份认证与授权: 新增"设备 API Token 豁免条款"子段
+Added sections:
+  - 4.1 设备 API Token 豁免条款（豁免 24h 过期，明确 SM4 安全保障）
+Removed sections: (none)
+Templates requiring updates:
+  - .specify/templates/plan-template.md: ✅ 无需更新（Constitution Check gate 不引用 Token 过期参数）
+  - .specify/templates/spec-template.md: ✅ 无需更新
+  - .specify/templates/tasks-template.md: ✅ 无需更新
+Follow-up TODOs: (none)
+-->
+
 # 项目宪法文件
 
 > 大模型聊天平台 - 规范驱动开发治理文件
 >
 > **技术栈**: Django REST Framework + Next.js + PostgreSQL/Elasticsearch/Redis
 > **架构模式**: 前后端分离 Monorepo
-> **版本**: 1.7.0
+> **版本**: 1.8.0
 > **批准日期**: 2026-01-23
-> **最后更新**: 2026-02-11
+> **最后更新**: 2026-02-20
 
 ---
 
@@ -192,6 +208,11 @@ SSE 视图实现规范 - **不可违背**:
 | 权限控制 | 对象级权限，验证资源所有权 |
 | 频率限制 | 匿名100次/时，认证1000次/时，大模型60次/分 |
 | **数据隔离粒度** | **永远按 `user_id` 粒度隔离，本项目不存在"会话粒度"概念。所有并发锁、数据查询、缓存键均以 `user_id` 为最小隔离单元** |
+
+**设备 API Token 豁免条款**：外部物联网设备（如树莓派）通过 WebSocket 连接 LinChat 时，使用长效设备 API Token 认证。此类 Token 不适用上述"24小时绝对过期 + 1小时无操作过期"策略，原因如下：
+- 外部设备无浏览器环境，无法通过 httpOnly Cookie 自动刷新令牌
+- 设备需 7×24 小时无人值守运行，频繁过期将导致服务中断
+- 安全保障措施：Token MUST 使用国密 SM4 加密存储（与 4.2 API 密钥标准一致）；支持在设置页面随时撤销（立即失效）；数据库存储 `token_prefix`（前 8 位）用于快速查找 + 加密全文用于验证，明文 Token 仅在注册时返回一次；设备 `last_active_at` 字段记录最后活跃时间，便于审计异常设备
 
 ### 4.2 数据保护
 
@@ -405,6 +426,7 @@ uvicorn core.asgi:application --host 0.0.0.0 --port 8002 --reload
 
 | 版本 | 日期 | 作者 | 变更内容 |
 |------|------|------|----------|
+| 1.8.0 | 2026-02-20 | Claude | 设备 Token 豁免：外部 IoT 设备长效 API Token 豁免 24h 过期策略，明确 SM4 加密 + 可撤销 + 一次性明文返回的安全保障 |
 | 1.7.0 | 2026-02-11 | Claude | 明确单用户家庭场景约束：禁止实现多用户并发控制机制，保留推理取消（用户体验需求） |
 | 1.6.0 | 2026-02-11 | Claude | 性能指标豁免：新增多模态推理首字节 < 5s 指标，作为纯文本 TTFT < 2s 的场景豁免 |
 | 1.5.0 | 2026-02-11 | Claude | 扩展服务层组织形式：承认 services/ 目录模式为合法架构（单文件与目录并存） |
@@ -439,6 +461,7 @@ uvicorn core.asgi:application --host 0.0.0.0 --port 8002 --reload
 |                  | Redis 同步失败需补偿机制（ES 可选）        |
 +------------------+----------------------------------------+
 | 安全要求          | Token 存储在 httpOnly Cookie            |
+|                  | 设备 Token 豁免 24h 过期（SM4 + 可撤销）  |
 |                  | Redis 实现接口频率限制                   |
 |                  | 大模型异常需优雅处理                      |
 +------------------+----------------------------------------+

@@ -94,9 +94,9 @@ def get_thread_id(user_id: int) -> str:
 
 async def get_llm() -> ChatOpenAI:
     """获取 LLM 实例（每次从 DB 读取最新配置）"""
-    config = await sync_to_async(model_service.get_active_model)("language")
+    config = await sync_to_async(model_service.get_active_model)("tool")
     if not config:
-        raise RuntimeError("未找到激活的语言模型配置，请在模型配置页面设置")
+        raise RuntimeError("未找到激活的工具模型配置，请在模型配置页面设置")
 
     kwargs: dict = {
         "base_url": config["url"],
@@ -118,6 +118,10 @@ async def get_llm() -> ChatOpenAI:
     return ChatOpenAI(**kwargs)
 
 
+# 不支持 tool calling 的模型名称前缀
+_NO_TOOL_CALLING_PREFIXES = ("minicpm",)
+
+
 @asynccontextmanager
 async def _create_agent(
     tools,
@@ -128,6 +132,12 @@ async def _create_agent(
     name: str = "LangGraph",
 ) -> AsyncIterator:
     llm = await get_llm()
+    # 模型不支持 tool calling 时自动清空工具列表
+    model_name = (llm.model_name or "").lower()
+    if any(model_name.startswith(p) for p in _NO_TOOL_CALLING_PREFIXES):
+        if tools:
+            logger.info("模型 %s 不支持 tool calling，已跳过 %d 个工具", llm.model_name, len(tools))
+        tools = []
     kwargs: dict = {"model": llm, "tools": tools, "name": name}
     wrapped = _wrap_prompt(prompt, preamble_tokens, effective_window)
     if wrapped:
@@ -259,7 +269,7 @@ def _preprocess_video(video_bytes: bytes) -> bytes:
 def build_multimodal_messages(
     user_message: str,
     attachments: list[Any],
-) -> tuple[HumanMessage, str, list[str]]:
+) -> tuple[HumanMessage, list[str]]:
     """构建多模态消息
 
     将用户消息和附件转换为 OpenAI 兼容的多模态消息格式。
@@ -269,9 +279,8 @@ def build_multimodal_messages(
         attachments: MediaAttachment 对象列表
 
     Returns:
-        (HumanMessage, model_name, media_types)
+        (HumanMessage, media_types)
         - HumanMessage: 包含文本和媒体的消息
-        - model_name: 推荐使用的模型名称
         - media_types: 包含的媒体类型列表
 
     参考: specs/008-multimodal-minicpm/research.md#5 多模态消息格式
@@ -280,7 +289,7 @@ def build_multimodal_messages(
 
     if not attachments:
         # 无附件，返回纯文本消息
-        return HumanMessage(content=user_message), "", []
+        return HumanMessage(content=user_message), []
 
     content: list[dict[str, Any]] = []
     media_types: list[str] = []
@@ -349,73 +358,7 @@ def build_multimodal_messages(
                 "text": f"[附件加载失败: {attachment.file_name}]",
             })
 
-    # 选择模型
-    if has_audio:
-        model_name = getattr(settings, "MULTIMODAL_MODEL_AUDIO", "minicpm-o")
-    else:
-        model_name = getattr(settings, "MULTIMODAL_MODEL_VISION", "minicpm-o")
-
-    return HumanMessage(content=content), model_name, media_types
-
-
-async def get_multimodal_llm(model_name: str) -> ChatOpenAI:
-    """获取多模态 LLM 实例
-
-    Args:
-        model_name: 模型名称 (minicpm-v / minicpm-o)
-
-    Returns:
-        ChatOpenAI 实例
-    """
-    gateway_url = getattr(settings, "LLM_GATEWAY_URL", "")
-    gateway_timeout = getattr(settings, "LLM_GATEWAY_INFERENCE_TIMEOUT", 180)
-
-    if not gateway_url:
-        raise RuntimeError("未配置 LLM_GATEWAY_URL，无法使用多模态功能")
-
-    return ChatOpenAI(
-        base_url=f"{gateway_url}/v1",
-        api_key=getattr(settings, "LLM_GATEWAY_API_KEY", "") or "not-needed",
-        model=model_name,
-        streaming=True,
-        stream_usage=True,
-        timeout=gateway_timeout,
-        max_retries=settings.LLM_MAX_RETRIES,
-    )
-
-
-@asynccontextmanager
-async def create_multimodal_agent(
-    model_name: str,
-    prompt=None,
-    preamble_tokens=0,
-    effective_window=128000,
-):
-    """创建多模态 Agent（已弃用，仅保留向后兼容）
-
-    注意: LangChain ChatOpenAI 不支持 video_url / audio_url 等 MiniCPM 扩展类型，
-    会导致序列化错误。请改用 create_multimodal_direct()。
-
-    Args:
-        model_name: 模型名称 (minicpm-v / minicpm-o)
-        prompt: 前置 prompt
-        preamble_tokens: 前置 token 数
-        effective_window: 有效上下文窗口
-
-    参考: specs/008-multimodal-minicpm/plan.md
-    """
-    llm = await get_multimodal_llm(model_name)
-    wrapped = _wrap_prompt(prompt, preamble_tokens, effective_window)
-
-    kwargs: dict = {
-        "model": llm,
-        "tools": [],  # 多模态 Agent 暂不使用工具
-        "name": f"multimodal_{model_name}",
-    }
-    if wrapped:
-        kwargs["prompt"] = wrapped
-
-    yield create_react_agent(**kwargs)
+    return HumanMessage(content=content), media_types
 
 
 # ============ 多模态直接推理（绕过 LangChain 序列化） ============
@@ -423,8 +366,9 @@ async def create_multimodal_agent(
 
 async def stream_multimodal_httpx(
     content: list[dict[str, Any]],
-    model_name: str,
+    mm_config: dict[str, Any],
     system_prompt: str = "",
+    stop_event: Optional[Any] = None,
 ) -> AsyncIterator[tuple[str, Optional[dict[str, int]]]]:
     """直接通过 httpx 调用 LLM Gateway 流式推理，绕过 LangChain 序列化问题
 
@@ -435,8 +379,9 @@ async def stream_multimodal_httpx(
 
     Args:
         content: 多模态内容列表（来自 build_multimodal_messages().content）
-        model_name: 模型名称 (如 minicpm-o)
+        mm_config: 多模态模型配置 dict（由 SubAgent 从 DB 获取后传入）
         system_prompt: 系统提示词
+        stop_event: 可选的 asyncio.Event，设置后中断流式读取
 
     Yields:
         (content_delta, usage):
@@ -445,36 +390,34 @@ async def stream_multimodal_httpx(
     """
     import httpx
 
-    gateway_url = getattr(settings, "LLM_GATEWAY_URL", "")
-    gateway_key = getattr(settings, "LLM_GATEWAY_API_KEY", "") or "not-needed"
+    base_url = mm_config["url"].rstrip("/")
+    if not base_url.endswith("/v1"):
+        base_url = f"{base_url}/v1"
+    api_key = mm_config.get("api_key") or "not-needed"
+    model_name = mm_config["name"]
+    max_tokens = mm_config.get("max_output_tokens", 1024)
     gateway_timeout = getattr(settings, "LLM_GATEWAY_INFERENCE_TIMEOUT", 180)
-
-    if not gateway_url:
-        raise RuntimeError("未配置 LLM_GATEWAY_URL，无法使用多模态功能")
 
     messages: list[dict[str, Any]] = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": content})
 
-    # 多模态模型上下文有限（图片 token 占用大量容量），需控制 max_tokens
-    mm_max_tokens = getattr(settings, "MULTIMODAL_MAX_TOKENS", 1024)
-
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(gateway_timeout, connect=30.0),
     ) as client:
         async with client.stream(
             "POST",
-            f"{gateway_url}/v1/chat/completions",
+            f"{base_url}/chat/completions",
             headers={
-                "Authorization": f"Bearer {gateway_key}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={
                 "model": model_name,
                 "messages": messages,
                 "stream": True,
-                "max_tokens": mm_max_tokens,
+                "max_tokens": max_tokens,
             },
         ) as response:
             if response.status_code != 200:
@@ -485,6 +428,8 @@ async def stream_multimodal_httpx(
                 )
 
             async for line in response.aiter_lines():
+                if stop_event and stop_event.is_set():
+                    break
                 line = line.strip()
                 if not line or not line.startswith("data: "):
                     continue
@@ -493,8 +438,6 @@ async def stream_multimodal_httpx(
                     break
                 try:
                     chunk = _json.loads(data_str)
-                    # 检测 SSE 数据中的 Gateway 错误
-                    # Gateway 在流式模式下可能返回 200 但在 SSE 中包含 error 对象
                     error_obj = chunk.get("error")
                     if error_obj:
                         code = error_obj.get("code", "")
@@ -520,67 +463,3 @@ async def stream_multimodal_httpx(
                     logger.warning("多模态 SSE JSON 解析失败: %s", data_str[:100])
 
 
-class _DirectContent:
-    """httpx 适配器：模拟 LangChain chunk.content"""
-
-    __slots__ = ("content",)
-
-    def __init__(self, text: str):
-        self.content = text
-
-
-class _DirectUsage:
-    """httpx 适配器：模拟 LangChain output.usage_metadata"""
-
-    __slots__ = ("usage_metadata", "response_metadata")
-
-    def __init__(self, usage_dict: dict):
-        self.usage_metadata = {
-            "input_tokens": usage_dict.get("prompt_tokens", 0),
-            "output_tokens": usage_dict.get("completion_tokens", 0),
-        }
-        self.response_metadata = None
-
-
-@asynccontextmanager
-async def create_multimodal_direct(
-    content: list[dict[str, Any]],
-    model_name: str,
-    system_prompt: str = "",
-) -> AsyncIterator:
-    """创建直接 httpx 多模态推理适配器（兼容 LangGraph astream_events 接口）
-
-    通过 httpx 直接调用 LLM Gateway，绕过 LangChain ChatOpenAI 的序列化，
-    同时保持与 LangGraph agent.astream_events() 相同的事件接口。
-
-    用法与 create_multimodal_agent 相同:
-        async with create_multimodal_direct(content, model) as agent:
-            async for event in agent.astream_events(
-                input_msg, config=config, version="v2"
-            ):
-                ...
-
-    Args:
-        content: 多模态内容列表（来自 build_multimodal_messages().content）
-        model_name: 模型名称 (如 minicpm-o)
-        system_prompt: 系统提示词
-    """
-
-    class _Adapter:
-        async def astream_events(self, input_message, config=None, version=None):
-            async for delta, usage in stream_multimodal_httpx(
-                content, model_name, system_prompt
-            ):
-                if delta:
-                    yield {
-                        "event": "on_chat_model_stream",
-                        "data": {"chunk": _DirectContent(delta)},
-                        "parent_ids": [],
-                    }
-                if usage:
-                    yield {
-                        "event": "on_chat_model_end",
-                        "data": {"output": _DirectUsage(usage)},
-                    }
-
-    yield _Adapter()

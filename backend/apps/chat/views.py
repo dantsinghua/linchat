@@ -11,7 +11,9 @@
 
 import logging
 from io import BytesIO
+
 from asgiref.sync import async_to_sync
+from django.conf import settings
 from django.http import FileResponse, HttpRequest, StreamingHttpResponse
 from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import MultiPartParser
@@ -38,7 +40,7 @@ from apps.chat.services import (
     inference_service,
 )
 from apps.chat.sse import first_validation_error, make_sse_response, parse_sse_request
-from apps.common.responses import ApiResponse
+from apps.common.responses import ApiResponse, error_response
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,21 @@ async def chat(request: HttpRequest) -> StreamingHttpResponse:
     user_id = request.user_id
     content = validated["content"]
     attachment_uuids = validated.get("attachments")
+
+    # 多模态请求限流：MiniCPM-o 不支持并发，每 N 秒最多 1 次
+    if attachment_uuids:
+        from core.redis import get_redis
+
+        rate_limit = getattr(settings, "MULTIMODAL_RATE_LIMIT_SECONDS", 60)
+        key = f"user:{user_id}:multimodal_rate_limit"
+        redis = await get_redis()
+        if not await redis.set(key, "1", nx=True, ex=rate_limit):
+            ttl = await redis.ttl(key)
+            return error_response(
+                message=f"多模态推理请求过于频繁，请在 {ttl} 秒后重试",
+                code="RATE_LIMIT",
+                status_code=429,
+            )
 
     stream = ChatService.send_message(
         user_id=user_id,
