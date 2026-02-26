@@ -98,6 +98,19 @@ class Message(models.Model):
         verbose_name="扩展数据",
     )
 
+    # ========== 语音字段（009-voice-interaction）==========
+    is_voice = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="语音消息标记",
+    )
+    speaker_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        verbose_name="说话人ID（llmgateway声纹识别）",
+    )
+
     # ========== 排序与状态 ==========
     sequence = models.IntegerField(
         db_index=True,

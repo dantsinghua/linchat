@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "django_celery_beat",
+    # Channels (WebSocket 支持)
+    "channels",
     # Local apps
     "apps.common",
     "apps.users",
@@ -47,6 +49,7 @@ INSTALLED_APPS = [
     "apps.memory",
     "apps.graph",
     "apps.context",
+    "apps.voice",
 ]
 
 MIDDLEWARE = [
@@ -382,6 +385,39 @@ MEDIA_EXPIRY_DAYS = int(os.getenv("MEDIA_EXPIRY_DAYS", "7"))  # 媒体文件7天
 
 # 推理任务配置
 INFERENCE_TASK_TTL = int(os.getenv("INFERENCE_TASK_TTL", "300"))  # 推理任务TTL: 300秒
+
+# ============ Django Channels 配置 (语音交互) ============
+# Redis DB3，独立于 DB0(缓存)/DB1(Langfuse)/DB2(Celery Broker)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [os.getenv("CHANNELS_REDIS_URL", "redis://:redis_linchat_123@localhost:6379/3")],
+            "capacity": 1500,
+            "expiry": 10,
+        },
+    },
+}
+
+# ============ 语音交互配置 (009-voice-interaction) ============
+# llmgateway WebSocket / HTTP 端点
+LLM_GATEWAY_WS_URL = os.getenv("LLM_GATEWAY_WS_URL", "ws://127.0.0.1:8100")
+LLM_GATEWAY_WS_API_KEY = os.getenv("LLM_GATEWAY_WS_API_KEY", "")
+LLM_GATEWAY_HTTP_URL = os.getenv("LLM_GATEWAY_HTTP_URL", "http://127.0.0.1:8100")
+
+# 语音会话配置
+VOICE_SESSION_TTL = int(os.getenv("VOICE_SESSION_TTL", "120"))  # 会话状态 TTL: 120s
+VOICE_ACTIVE_CONV_TTL = int(os.getenv("VOICE_ACTIVE_CONV_TTL", "30"))  # 活跃对话 TTL: 30s
+VOICE_AUDIO_CACHE_TTL = int(os.getenv("VOICE_AUDIO_CACHE_TTL", "300"))  # 音频缓存 TTL: 300s
+VOICE_MAX_RECORDING_SECONDS = int(os.getenv("VOICE_MAX_RECORDING_SECONDS", "30"))  # 最大录音: 30s
+VOICE_IDLE_TIMEOUT = int(os.getenv("VOICE_IDLE_TIMEOUT", "60"))  # 连接空闲超时: 60s
+VOICE_STT_TIMEOUT = int(os.getenv("VOICE_STT_TIMEOUT", "30"))  # STT 转写超时: 30s
+
+# 唤醒词与响应决策
+VOICE_DEFAULT_WAKE_WORDS = ["小鱼"]  # 默认唤醒词列表
+VOICE_SPEAKER_THRESHOLD = float(os.getenv("VOICE_SPEAKER_THRESHOLD", "0.5"))  # 声纹识别阈值
+VOICE_VAD_THRESHOLD = float(os.getenv("VOICE_VAD_THRESHOLD", "0.5"))  # VAD 阈值 (0.0~1.0，越大越不灵敏)
+VOICE_WAKE_WORD_FUZZY_THRESHOLD = float(os.getenv("VOICE_WAKE_WORD_FUZZY_THRESHOLD", "0.8"))  # 唤醒词拼音模糊匹配阈值
 
 # 多模态/文档解析超时配置（GPU 模型切换耗时 35-341 秒）
 MULTIMODAL_SUBAGENT_TIMEOUT = int(os.getenv("MULTIMODAL_SUBAGENT_TIMEOUT", "1200"))  # 多模态 SubAgent 超时: 20分钟

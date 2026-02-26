@@ -37,17 +37,16 @@ def _make_attachment(
 class TestBuildMultimodalMessages:
     """build_multimodal_messages 模型路由测试"""
 
-    def test_no_attachments_returns_empty_model(self):
-        """无附件 → 纯文本消息，model_name 为空字符串"""
+    def test_no_attachments_returns_empty_media_types(self):
+        """无附件 → 纯文本消息，media_types 为空列表"""
         from apps.graph.agent import build_multimodal_messages
 
-        message, model_name, media_types = build_multimodal_messages(
+        message, media_types = build_multimodal_messages(
             user_message="你好", attachments=[]
         )
 
         assert isinstance(message, HumanMessage)
         assert message.content == "你好"
-        assert model_name == ""
         assert media_types == []
 
     @patch("apps.chat.services.minio_service.minio_service")
@@ -67,12 +66,11 @@ class TestBuildMultimodalMessages:
             file_name="photo.jpg",
         )
 
-        message, model_name, media_types = build_multimodal_messages(
+        message, media_types = build_multimodal_messages(
             user_message="这张图片是什么？",
             attachments=[attachment],
         )
 
-        assert model_name == "minicpm-o"
         assert media_types == ["image"]
         assert isinstance(message.content, list)
         # 应包含 text 和 image_url 两个内容块
@@ -100,12 +98,11 @@ class TestBuildMultimodalMessages:
             file_name="clip.mp4",
         )
 
-        message, model_name, media_types = build_multimodal_messages(
+        message, media_types = build_multimodal_messages(
             user_message="描述这个视频内容",
             attachments=[attachment],
         )
 
-        assert model_name == "minicpm-o"
         assert media_types == ["video"]
         content_types = [c["type"] for c in message.content]
         assert "video_url" in content_types
@@ -128,12 +125,11 @@ class TestBuildMultimodalMessages:
             file_name="voice.wav",
         )
 
-        message, model_name, media_types = build_multimodal_messages(
+        message, media_types = build_multimodal_messages(
             user_message="请听这段音频",
             attachments=[attachment],
         )
 
-        assert model_name == "minicpm-o"
         assert media_types == ["audio"]
         content_types = [c["type"] for c in message.content]
         assert "audio_url" in content_types
@@ -164,13 +160,11 @@ class TestBuildMultimodalMessages:
             attachment_uuid="uuid-aud",
         )
 
-        message, model_name, media_types = build_multimodal_messages(
+        message, media_types = build_multimodal_messages(
             user_message="看图并听音频",
             attachments=[image_att, audio_att],
         )
 
-        # 音频优先选择 minicpm-o
-        assert model_name == "minicpm-o"
         assert "image" in media_types
         assert "audio" in media_types
 
@@ -191,12 +185,11 @@ class TestBuildMultimodalMessages:
             file_name="voice.wav",
         )
 
-        message, model_name, media_types = build_multimodal_messages(
+        message, media_types = build_multimodal_messages(
             user_message="[语音消息]",
             attachments=[attachment],
         )
 
-        assert model_name == "minicpm-o"
         # 占位文本被替换，content 中不应包含 text 类型块
         content_types = [c["type"] for c in message.content]
         assert "text" not in content_types
@@ -220,13 +213,12 @@ class TestBuildMultimodalMessages:
             file_name="photo.png",
         )
 
-        message, model_name, media_types = build_multimodal_messages(
+        message, media_types = build_multimodal_messages(
             user_message="[语音消息]",
             attachments=[attachment],
         )
 
         # 无 audio 附件，即使文本恰好为 "[语音消息]" 也保留
-        assert model_name == "minicpm-o"
         content_types = [c["type"] for c in message.content]
         assert "text" in content_types
         text_blocks = [c for c in message.content if c["type"] == "text"]
@@ -251,13 +243,11 @@ class TestBuildMultimodalMessages:
             file_name="broken.png",
         )
 
-        message, model_name, media_types = build_multimodal_messages(
+        message, media_types = build_multimodal_messages(
             user_message="看看这张图",
             attachments=[attachment],
         )
 
-        # 仍然路由到 vision 模型
-        assert model_name == "minicpm-o"
         # 应包含错误提示文本
         text_blocks = [
             c for c in message.content
@@ -277,21 +267,21 @@ class TestBuildMultimodalMessages:
         mock_settings.MULTIMODAL_MODEL_AUDIO = "custom-audio-model"
         mock_minio.download_file.return_value = b"fake-data"
 
-        # 测试图片使用自定义 vision 模型
+        # 测试图片返回 media_types
         img_att = _make_attachment(media_type="image")
-        _, model_name, _ = build_multimodal_messages(
+        _, media_types = build_multimodal_messages(
             user_message="test", attachments=[img_att]
         )
-        assert model_name == "custom-vision-model"
+        assert media_types == ["image"]
 
-        # 测试音频使用自定义 audio 模型
+        # 测试音频返回 media_types
         aud_att = _make_attachment(
             media_type="audio",
             mime_type="audio/wav",
             file_name="test.wav",
             attachment_uuid="uuid-2",
         )
-        _, model_name, _ = build_multimodal_messages(
+        _, media_types = build_multimodal_messages(
             user_message="test", attachments=[aud_att]
         )
-        assert model_name == "custom-audio-model"
+        assert media_types == ["audio"]

@@ -19,10 +19,12 @@ class ModelConfig(models.Model):
     """
 
     # ========== 类型枚举 ==========
-    TYPE_LANGUAGE = "language"
+    TYPE_TOOL = "tool"
+    TYPE_MULTIMODAL = "multimodal"
     TYPE_EMBEDDING = "embedding"
     TYPE_CHOICES = [
-        (TYPE_LANGUAGE, "语言模型"),
+        (TYPE_TOOL, "工具模型"),
+        (TYPE_MULTIMODAL, "多模态模型"),
         (TYPE_EMBEDDING, "向量模型"),
     ]
 

@@ -7,8 +7,9 @@ import asyncio
 import logging
 from typing import Any, Optional
 
-import redis.asyncio as aioredis
 from django.conf import settings
+
+from core.redis import get_redis
 
 from apps.context import (COMPACTION_PROMPT_TEMPLATE, PromptBuilder,
                           PromptConfig, RetrievedMemory, TrimLevel,
@@ -66,7 +67,7 @@ class ContextService:
     @staticmethod
     async def _acquire_compress_lock(user_id: int) -> Optional[Any]:
         try:
-            r = aioredis.from_url(settings.REDIS_URL)
+            r = await get_redis()
             lock = r.lock(f"compress:{user_id}", timeout=COMPRESS_LOCK_TIMEOUT, blocking=False)
             return lock if await lock.acquire() else None
         except Exception as e:
@@ -85,7 +86,7 @@ class ContextService:
     @staticmethod
     async def _wait_for_compress_lock(user_id: int, effective_window: int) -> bool:
         try:
-            r = aioredis.from_url(settings.REDIS_URL)
+            r = await get_redis()
             for _ in range(COMPRESS_LOCK_WAIT_MAX_RETRIES):
                 if not await r.exists(f"compress:{user_id}"):
                     return True

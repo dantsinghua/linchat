@@ -214,7 +214,7 @@ export const ModelConfigForm = memo(function ModelConfigForm({
   return (
     <div className="rounded-xl border border-primary-200 bg-white p-6 shadow-md dark:border-primary-800 dark:bg-gray-800">
       <h3 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
-        编辑{model.type === 'language' ? '语言' : '嵌入'}模型配置
+        编辑{({ tool: '工具', multimodal: '多模态', embedding: '向量' } as Record<string, string>)[model.type] ?? ''}模型配置
       </h3>
 
       {submitError && (

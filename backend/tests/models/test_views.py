@@ -40,8 +40,8 @@ class TestModelListView(TestCase):
         self.view = ModelListView.as_view()
         # 创建测试数据
         ModelConfig.objects.create(
-            type=ModelConfig.TYPE_LANGUAGE,
-            name="test-language",
+            type=ModelConfig.TYPE_TOOL,
+            name="test-tool",
             url="https://api.example.com/v1",
             api_key=sm4_encrypt("lang-key-123456789"),
             max_context_window=65536,
@@ -125,7 +125,7 @@ class TestModelDetailView(TestCase):
         self.view = ModelDetailView.as_view()
         self.original_key = "original-api-key-123456"
         self.model = ModelConfig.objects.create(
-            type=ModelConfig.TYPE_LANGUAGE,
+            type=ModelConfig.TYPE_TOOL,
             name="test-model",
             url="https://api.example.com/v1",
             api_key=sm4_encrypt(self.original_key),

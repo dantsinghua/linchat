@@ -1,0 +1,239 @@
+openapi: 3.0.3
+info:
+  title: LinChat Voice REST API
+  version: 1.0.0
+  description: 语音交互功能 REST API — 声纹管理、设备管理、语音设置
+
+servers:
+  - url: /api/v1/voice
+
+paths:
+  # ===== 声纹管理 =====
+  /speakers/:
+    get:
+      summary: 查看已注册声纹列表
+      description: 返回当前用户及所有家庭成员的已注册声纹
+      tags: [声纹管理]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, example: "SUCCESS" }
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SpeakerProfile"
+                  message: { type: string }
+
+    post:
+      summary: 注册新声纹
+      description: 上传 10-30 秒音频到 llmgateway 注册声纹，建立 LinChat 用户映射
+      tags: [声纹管理]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio, name]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: 音频文件 (WAV PCM16 16kHz mono, 10-30 秒)
+                name:
+                  type: string
+                  description: 显示名称 (如 "爸爸")
+                  maxLength: 50
+      responses:
+        "201":
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, example: "SUCCESS" }
+                  data:
+                    $ref: "#/components/schemas/SpeakerProfile"
+                  message: { type: string }
+        "400":
+          description: 音频质量不达标
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /speakers/{id}/:
+    delete:
+      summary: 删除声纹
+      description: 按 SpeakerProfile 数据库主键删除本地映射，并调用 llmgateway DELETE /v1/voice/speakers/{gateway_speaker_id} 删除远端声纹
+      tags: [声纹管理]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: SpeakerProfile 数据库主键（非 gateway_speaker_id）
+          schema: { type: integer }
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, example: "SUCCESS" }
+                  data: { type: "null" }
+                  message: { type: string }
+        "404":
+          description: 声纹不存在
+
+  # ===== 设备管理 =====
+  /devices/:
+    get:
+      summary: 查看已注册设备列表
+      tags: [设备管理]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, example: "SUCCESS" }
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RegisteredDevice"
+
+    post:
+      summary: 注册新设备
+      description: 为外部设备生成专属 API Token
+      tags: [设备管理]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: 设备名称 (如 "客厅树莓派")
+                  maxLength: 100
+      responses:
+        "201":
+          description: 注册成功（仅此一次返回明文 Token）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, example: "SUCCESS" }
+                  data:
+                    type: object
+                    properties:
+                      device:
+                        $ref: "#/components/schemas/RegisteredDevice"
+                      api_token:
+                        type: string
+                        description: 明文 API Token（仅在创建时返回一次）
+
+  /devices/{device_uuid}/:
+    delete:
+      summary: 撤销设备
+      description: 将设备标记为停用（is_active=False），其 API Token 立即失效。设备记录保留用于审计追溯
+      tags: [设备管理]
+      parameters:
+        - name: device_uuid
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: 撤销成功
+
+  # ===== 语音设置 =====
+  /settings/:
+    get:
+      summary: 获取语音设置
+      description: 获取当前用户的语音设置（不存在则返回默认值）
+      tags: [语音设置]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, example: "SUCCESS" }
+                  data:
+                    $ref: "#/components/schemas/VoiceSettings"
+
+    put:
+      summary: 更新语音设置
+      tags: [语音设置]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceSettingsUpdate"
+      responses:
+        "200":
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, example: "SUCCESS" }
+                  data:
+                    $ref: "#/components/schemas/VoiceSettings"
+
+components:
+  schemas:
+    SpeakerProfile:
+      type: object
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        gateway_speaker_id: { type: string }
+        name: { type: string, example: "爸爸" }
+        quality_score: { type: number, format: float, minimum: 0.0, maximum: 1.0, description: "llmgateway 返回的声纹质量评分" }
+        enrolled_at: { type: string, format: date-time }
+
+    RegisteredDevice:
+      type: object
+      properties:
+        device_uuid: { type: string, format: uuid }
+        name: { type: string, example: "客厅树莓派" }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        last_active_at: { type: string, format: date-time, nullable: true }
+
+    VoiceSettings:
+      type: object
+      properties:
+        wake_words: { type: array, items: { type: string }, example: ["小鱼"] }
+        recording_mode: { type: string, enum: [hold, toggle] }
+        vad_sensitivity: { type: number, format: float, minimum: 0.0, maximum: 1.0 }
+
+    VoiceSettingsUpdate:
+      type: object
+      properties:
+        wake_words: { type: array, items: { type: string } }
+        recording_mode: { type: string, enum: [hold, toggle] }
+        vad_sensitivity: { type: number, format: float, minimum: 0.0, maximum: 1.0 }
+
+    ErrorResponse:
+      type: object
+      properties:
+        code: { type: string, example: "VALIDATION_ERROR" }
+        data: { type: "null" }
+        message: { type: string, example: "音频时长不足 10 秒" }

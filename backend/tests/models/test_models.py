@@ -22,7 +22,7 @@ class TestModelConfigFields(TestCase):
     def _create_model(self, **kwargs) -> ModelConfig:
         """创建测试模型实例"""
         defaults = {
-            "type": ModelConfig.TYPE_LANGUAGE,
+            "type": ModelConfig.TYPE_TOOL,
             "name": "test-model",
             "url": "https://api.example.com/v1",
             "api_key": sm4_encrypt("test-api-key-12345"),
@@ -33,10 +33,10 @@ class TestModelConfigFields(TestCase):
         defaults.update(kwargs)
         return ModelConfig.objects.create(**defaults)
 
-    def test_create_language_model(self):
-        """测试创建语言模型"""
-        model = self._create_model(type=ModelConfig.TYPE_LANGUAGE)
-        self.assertEqual(model.type, "language")
+    def test_create_tool_model(self):
+        """测试创建工具模型"""
+        model = self._create_model(type=ModelConfig.TYPE_TOOL)
+        self.assertEqual(model.type, "tool")
         self.assertEqual(model.name, "test-model")
         self.assertTrue(model.is_active)
         self.assertIsNotNone(model.created_at)
@@ -54,10 +54,12 @@ class TestModelConfigFields(TestCase):
 
     def test_type_choices(self):
         """测试类型选项"""
-        self.assertEqual(ModelConfig.TYPE_LANGUAGE, "language")
+        self.assertEqual(ModelConfig.TYPE_TOOL, "tool")
+        self.assertEqual(ModelConfig.TYPE_MULTIMODAL, "multimodal")
         self.assertEqual(ModelConfig.TYPE_EMBEDDING, "embedding")
         choices = dict(ModelConfig.TYPE_CHOICES)
-        self.assertIn("language", choices)
+        self.assertIn("tool", choices)
+        self.assertIn("multimodal", choices)
         self.assertIn("embedding", choices)
 
     def test_optional_fields_null(self):
@@ -91,7 +93,7 @@ class TestModelConfigFields(TestCase):
     def test_max_context_window_validator(self):
         """测试 max_context_window 不允许 0"""
         model = ModelConfig(
-            type=ModelConfig.TYPE_LANGUAGE,
+            type=ModelConfig.TYPE_TOOL,
             name="test",
             url="https://api.example.com",
             api_key="encrypted",
@@ -105,7 +107,7 @@ class TestModelConfigFields(TestCase):
     def test_max_input_tokens_validator(self):
         """测试 max_input_tokens 不允许 0"""
         model = ModelConfig(
-            type=ModelConfig.TYPE_LANGUAGE,
+            type=ModelConfig.TYPE_TOOL,
             name="test",
             url="https://api.example.com",
             api_key="encrypted",
@@ -119,7 +121,7 @@ class TestModelConfigFields(TestCase):
     def test_temperature_out_of_range(self):
         """测试 temperature 超出范围 [0, 2]"""
         model = ModelConfig(
-            type=ModelConfig.TYPE_LANGUAGE,
+            type=ModelConfig.TYPE_TOOL,
             name="test",
             url="https://api.example.com",
             api_key="encrypted",
@@ -134,7 +136,7 @@ class TestModelConfigFields(TestCase):
     def test_top_p_out_of_range(self):
         """测试 top_p 超出范围 [0, 1]"""
         model = ModelConfig(
-            type=ModelConfig.TYPE_LANGUAGE,
+            type=ModelConfig.TYPE_TOOL,
             name="test",
             url="https://api.example.com",
             api_key="encrypted",
@@ -149,7 +151,7 @@ class TestModelConfigFields(TestCase):
     def test_frequency_penalty_out_of_range(self):
         """测试 frequency_penalty 超出范围 [-2, 2]"""
         model = ModelConfig(
-            type=ModelConfig.TYPE_LANGUAGE,
+            type=ModelConfig.TYPE_TOOL,
             name="test",
             url="https://api.example.com",
             api_key="encrypted",
@@ -168,7 +170,7 @@ class TestModelConfigFields(TestCase):
     def test_str_representation(self):
         """测试字符串表示"""
         model = self._create_model()
-        expected = f"ModelConfig({model.id}, language, test-model)"
+        expected = f"ModelConfig({model.id}, tool, test-model)"
         self.assertEqual(str(model), expected)
 
 
@@ -177,7 +179,7 @@ class TestModelConfigComputedProperties(TestCase):
 
     def _create_model(self, **kwargs) -> ModelConfig:
         defaults = {
-            "type": ModelConfig.TYPE_LANGUAGE,
+            "type": ModelConfig.TYPE_TOOL,
             "name": "test-model",
             "url": "https://api.example.com/v1",
             "api_key": sm4_encrypt("test-api-key-12345"),

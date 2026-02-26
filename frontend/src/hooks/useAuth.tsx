@@ -141,7 +141,11 @@ export function useAuth() {
 
         scheduleReconnect();
       } catch (error) {
-        if ((error as Error).name === 'AbortError') return;
+        const err = error as Error;
+        // AbortError: 主动断开（disconnectSSE 调用）
+        // TypeError "network error": 页面卸载/导航时浏览器中断流连接（Chromium 行为）
+        if (err.name === 'AbortError') return;
+        if (err.name === 'TypeError' && /network/i.test(err.message)) return;
         console.error('SSE connection error:', error);
         scheduleReconnect();
       }

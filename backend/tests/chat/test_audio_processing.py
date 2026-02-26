@@ -169,7 +169,7 @@ class TestAudioUpload:
 
     @patch("apps.chat.services.media_service.media_attachment_repo")
     @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_audio_duration")
+    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
     def test_upload_audio_success(self, mock_duration, mock_minio, mock_repo):
         """音频上传成功"""
         mock_duration.return_value = 5.0
@@ -191,7 +191,7 @@ class TestAudioUpload:
 
     @patch("apps.chat.services.media_service.media_attachment_repo")
     @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_audio_duration")
+    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
     def test_upload_audio_duration_too_short(self, mock_duration, mock_minio, mock_repo):
         """音频时长 < 1 秒返回 DURATION_TOO_SHORT"""
         mock_duration.return_value = 0.5
@@ -213,7 +213,7 @@ class TestAudioUpload:
 
     @patch("apps.chat.services.media_service.media_attachment_repo")
     @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_audio_duration")
+    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
     def test_upload_audio_duration_too_long(self, mock_duration, mock_minio, mock_repo):
         """音频时长 > 60 秒返回 DURATION_TOO_LONG"""
         mock_duration.return_value = 75.0
@@ -235,7 +235,7 @@ class TestAudioUpload:
 
     @patch("apps.chat.services.media_service.media_attachment_repo")
     @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_audio_duration")
+    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
     def test_upload_audio_at_min_duration(self, mock_duration, mock_minio, mock_repo):
         """音频恰好 1 秒上传成功"""
         mock_duration.return_value = 1.0
@@ -255,7 +255,7 @@ class TestAudioUpload:
 
     @patch("apps.chat.services.media_service.media_attachment_repo")
     @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_audio_duration")
+    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
     def test_upload_webm_audio(self, mock_duration, mock_minio, mock_repo):
         """WebM 音频上传成功"""
         mock_duration.return_value = 10.0
@@ -276,7 +276,7 @@ class TestAudioUpload:
 
     @patch("apps.chat.services.media_service.media_attachment_repo")
     @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_audio_duration")
+    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
     def test_upload_mp3_audio(self, mock_duration, mock_minio, mock_repo):
         """MP3 音频上传成功"""
         mock_duration.return_value = 30.0
@@ -316,7 +316,7 @@ class TestVoicePlaceholderReplacement:
         audio_att.file_name = "voice.wav"
         audio_att.attachment_uuid = "aud-uuid"
 
-        msg, model_name, media_types = build_multimodal_messages(
+        msg, media_types = build_multimodal_messages(
             "[语音消息]", [audio_att]
         )
 
@@ -343,7 +343,7 @@ class TestVoicePlaceholderReplacement:
         audio_att.file_name = "voice.wav"
         audio_att.attachment_uuid = "aud-uuid"
 
-        msg, _, _ = build_multimodal_messages("请帮我翻译这段话", [audio_att])
+        msg, _ = build_multimodal_messages("请帮我翻译这段话", [audio_att])
 
         content = msg.content
         text_parts = [p for p in content if p.get("type") == "text"]
@@ -364,7 +364,7 @@ class TestVoicePlaceholderReplacement:
         img_att.file_name = "photo.jpg"
         img_att.attachment_uuid = "img-uuid"
 
-        msg, _, _ = build_multimodal_messages("[语音消息]", [img_att])
+        msg, _ = build_multimodal_messages("[语音消息]", [img_att])
 
         content = msg.content
         text_parts = [p for p in content if p.get("type") == "text"]
@@ -385,7 +385,7 @@ class TestVoicePlaceholderReplacement:
         audio_att.file_name = "voice.wav"
         audio_att.attachment_uuid = "aud-uuid"
 
-        msg, _, _ = build_multimodal_messages("", [audio_att])
+        msg, _ = build_multimodal_messages("", [audio_att])
 
         content = msg.content
         text_parts = [p for p in content if p.get("type") == "text"]
@@ -412,8 +412,7 @@ class TestAudioModelSelection:
         audio_att.file_name = "voice.wav"
         audio_att.attachment_uuid = "aud-uuid"
 
-        _, model_name, media_types = build_multimodal_messages("识别", [audio_att])
-        assert model_name == "minicpm-o"
+        _, media_types = build_multimodal_messages("识别", [audio_att])
         assert media_types == ["audio"]
 
     @patch("apps.chat.services.minio_service.minio_service")
@@ -437,10 +436,9 @@ class TestAudioModelSelection:
         audio_att.file_name = "aud.mp3"
         audio_att.attachment_uuid = "aud-uuid"
 
-        _, model_name, media_types = build_multimodal_messages(
+        _, media_types = build_multimodal_messages(
             "分析", [img_att, audio_att]
         )
-        assert model_name == "minicpm-o"
         assert "image" in media_types
         assert "audio" in media_types
 
@@ -465,9 +463,8 @@ class TestAudioLangfuseTrace:
         audio_att.file_name = "voice.webm"
         audio_att.attachment_uuid = "webm-uuid"
 
-        _, model_name, media_types = build_multimodal_messages(
+        _, media_types = build_multimodal_messages(
             "分析音频", [audio_att]
         )
 
         assert "audio" in media_types
-        assert model_name == "minicpm-o"

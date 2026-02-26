@@ -10,6 +10,7 @@
 
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 
 import { MessageInput } from '@/components/chat/MessageInput';
 import { MessageList } from '@/components/chat/MessageList';
@@ -23,12 +24,24 @@ import {
 import { useChatStream } from '@/hooks/useChatStream';
 import { useAuth } from '@/hooks/useAuth';
 import { useChatStore } from '@/stores/chatStore';
+import { useVoiceStore } from '@/stores/voiceStore';
+
+// T055b: 语音容器动态导入，拆分 useVoiceMode + VoiceModePanel 到独立 chunk
+const VoiceModeContainer = dynamic(
+  () => import('@/components/voice/VoiceModeContainer').then((mod) => mod.VoiceModeContainer),
+  { ssr: false },
+);
 
 export default function ChatPage() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const [monitorOpen, setMonitorOpen] = useState(true);
   const { data: monitorData, tokenHistory, contextHistory } = useContextMonitor();
+
+  // 语音模式开关状态通过 voiceStore 读取（轻量级，不引入 useVoiceMode 重依赖）
+  const voiceModeActive = useVoiceStore((s) => s.voiceMode);
+  const setVoiceMode = useVoiceStore((s) => s.setVoiceMode);
+
   const {
     messages,
     isGenerating,
@@ -60,6 +73,11 @@ export default function ChatPage() {
       await send(content, attachments);
     }
   }, [failedContent, failedAttachments, clearFailedContent, send]);
+
+  // 语音模式切换：直接操作 voiceStore
+  const handleToggleVoiceMode = useCallback(() => {
+    setVoiceMode(!voiceModeActive);
+  }, [voiceModeActive, setVoiceMode]);
 
   // 处理登出
   const handleLogout = useCallback(async () => {
@@ -163,16 +181,20 @@ export default function ChatPage() {
             onResume={resume}
           />
 
-          {/* 输入框 + 状态条 */}
+          {/* 输入框 / 语音面板 + 状态条 */}
           <div>
             <MessageInput
               isGenerating={isGenerating}
               failedContent={failedContent}
               failedAttachments={failedAttachments}
+              voiceMode={voiceModeActive}
               onSend={send}
               onStop={stop}
               onClearFailedContent={clearFailedContent}
+              onToggleVoiceMode={handleToggleVoiceMode}
             />
+            {/* T055b: 语音容器动态加载，包含 useVoiceMode + VoiceModePanel */}
+            <VoiceModeContainer />
             {monitorData && (
               <div className="mx-auto max-w-3xl px-4 pb-2">
                 <ContextStatusBar pct={monitorData.pct} alert={monitorData.alert} />

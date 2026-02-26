@@ -9,8 +9,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { DeviceManageCard } from '@/components/settings/DeviceManageCard';
 import { ModelConfigCard } from '@/components/settings/ModelConfigCard';
 import { ModelConfigForm } from '@/components/settings/ModelConfigForm';
+import { SpeakerProfileCard } from '@/components/settings/SpeakerProfileCard';
+import { VoiceSettingsCard } from '@/components/settings/VoiceSettingsCard';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchModels } from '@/services/modelService';
 import { useModelStore } from '@/stores/modelStore';
@@ -101,12 +104,11 @@ export default function SettingsPage() {
     );
   }
 
-  // 按类型排序：language 在前，embedding 在后
-  const sortedModels = [...models].sort((a, b) => {
-    if (a.type === 'language' && b.type === 'embedding') return -1;
-    if (a.type === 'embedding' && b.type === 'language') return 1;
-    return 0;
-  });
+  // 按类型排序：tool → multimodal → embedding
+  const typeOrder: Record<string, number> = { tool: 0, multimodal: 1, embedding: 2 };
+  const sortedModels = [...models].sort(
+    (a, b) => (typeOrder[a.type] ?? 9) - (typeOrder[b.type] ?? 9)
+  );
 
   return (
     <div className="flex h-screen flex-col bg-gray-50 dark:bg-gray-900">
@@ -135,7 +137,7 @@ export default function SettingsPage() {
             </button>
             <div className="h-5 w-px bg-gray-300 dark:bg-gray-600" />
             <h1 className="text-xl font-semibold text-gray-800 dark:text-white">
-              模型配置
+              系统设置
             </h1>
           </div>
 
@@ -192,6 +194,18 @@ export default function SettingsPage() {
               暂无模型配置
             </div>
           )}
+
+          {/* 语音管理 */}
+          <div className="mt-8">
+            <h2 className="mb-4 text-lg font-semibold text-gray-800 dark:text-white">
+              语音管理
+            </h2>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <SpeakerProfileCard />
+              <DeviceManageCard />
+              <VoiceSettingsCard />
+            </div>
+          </div>
         </div>
       </main>
     </div>

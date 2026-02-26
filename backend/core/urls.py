@@ -14,6 +14,7 @@ urlpatterns = [
         path("chat/", include("apps.chat.urls")),
         path("models/", include("apps.models.urls")),
         path("memories/", include("apps.memory.urls")),
+        path("voice/", include("apps.voice.urls")),
         path("", include("apps.common.urls")),
     ])),
 ]

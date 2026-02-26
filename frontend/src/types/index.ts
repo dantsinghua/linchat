@@ -53,6 +53,10 @@ export interface Message {
   response_time_ms?: number | null;
   /** 媒体附件列表（多模态消息） */
   attachments?: import('@/types/media').MediaAttachment[];
+  /** 语音消息标记 */
+  is_voice?: boolean;
+  /** 说话人 ID（声纹识别） */
+  speaker_id?: string | null;
 }
 
 export interface ChatRequest {

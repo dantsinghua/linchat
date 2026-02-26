@@ -146,7 +146,7 @@ class TestMediaServiceUpload:
 
         mock_repo.create = AsyncMock(side_effect=lambda x: x)
 
-        result = await MediaService.upload_image(
+        result = await MediaService.upload(
             user_id=123,
             file_data=BytesIO(sample_image_bytes),
             file_name="test.jpg",
@@ -165,20 +165,17 @@ class TestMediaServiceUpload:
 
     @pytest.mark.asyncio
     @patch("apps.chat.services.media_service.settings")
-    async def test_upload_image_invalid_type(self, mock_settings):
-        """测试上传非图片文件到图片接口"""
-        mock_settings.MEDIA_MAX_VIDEO_SIZE = 50 * 1024 * 1024
-
+    async def test_upload_unsupported_type(self, mock_settings):
+        """测试上传不支持的文件类型"""
         with pytest.raises(MediaUploadError) as exc_info:
-            await MediaService.upload_image(
+            await MediaService.upload(
                 user_id=123,
-                file_data=BytesIO(b"video data"),
-                file_name="test.mp4",
-                mime_type="video/mp4",
+                file_data=BytesIO(b"binary data"),
+                file_name="test.exe",
+                mime_type="application/x-msdownload",
                 file_size=1024,
             )
         assert exc_info.value.code == "INVALID_FILE_TYPE"
-        assert "仅支持图片上传" in exc_info.value.message
 
     @pytest.mark.asyncio
     @patch("apps.chat.services.media_service.media_attachment_repo")
@@ -195,7 +192,7 @@ class TestMediaServiceUpload:
 
         mock_repo.create = AsyncMock(side_effect=lambda x: x)
 
-        result = await MediaService.upload_image(
+        result = await MediaService.upload(
             user_id=123,
             file_data=BytesIO(sample_rgba_image_bytes),
             file_name="test.png",
@@ -221,7 +218,7 @@ class TestMediaServiceUpload:
 
         mock_repo.create = AsyncMock(side_effect=lambda x: x)
 
-        result = await MediaService.upload_image(
+        result = await MediaService.upload(
             user_id=123,
             file_data=BytesIO(sample_image_bytes),
             file_name="test",  # 无扩展名
@@ -229,7 +226,8 @@ class TestMediaServiceUpload:
             file_size=len(sample_image_bytes),
         )
 
-        assert result.storage_path.endswith(".jpg")
+        # 无扩展名默认 .bin
+        assert result.storage_path.endswith(".bin")
 
 
 class TestMediaServiceGetDimensions:

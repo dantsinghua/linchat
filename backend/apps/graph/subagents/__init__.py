@@ -38,4 +38,14 @@ def get_subagent_tools() -> list[BaseTool]:
 
         tools.append(ha_subagent)
 
+    # 多模态 SubAgent：始终启用（模型配置由 tool 内部检查）
+    from .multimodal_agent import multimodal_subagent
+
+    tools.append(multimodal_subagent)
+
+    # 历史搜索工具：始终启用
+    from apps.graph.tools.history import history_search
+
+    tools.append(history_search)
+
     return tools

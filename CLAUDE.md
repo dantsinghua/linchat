@@ -620,6 +620,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 - Redis（速率限制键） (007-home-assistant-tools)
 - Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, LangGraph, LangChain, Pillow (图像处理), ffmpeg-python (视频处理), httpx, redis-py (async), Next.js 14+, React 18+, Zustand (008-multimodal-minicpm)
 - PostgreSQL 15 (主存储, MediaAttachment 元数据), MinIO (媒体文件/缩略图), Redis (推理任务状态/事件推送) (008-multimodal-minicpm)
+- PostgreSQL 15 (新模型: SpeakerProfile, RegisteredDevice, VoiceSettings + Message 扩展字段), Redis (语音会话状态/channel layer), MinIO (音频文件) (009-voice-interaction)
 
 ## Recent Changes
 - 001-llm-chat-page: Added Python 3.11+ (后端) / TypeScript 5.0+ (前端)

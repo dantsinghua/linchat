@@ -120,6 +120,18 @@ class LLMQuotaExceededError(LLMException):
     error_code = "LLM_QUOTA_EXCEEDED"
 
 
+class LLMContextLengthError(LLMException):
+    status_code = status.HTTP_400_BAD_REQUEST
+    default_message = "对话历史过长，请缩短语音输入或重新开始会话"
+    error_code = "LLM_CONTEXT_LENGTH"
+
+
+class ExternalServiceError(AppException):
+    status_code = status.HTTP_502_BAD_GATEWAY
+    default_message = "外部服务异常"
+    error_code = "EXTERNAL_SERVICE_ERROR"
+
+
 # ============ 业务异常 ============
 
 

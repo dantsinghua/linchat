@@ -53,9 +53,9 @@ class TestModelServiceGetAll(TestCase):
     def setUp(self):
         ModelConfig.objects.all().delete()
         self.service = ModelService()
-        self.language_model = ModelConfig.objects.create(
-            type=ModelConfig.TYPE_LANGUAGE,
-            name="test-language",
+        self.tool_model = ModelConfig.objects.create(
+            type=ModelConfig.TYPE_TOOL,
+            name="test-tool",
             url="https://api.example.com/v1",
             api_key=sm4_encrypt("test-api-key-123456"),
             max_context_window=65536,
@@ -103,7 +103,7 @@ class TestModelServiceGetById(TestCase):
         ModelConfig.objects.all().delete()
         self.service = ModelService()
         self.model = ModelConfig.objects.create(
-            type=ModelConfig.TYPE_LANGUAGE,
+            type=ModelConfig.TYPE_TOOL,
             name="test-model",
             url="https://api.example.com/v1",
             api_key=sm4_encrypt("long-api-key-for-testing"),
@@ -137,7 +137,7 @@ class TestModelServiceUpdate(TestCase):
         self.service = ModelService()
         self.original_key = "original-api-key-12345"
         self.model = ModelConfig.objects.create(
-            type=ModelConfig.TYPE_LANGUAGE,
+            type=ModelConfig.TYPE_TOOL,
             name="test-model",
             url="https://api.example.com/v1",
             api_key=sm4_encrypt(self.original_key),
@@ -188,7 +188,7 @@ class TestModelServiceUpdate(TestCase):
             "type": "embedding",
         })
         self.model.refresh_from_db()
-        self.assertEqual(self.model.type, "language")
+        self.assertEqual(self.model.type, "tool")
 
     def test_update_is_active_is_ignored(self):
         """测试 is_active 字段被忽略"""
@@ -213,7 +213,7 @@ class TestModelServiceNullVsZero(TestCase):
         ModelConfig.objects.all().delete()
         self.service = ModelService()
         self.model = ModelConfig.objects.create(
-            type=ModelConfig.TYPE_LANGUAGE,
+            type=ModelConfig.TYPE_TOOL,
             name="test",
             url="https://api.example.com/v1",
             api_key=sm4_encrypt("test-key-12345678"),
@@ -253,8 +253,8 @@ class TestModelServiceGetActiveModel(TestCase):
         self.service = ModelService()
         self.api_key_plain = "test-active-key-12345"
         self.model = ModelConfig.objects.create(
-            type=ModelConfig.TYPE_LANGUAGE,
-            name="active-language",
+            type=ModelConfig.TYPE_TOOL,
+            name="active-tool",
             url="https://api.example.com/v1",
             api_key=sm4_encrypt(self.api_key_plain),
             max_context_window=65536,
@@ -264,16 +264,16 @@ class TestModelServiceGetActiveModel(TestCase):
             is_active=True,
         )
 
-    def test_get_active_language_model(self):
-        """测试获取激活的语言模型"""
-        result = self.service.get_active_model("language")
+    def test_get_active_tool_model(self):
+        """测试获取激活的工具模型"""
+        result = self.service.get_active_model("tool")
         self.assertIsNotNone(result)
-        self.assertEqual(result["name"], "active-language")
-        self.assertEqual(result["type"], "language")
+        self.assertEqual(result["name"], "active-tool")
+        self.assertEqual(result["type"], "tool")
 
     def test_get_active_model_api_key_decrypted(self):
         """测试 API Key 为解密明文"""
-        result = self.service.get_active_model("language")
+        result = self.service.get_active_model("tool")
         self.assertEqual(result["api_key"], self.api_key_plain)
 
     def test_get_active_model_not_found(self):
@@ -285,11 +285,11 @@ class TestModelServiceGetActiveModel(TestCase):
         """测试未激活的模型不返回"""
         self.model.is_active = False
         self.model.save()
-        result = self.service.get_active_model("language")
+        result = self.service.get_active_model("tool")
         self.assertIsNone(result)
 
     def test_get_active_model_includes_optional_params(self):
         """测试包含选填参数"""
-        result = self.service.get_active_model("language")
+        result = self.service.get_active_model("tool")
         self.assertEqual(result["temperature"], 0.7)
         self.assertIsNone(result["top_p"])

@@ -234,7 +234,7 @@ services:
       - homeassistant_config:/config
       - /etc/localtime:/etc/localtime:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8123/api/"]
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:8123/ | grep -qE '(200|401|403)'"]
       interval: 30s
       timeout: 10s
       retries: 3

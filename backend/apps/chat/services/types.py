@@ -8,6 +8,7 @@
 """
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -18,10 +19,12 @@ from django.utils import timezone
 from apps.chat.models import MediaAttachment, Message
 from apps.models.services import model_service
 
+logger = logging.getLogger(__name__)
 
-async def _get_language_model_name() -> str:
-    """从数据库获取激活的语言模型名称"""
-    config = await sync_to_async(model_service.get_active_model)("language")
+
+async def _get_tool_model_name() -> str:
+    """从数据库获取激活的工具模型名称"""
+    config = await sync_to_async(model_service.get_active_model)("tool")
     return config["name"] if config else "unknown"
 
 
@@ -77,8 +80,8 @@ class MessageVO:
                         "expires_at": att.expires_at.isoformat() if att.expires_at else None,
                     }
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("加载消息附件失败 (message_id=%s): %s", message.message_id, e)
 
         return cls(
             message_id=message.message_id,

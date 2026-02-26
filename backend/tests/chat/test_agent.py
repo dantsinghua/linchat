@@ -91,11 +91,13 @@ class TestGetLlmConfig:
 class TestAgentFactories:
     """四流程工厂测试"""
 
-    @patch("apps.graph.agent.get_llm")
+    @patch("apps.graph.agent.get_llm", new_callable=AsyncMock)
     @patch("apps.graph.agent.create_react_agent")
     def test_chat_agent_has_subagent_tools(self, mock_create, mock_llm) -> None:
         """chat 流程包含 SubAgent 工具集"""
-        mock_llm.return_value = MagicMock()
+        llm_mock = MagicMock()
+        llm_mock.model_name = "deepseek-v3-test"
+        mock_llm.return_value = llm_mock
         mock_create.return_value = MagicMock()
 
         from apps.graph.agent import create_chat_agent
@@ -126,11 +128,13 @@ class TestAgentFactories:
         assert "mem_update" not in tool_names
         assert "mem_delete" not in tool_names
 
-    @patch("apps.graph.agent.get_llm")
+    @patch("apps.graph.agent.get_llm", new_callable=AsyncMock)
     @patch("apps.graph.agent.create_react_agent")
     def test_chat_agent_no_checkpointer(self, mock_create, mock_llm) -> None:
         """chat 流程不使用 checkpointer（避免历史 tool 消息累积）"""
-        mock_llm.return_value = MagicMock()
+        llm_mock = MagicMock()
+        llm_mock.model_name = "deepseek-v3-test"
+        mock_llm.return_value = llm_mock
         mock_create.return_value = MagicMock()
 
         from apps.graph.agent import create_chat_agent
@@ -145,11 +149,13 @@ class TestAgentFactories:
         # 验证 checkpointer 不在参数中
         assert "checkpointer" not in call_kwargs.kwargs
 
-    @patch("apps.graph.agent.get_llm")
+    @patch("apps.graph.agent.get_llm", new_callable=AsyncMock)
     @patch("apps.graph.agent.create_react_agent")
     def test_chat_agent_with_extra_tools(self, mock_create, mock_llm) -> None:
         """chat 流程支持 extra_tools 扩展"""
-        mock_llm.return_value = MagicMock()
+        llm_mock = MagicMock()
+        llm_mock.model_name = "deepseek-v3-test"
+        mock_llm.return_value = llm_mock
         mock_create.return_value = MagicMock()
 
         from langchain_core.tools import tool
@@ -174,11 +180,13 @@ class TestAgentFactories:
         assert "my_custom_tool" in tool_names
         assert "memory_subagent" in tool_names  # SubAgent 工具仍存在
 
-    @patch("apps.graph.agent.get_llm")
+    @patch("apps.graph.agent.get_llm", new_callable=AsyncMock)
     @patch("apps.graph.agent.create_react_agent")
     def test_chat_agent_with_prompt(self, mock_create, mock_llm) -> None:
         """chat 流程接受 prompt 参数"""
-        mock_llm.return_value = MagicMock()
+        llm_mock = MagicMock()
+        llm_mock.model_name = "deepseek-v3-test"
+        mock_llm.return_value = llm_mock
         mock_create.return_value = MagicMock()
 
         preamble = [MagicMock()]  # mock SystemMessage
@@ -197,14 +205,16 @@ class TestAgentFactories:
         assert callable(prompt_arg)
 
     @patch("apps.graph.agent.get_checkpointer")
-    @patch("apps.graph.agent.get_llm")
+    @patch("apps.graph.agent.get_llm", new_callable=AsyncMock)
     @patch("apps.graph.agent.create_react_agent")
     def test_context_agent_has_only_context_tools(
         self, mock_create, mock_llm, mock_cp
     ) -> None:
         """context 流程仅包含上下文工具集"""
         mock_cp.side_effect = _mock_checkpointer()
-        mock_llm.return_value = MagicMock()
+        llm_mock = MagicMock()
+        llm_mock.model_name = "deepseek-v3-test"
+        mock_llm.return_value = llm_mock
         mock_create.return_value = MagicMock()
 
         from apps.graph.agent import create_context_agent
@@ -229,14 +239,16 @@ class TestAgentFactories:
         assert "mem_search" not in tool_names
 
     @patch("apps.graph.agent.get_checkpointer")
-    @patch("apps.graph.agent.get_llm")
+    @patch("apps.graph.agent.get_llm", new_callable=AsyncMock)
     @patch("apps.graph.agent.create_react_agent")
     def test_memory_agent_has_only_memory_tools(
         self, mock_create, mock_llm, mock_cp
     ) -> None:
         """memory 流程仅包含记忆工具集"""
         mock_cp.side_effect = _mock_checkpointer()
-        mock_llm.return_value = MagicMock()
+        llm_mock = MagicMock()
+        llm_mock.model_name = "deepseek-v3-test"
+        mock_llm.return_value = llm_mock
         mock_create.return_value = MagicMock()
 
         from apps.graph.agent import create_memory_agent
@@ -262,12 +274,14 @@ class TestAgentFactories:
         assert "context_compact" not in tool_names
 
     @patch("apps.graph.agent.get_checkpointer")
-    @patch("apps.graph.agent.get_llm")
+    @patch("apps.graph.agent.get_llm", new_callable=AsyncMock)
     @patch("apps.graph.agent.create_react_agent")
     def test_cronmem_agent_has_no_tools(self, mock_create, mock_llm, mock_cp) -> None:
         """cronMem 流程无工具"""
         mock_cp.side_effect = _mock_checkpointer()
-        mock_llm.return_value = MagicMock()
+        llm_mock = MagicMock()
+        llm_mock.model_name = "deepseek-v3-test"
+        mock_llm.return_value = llm_mock
         mock_create.return_value = MagicMock()
 
         from apps.graph.agent import create_cronmem_agent
