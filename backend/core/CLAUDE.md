@@ -264,3 +264,15 @@ sync_redis_expire(key, seconds)
 | `django` | INFO (可通过 `DJANGO_LOG_LEVEL` 调整) | Django 框架日志 |
 | `apps` | DEBUG(调试)/INFO(生产) | 应用业务日志 |
 | `apps.context.monitoring` | DEBUG | 上下文监控（始终 DEBUG） |
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 12, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1003 | 4:26 PM | 🔵 | Complete LLM Gateway Configuration Settings | ~415 |
+| #1002 | " | 🔵 | Django Settings LLM Gateway Configuration | ~271 |
+</claude-mem-context>

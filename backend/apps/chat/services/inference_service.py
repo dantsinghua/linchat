@@ -8,15 +8,12 @@
 """
 
 import logging
-import time
 from typing import Optional
 
-import httpx
 from django.conf import settings
 from django.utils import timezone
 
 from apps.common.event_service import EventService, EventType
-from apps.common.gateway_utils import build_gateway_headers, record_gateway_span
 from apps.chat.services.types import InferenceTask
 from core.redis import get_redis
 
@@ -173,8 +170,10 @@ class InferenceService:
                 },
             )
 
-            # 4. 调用网关取消接口（可选，超时降级）
-            await InferenceService._call_gateway_cancel(task.request_id)
+            # 4. Gateway 无 HTTP 取消端点，取消由上述三步保障:
+            #    - Redis 键删除 → 新请求可立即创建
+            #    - 进程内 signal_stop → 流式生成立即中断
+            #    - Pub/Sub 事件 → 跨进程通知
 
             logger.info(f"取消推理任务: user_id={user_id}, request_id={task.request_id}")
             return True, task.request_id
@@ -182,64 +181,6 @@ class InferenceService:
         except Exception as e:
             logger.error(f"取消推理任务失败: user_id={user_id}, error={e}")
             return False, None
-
-    @staticmethod
-    async def _call_gateway_cancel(request_id: str) -> bool:
-        """调用网关取消接口
-
-        Args:
-            request_id: 请求 ID
-
-        Returns:
-            是否成功
-        """
-        gateway_url = getattr(settings, "LLM_GATEWAY_URL", "")
-        if not gateway_url:
-            logger.debug("未配置 LLM_GATEWAY_URL，跳过网关取消调用")
-            return True
-
-        cancel_url = f"{gateway_url}/v1/chat/cancel"
-        headers = build_gateway_headers(request_id=request_id)
-        start_time = time.monotonic()
-
-        status_code = 503
-        error = None
-        success = False
-        try:
-            cancel_timeout = getattr(settings, "LLM_GATEWAY_CANCEL_TIMEOUT", 5)
-            async with httpx.AsyncClient(timeout=cancel_timeout) as client:
-                response = await client.post(
-                    cancel_url,
-                    json={"request_id": request_id},
-                    headers=headers,
-                )
-                status_code = response.status_code
-                if status_code == 200:
-                    logger.info(f"网关取消成功: request_id={request_id}")
-                    success = True
-                else:
-                    error = f"Gateway HTTP {status_code}"
-                    logger.warning(
-                        f"网关取消失败: request_id={request_id}, "
-                        f"status={status_code}"
-                    )
-        except httpx.TimeoutException:
-            status_code = 504
-            error = "timeout"
-            logger.warning(f"网关取消超时: request_id={request_id}")
-        except Exception as e:
-            error = str(e)
-            logger.warning(f"网关取消异常: request_id={request_id}, error={e}")
-        finally:
-            record_gateway_span(
-                request_type="inference_cancel",
-                model="",
-                duration=time.monotonic() - start_time,
-                status_code=status_code,
-                request_id=request_id,
-                error=error,
-            )
-        return success
 
     @staticmethod
     async def refresh_task_ttl(user_id: int) -> bool:

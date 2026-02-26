@@ -136,14 +136,19 @@ class VoiceSessionService:
     async def cache_audio_chunk(
         self, user_id: int, segment_id: str, pcm_data: bytes
     ) -> None:
-        """缓存音频帧到 Redis List"""
+        """缓存音频帧到 Redis List
+
+        Redis 客户端配置了 decode_responses=True，二进制 PCM 数据
+        需要 base64 编码后存储，取出时再解码。
+        """
         key = AUDIO_CHUNKS_KEY.format(
             user_id=user_id, segment_id=segment_id
         )
         from core.redis import get_redis
         redis = await get_redis()
         try:
-            await redis.rpush(key, pcm_data)
+            encoded = base64.b64encode(pcm_data).decode("ascii")
+            await redis.rpush(key, encoded)
             await redis.expire(key, settings.VOICE_AUDIO_CACHE_TTL)
         finally:
             await redis.aclose()
@@ -151,15 +156,15 @@ class VoiceSessionService:
     async def get_audio_chunks(
         self, user_id: int, segment_id: str
     ) -> list[bytes]:
-        """获取缓存的所有音频帧"""
+        """获取缓存的所有音频帧（base64 解码还原为 bytes）"""
         key = AUDIO_CHUNKS_KEY.format(
             user_id=user_id, segment_id=segment_id
         )
         from core.redis import get_redis
         redis = await get_redis()
         try:
-            chunks = await redis.lrange(key, 0, -1)
-            return chunks
+            encoded_chunks = await redis.lrange(key, 0, -1)
+            return [base64.b64decode(chunk) for chunk in encoded_chunks]
         finally:
             await redis.aclose()
 

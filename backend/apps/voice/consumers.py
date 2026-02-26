@@ -143,12 +143,14 @@ class VoiceConsumer(AsyncWebsocketConsumer):
         self._configured: bool = False
         self._identified_user_id: Optional[int] = None
         self._mode: str = "voice_chat"  # voice_chat | continuous_listen
+        self._closed: bool = False  # 标记 WebSocket 是否已关闭
 
         logger.info("Voice WS connected: user_id=%s", user_id)
         await self.accept()
 
     async def disconnect(self, close_code: int) -> None:
         """WebSocket 连接断开，清理所有资源"""
+        self._closed = True  # 立即标记，阻止后续 _send_json 发送
         user_id = getattr(self, "user_id", None)
         logger.info(
             "Voice WS disconnecting: user_id=%s, code=%s",
@@ -162,6 +164,26 @@ class VoiceConsumer(AsyncWebsocketConsumer):
             try:
                 await self._idle_check_task
             except asyncio.CancelledError:
+                pass
+
+        # 取消正在进行的推理响应（防止 gateway 继续发送 delta 导致大量发送失败）
+        if (
+            self._current_response_id
+            and self._gateway
+            and self._gateway.connected
+        ):
+            try:
+                await self._gateway.send_json({
+                    "type": "response.cancel",
+                    "response_id": self._current_response_id,
+                })
+                logger.info(
+                    "Cancelled active response on disconnect: "
+                    "user_id=%s, response_id=%s",
+                    user_id,
+                    self._current_response_id,
+                )
+            except Exception:
                 pass
 
         # 断开上游 Gateway
@@ -1310,8 +1332,18 @@ class VoiceConsumer(AsyncWebsocketConsumer):
             )
 
     async def _send_json(self, data: dict[str, Any]) -> None:
-        """发送 JSON 消息到客户端"""
-        await self.send(text_data=json.dumps(data, ensure_ascii=False))
+        """发送 JSON 消息到客户端
+
+        连接已关闭时静默跳过，防止 disconnect 后 gateway 回调导致
+        大量 "Cannot call send once a close message has been sent" 错误。
+        """
+        if self._closed:
+            return
+        try:
+            await self.send(text_data=json.dumps(data, ensure_ascii=False))
+        except Exception:
+            # WebSocket 已关闭，标记并静默忽略
+            self._closed = True
 
     async def _send_error(
         self,

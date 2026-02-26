@@ -253,7 +253,8 @@ class TestAudioChunks:
 
     @patch("core.redis.RedisClient.get_client", new_callable=AsyncMock)
     def test_cache_audio_chunk(self, mock_get_client, service, user_id, segment_id):
-        """缓存单个音频帧到 Redis List"""
+        """缓存单个音频帧到 Redis List（base64 编码存储）"""
+        import base64
         mock_redis = AsyncMock()
         mock_get_client.return_value = mock_redis
         pcm_data = _make_pcm_chunk()
@@ -263,7 +264,8 @@ class TestAudioChunks:
         expected_key = AUDIO_CHUNKS_KEY.format(
             user_id=user_id, segment_id=segment_id
         )
-        mock_redis.rpush.assert_called_once_with(expected_key, pcm_data)
+        expected_encoded = base64.b64encode(pcm_data).decode("ascii")
+        mock_redis.rpush.assert_called_once_with(expected_key, expected_encoded)
         mock_redis.expire.assert_called_once_with(
             expected_key, settings.VOICE_AUDIO_CACHE_TTL
         )
@@ -285,12 +287,16 @@ class TestAudioChunks:
 
     @patch("core.redis.RedisClient.get_client", new_callable=AsyncMock)
     def test_get_audio_chunks(self, mock_get_client, service, user_id, segment_id):
-        """获取缓存的所有音频帧"""
+        """获取缓存的所有音频帧（base64 解码还原）"""
+        import base64
         mock_redis = AsyncMock()
         mock_get_client.return_value = mock_redis
         chunk1 = _make_pcm_chunk(160)
         chunk2 = _make_pcm_chunk(320)
-        mock_redis.lrange.return_value = [chunk1, chunk2]
+        # Redis 返回的是 base64 编码的字符串
+        encoded1 = base64.b64encode(chunk1).decode("ascii")
+        encoded2 = base64.b64encode(chunk2).decode("ascii")
+        mock_redis.lrange.return_value = [encoded1, encoded2]
 
         result = run_async(service.get_audio_chunks(user_id, segment_id))
 

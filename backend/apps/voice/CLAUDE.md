@@ -309,3 +309,8 @@ pytest tests/voice/ --cov=apps/voice --cov-report=term-missing
 3. 设备 API Token 使用 SM4 加密存储，禁止明文存储
 4. 音频数据通过 Redis 缓冲，避免大量音频数据直接写入数据库
 5. 响应决策服务的三种结果（RESPOND / RECORD_ONLY / STOP）决定了 Agent 是否被触发
+
+
+<claude-mem-context>
+
+</claude-mem-context>

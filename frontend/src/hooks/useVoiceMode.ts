@@ -348,17 +348,32 @@ export function useVoiceMode(): UseVoiceModeReturn {
   /**
    * WebSocket 连接建立后自动发送配置
    *
-   * 当 isConnected 变为 true 且处于 configuring 状态时，发送 session.configure。
+   * 当 isConnected 变为 true 时：
+   * - configuring 状态：首次连接，直接发送 session.configure
+   * - 其他活跃状态（listening/recording/processing/responding）：断线重连场景，
+   *   重置为 configuring 并重新发送 session.configure
    */
   useEffect(() => {
-    if (isConnected && sessionStateRef.current === 'configuring') {
+    if (!isConnected) return;
+
+    const state = sessionStateRef.current;
+    if (state === 'configuring') {
+      // 首次连接
+      configure({
+        mode: 'voice_chat',
+        vad_threshold: storeSettings?.vadSensitivity ?? 0.5,
+        recording_mode: recordingModeRef.current,
+      });
+    } else if (state !== 'idle' && state !== 'error') {
+      // 断线重连：重新配置
+      updateSessionState('configuring');
       configure({
         mode: 'voice_chat',
         vad_threshold: storeSettings?.vadSensitivity ?? 0.5,
         recording_mode: recordingModeRef.current,
       });
     }
-  }, [isConnected, configure, storeSettings]);
+  }, [isConnected, configure, storeSettings, updateSessionState]);
 
   /**
    * 关闭语音模式

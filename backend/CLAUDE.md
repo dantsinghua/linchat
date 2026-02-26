@@ -166,3 +166,14 @@ mypy .
 - **配置文件**: `pytest.ini`（`--reuse-db` 复用测试数据库）
 - **全局 conftest**: `conftest.py`（测试环境自动禁用 DRF 限流）
 - **测试目录**: `tests/` 按模块组织子目录
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 12, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #995 | 4:25 PM | 🔵 | Backend Environment Configuration Review | ~375 |
+</claude-mem-context>

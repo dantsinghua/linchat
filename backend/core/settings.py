@@ -401,9 +401,9 @@ CHANNEL_LAYERS = {
 
 # ============ 语音交互配置 (009-voice-interaction) ============
 # llmgateway WebSocket / HTTP 端点
-LLM_GATEWAY_WS_URL = os.getenv("LLM_GATEWAY_WS_URL", "ws://127.0.0.1:8888")
+LLM_GATEWAY_WS_URL = os.getenv("LLM_GATEWAY_WS_URL", "ws://127.0.0.1:8100")
 LLM_GATEWAY_WS_API_KEY = os.getenv("LLM_GATEWAY_WS_API_KEY", "")
-LLM_GATEWAY_HTTP_URL = os.getenv("LLM_GATEWAY_HTTP_URL", "http://127.0.0.1:8889")
+LLM_GATEWAY_HTTP_URL = os.getenv("LLM_GATEWAY_HTTP_URL", "http://127.0.0.1:8100")
 
 # 语音会话配置
 VOICE_SESSION_TTL = int(os.getenv("VOICE_SESSION_TTL", "120"))  # 会话状态 TTL: 120s

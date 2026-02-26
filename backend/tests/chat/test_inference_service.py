@@ -198,26 +198,23 @@ class TestInferenceService:
     # ============ cancel_task 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.InferenceService._call_gateway_cancel")
     @patch("apps.chat.services.inference_service.EventService.publish_event")
     @patch("apps.chat.services.inference_service.get_redis")
     async def test_cancel_task_success(
-        self, mock_get_redis, mock_publish_event, mock_gateway_cancel, inference_service, sample_task
+        self, mock_get_redis, mock_publish_event, inference_service, sample_task
     ):
-        """测试取消任务成功"""
+        """测试取消任务成功（三步取消：Redis删除 + 进程信号 + Pub/Sub）"""
         mock_redis = AsyncMock()
         mock_redis.get.return_value = sample_task.to_json()
         mock_redis.delete.return_value = 1
         mock_get_redis.return_value = mock_redis
         mock_publish_event.return_value = True
-        mock_gateway_cancel.return_value = True
 
         success, cancelled_id = await inference_service.cancel_task(user_id=123)
 
         assert success is True
         assert cancelled_id == sample_task.request_id
         mock_publish_event.assert_called_once()
-        mock_gateway_cancel.assert_called_once_with(sample_task.request_id)
         mock_redis.delete.assert_called_once()
 
     @pytest.mark.asyncio
@@ -250,103 +247,6 @@ class TestInferenceService:
 
         assert success is False
         assert cancelled_id is None
-
-    # ============ _call_gateway_cancel 测试 ============
-
-    @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.settings")
-    async def test_call_gateway_cancel_no_url(self, mock_settings, inference_service):
-        """测试网关取消但未配置 URL"""
-        mock_settings.LLM_GATEWAY_URL = ""
-
-        result = await inference_service._call_gateway_cancel("test-request")
-
-        assert result is True  # 未配置时直接返回成功
-
-    @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.record_gateway_span")
-    @patch("apps.chat.services.inference_service.build_gateway_headers")
-    @patch("apps.chat.services.inference_service.httpx.AsyncClient")
-    @patch("apps.chat.services.inference_service.settings")
-    async def test_call_gateway_cancel_success(
-        self, mock_settings, mock_client_class, mock_build_headers, mock_record_span, inference_service
-    ):
-        """测试网关取消成功（使用 build_gateway_headers）"""
-        mock_settings.LLM_GATEWAY_URL = "http://gateway:8080"
-        mock_settings.LLM_GATEWAY_CANCEL_TIMEOUT = 5
-        expected_headers = {"Authorization": "Bearer test-key", "X-Request-ID": "test-request"}
-        mock_build_headers.return_value = expected_headers
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client_class.return_value = mock_client
-
-        result = await inference_service._call_gateway_cancel("test-request")
-
-        assert result is True
-        mock_build_headers.assert_called_once_with(request_id="test-request")
-        mock_client.post.assert_called_once_with(
-            "http://gateway:8080/v1/chat/cancel",
-            json={"request_id": "test-request"},
-            headers=expected_headers,
-        )
-
-    @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.record_gateway_span")
-    @patch("apps.chat.services.inference_service.build_gateway_headers")
-    @patch("apps.chat.services.inference_service.httpx.AsyncClient")
-    @patch("apps.chat.services.inference_service.settings")
-    async def test_call_gateway_cancel_no_api_key(
-        self, mock_settings, mock_client_class, mock_build_headers, mock_record_span, inference_service
-    ):
-        """测试网关取消无 API key 时 headers 只含 X-Request-ID"""
-        mock_settings.LLM_GATEWAY_URL = "http://gateway:8080"
-        mock_settings.LLM_GATEWAY_CANCEL_TIMEOUT = 5
-        expected_headers = {"X-Request-ID": "test-request"}
-        mock_build_headers.return_value = expected_headers
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client_class.return_value = mock_client
-
-        result = await inference_service._call_gateway_cancel("test-request")
-
-        assert result is True
-        mock_build_headers.assert_called_once_with(request_id="test-request")
-        mock_client.post.assert_called_once_with(
-            "http://gateway:8080/v1/chat/cancel",
-            json={"request_id": "test-request"},
-            headers=expected_headers,
-        )
-
-    @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.asyncio.create_task")
-    @patch("apps.chat.services.inference_service.httpx.AsyncClient")
-    @patch("apps.chat.services.inference_service.settings")
-    async def test_call_gateway_cancel_failure(self, mock_settings, mock_client_class, mock_create_task, inference_service):
-        """测试网关取消失败"""
-        mock_settings.LLM_GATEWAY_URL = "http://gateway:8080"
-        mock_settings.LLM_GATEWAY_API_KEY = "test-key"
-
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client.__aexit__.return_value = None
-        mock_client_class.return_value = mock_client
-
-        result = await inference_service._call_gateway_cancel("test-request")
-
-        assert result is False
 
     # ============ refresh_task_ttl 测试 ============
 
