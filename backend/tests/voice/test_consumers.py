@@ -450,7 +450,7 @@ class TestGatewayEventForwarding:
         mock_session_svc.update_session = AsyncMock()
         mock_session_svc.close_session = AsyncMock()
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
 
         gw = _mock_gateway()
@@ -703,7 +703,7 @@ class TestResponseCancel:
         )
         mock_session_svc.get_stt_status = AsyncMock(return_value=None)
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
 
         gw = _mock_gateway()
@@ -772,7 +772,7 @@ class TestResponseCancel:
         )
         mock_session_svc.get_stt_status = AsyncMock(return_value=None)
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
 
         gw = _mock_gateway()
@@ -867,7 +867,7 @@ class TestResponseCancel:
         )
         mock_session_svc.get_stt_status = AsyncMock(return_value=None)
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
 
         gw = _mock_gateway()
@@ -1764,7 +1764,7 @@ class TestResponseDeltaAfterCancel:
         )
         mock_session_svc.get_stt_status = AsyncMock(return_value=None)
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
 
         gw = _mock_gateway()
@@ -1840,7 +1840,7 @@ class TestCancelWithAccumulatedContent:
         )
         mock_session_svc.get_stt_status = AsyncMock(return_value=None)
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
 
         gw = _mock_gateway()
@@ -1922,7 +1922,7 @@ class TestCancelWithAccumulatedContent:
             }
         )
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
         mock_session_svc.get_stt_status = AsyncMock(return_value=None)
 

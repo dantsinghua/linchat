@@ -154,7 +154,7 @@ class TestVoiceToResponseLatency:
         mock_session_svc.cache_audio_chunk = AsyncMock()
         mock_session_svc.set_active_conversation = AsyncMock()
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
 
         gw = _mock_gateway()
@@ -249,7 +249,7 @@ class TestVoiceToResponseWithNetworkDelay:
         mock_session_svc.cache_audio_chunk = AsyncMock()
         mock_session_svc.set_active_conversation = AsyncMock()
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
 
         gw = _mock_gateway()
@@ -326,7 +326,7 @@ class TestVoiceToResponseWithNetworkDelay:
         mock_session_svc.cache_audio_chunk = AsyncMock()
         mock_session_svc.set_active_conversation = AsyncMock()
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
 
         gw = _mock_gateway()
@@ -419,7 +419,7 @@ class TestFullPipelineLatency:
         mock_session_svc.set_active_conversation = AsyncMock()
         mock_session_svc.start_stt_transcription = AsyncMock()
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
         mock_session_svc.persist_voice_message = AsyncMock(
             return_value={
@@ -598,7 +598,7 @@ class TestFullPipelineLatency:
         mock_session_svc.set_active_conversation = AsyncMock()
         mock_session_svc.start_stt_transcription = AsyncMock()
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
         mock_session_svc.persist_voice_message = AsyncMock(
             return_value={
@@ -734,7 +734,7 @@ class TestFullPipelineLatency:
         mock_session_svc.set_active_conversation = AsyncMock()
         mock_session_svc.start_stt_transcription = AsyncMock()
         mock_session_svc.check_llm_rate_limit = AsyncMock(
-            return_value=False
+            return_value=True
         )
         mock_session_svc.get_stt_status = AsyncMock(return_value=None)
 

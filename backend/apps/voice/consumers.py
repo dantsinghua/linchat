@@ -763,10 +763,10 @@ class VoiceConsumer(AsyncWebsocketConsumer):
 
         # voice_chat 模式频率限制检查
         if self._mode == "voice_chat":
-            exceeded = await voice_session_service.check_llm_rate_limit(
+            allowed = await voice_session_service.check_llm_rate_limit(
                 self.user_id
             )
-            if exceeded and response_id and self._gateway:
+            if not allowed and response_id and self._gateway:
                 logger.warning(
                     "LLM rate limit exceeded in voice_chat mode, "
                     "cancelling response: user_id=%s, response_id=%s",
@@ -864,11 +864,6 @@ class VoiceConsumer(AsyncWebsocketConsumer):
         persist_user_id = self._identified_user_id or self.user_id
         segment_id = self._current_segment_id
         if segment_id and self._accumulated_content:
-            # 检查 LLM 频率限制（用于统计，不阻止持久化）
-            await voice_session_service.check_llm_rate_limit(
-                self.user_id
-            )
-
             result = await voice_session_service.persist_voice_message(
                 user_id=persist_user_id,
                 segment_id=segment_id,

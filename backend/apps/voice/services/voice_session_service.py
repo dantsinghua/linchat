@@ -490,8 +490,16 @@ class VoiceSessionService:
                 resp.raise_for_status()
                 data = resp.json()
 
+            choices = data.get("choices", [])
+            if not choices:
+                logger.warning(
+                    "STT empty choices: user_id=%s, segment=%s",
+                    user_id,
+                    segment_id,
+                )
+                return
             transcription = (
-                data.get("choices", [{}])[0]
+                choices[0]
                 .get("message", {})
                 .get("content", "")
             )
