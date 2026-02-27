@@ -13,6 +13,7 @@ Voice WebSocket Consumer 测试 (T062)
 9. speaker.identified 事件增强
 10. SESSION_CONFLICT 错误（多标签页）
 11. WebSocket 连接频率限制（10次/分）
+12. voice_chat_enriched 模式（富上下文推理）
 
 测试方式: pytest-asyncio + channels.testing.WebsocketCommunicator + mock
 """
@@ -2496,3 +2497,764 @@ class TestSpeakerRedisError:
         assert resp["data"]["user_id"] == 99
 
         await communicator.disconnect()
+
+
+# ========== 12. voice_chat_enriched 模式测试 ==========
+
+
+async def _safe_disconnect(communicator):
+    """断开 WebSocket 连接，忽略后台任务清理时的 CancelledError"""
+    try:
+        await communicator.disconnect()
+    except asyncio.CancelledError:
+        pass
+
+
+async def _setup_enriched_consumer(
+    MockGateway, mock_session_svc, mock_get_redis, user_id=42
+):
+    """辅助：连接 + 配置 voice_chat_enriched 模式
+
+    Returns:
+        (communicator, gw_mock, on_event_callback)
+    """
+    mock_get_redis.return_value = _mock_redis_no_rate_limit()
+    mock_session_svc.create_session = AsyncMock(return_value=True)
+    mock_session_svc.update_session = AsyncMock()
+    mock_session_svc.close_session = AsyncMock()
+    mock_session_svc.set_active_conversation = AsyncMock()
+    mock_session_svc.start_stt_transcription = AsyncMock()
+
+    gw = _mock_gateway()
+    MockGateway.return_value = gw
+
+    communicator = _make_communicator(user_id=user_id, username="alice")
+    await communicator.connect()
+
+    await communicator.send_to(
+        text_data=json.dumps({
+            "type": "session.configure",
+            "data": {
+                "mode": "voice_chat_enriched",
+                "speaker_identify": True,
+            },
+        })
+    )
+
+    resp = await _receive_json(communicator)
+    assert resp["type"] == "session.configured"
+    assert resp["data"]["mode"] == "voice_chat_enriched"
+
+    on_event = MockGateway.call_args[1]["on_event"]
+    return communicator, gw, on_event
+
+
+@pytest.mark.asyncio
+class TestEnrichedModeConfigure:
+    """voice_chat_enriched 模式 session.configure"""
+
+    @patch(f"{_C}.get_redis")
+    @patch(f"{_C}.voice_session_service")
+    @patch(f"{_C}.GatewayClient")
+    async def test_enriched_mode_gateway_config(
+        self, MockGateway, mock_session_svc, mock_get_redis
+    ):
+        """enriched 模式：speaker_identify=True, auto_respond=False"""
+        communicator, gw, _ = await _setup_enriched_consumer(
+            MockGateway, mock_session_svc, mock_get_redis
+        )
+
+        config = gw.configure.call_args[0][0]
+        assert config["speaker_identify"] is True
+        assert config["auto_respond"] is False
+        assert config["vad_enabled"] is True
+
+        await _safe_disconnect(communicator)
+
+    @patch(f"{_C}.get_redis")
+    @patch(f"{_C}.voice_session_service")
+    @patch(f"{_C}.GatewayClient")
+    async def test_enriched_mode_invalid_fallback(
+        self, MockGateway, mock_session_svc, mock_get_redis
+    ):
+        """无效 mode 降级到 voice_chat"""
+        mock_get_redis.return_value = _mock_redis_no_rate_limit()
+        mock_session_svc.create_session = AsyncMock(return_value=True)
+        mock_session_svc.update_session = AsyncMock()
+        mock_session_svc.close_session = AsyncMock()
+
+        gw = _mock_gateway()
+        MockGateway.return_value = gw
+
+        communicator = _make_communicator(user_id=42)
+        await communicator.connect()
+
+        await communicator.send_to(
+            text_data=json.dumps({
+                "type": "session.configure",
+                "data": {"mode": "invalid_mode"},
+            })
+        )
+
+        resp = await _receive_json(communicator)
+        assert resp["type"] == "session.configured"
+        assert resp["data"]["mode"] == "voice_chat"
+
+        config = gw.configure.call_args[0][0]
+        assert config["auto_respond"] is True
+
+        await _safe_disconnect(communicator)
+
+
+@pytest.mark.asyncio
+class TestEnrichedVadEvents:
+    """enriched 模式 VAD 事件处理"""
+
+    @patch(f"{_C}.get_redis")
+    @patch(f"{_C}.voice_session_service")
+    @patch(f"{_C}.voice_context_service")
+    @patch(f"{_C}.GatewayClient")
+    async def test_vad_speech_start_initializes_event(
+        self,
+        MockGateway,
+        mock_ctx_svc,
+        mock_session_svc,
+        mock_get_redis,
+    ):
+        """vad.speech_start 在 enriched 模式下初始化 asyncio.Event"""
+        communicator, gw, on_event = await _setup_enriched_consumer(
+            MockGateway, mock_session_svc, mock_get_redis
+        )
+
+        # 模拟 vad.speech_start
+        await on_event({
+            "type": "vad.speech_start",
+            "data": {"timestamp": 1000},
+        })
+
+        resp = await _receive_json(communicator)
+        assert resp["type"] == "vad.speech_start"
+        assert "segment_id" in resp["data"]
+
+        await _safe_disconnect(communicator)
+
+    @patch(f"{_C}.get_redis")
+    @patch(f"{_C}.voice_session_service")
+    @patch(f"{_C}.voice_context_service")
+    @patch(f"{_C}.GatewayClient")
+    async def test_vad_speech_end_launches_enriched_task(
+        self,
+        MockGateway,
+        mock_ctx_svc,
+        mock_session_svc,
+        mock_get_redis,
+    ):
+        """vad.speech_end 在 enriched 模式下启动 _enriched_voice_inference"""
+        # 配置 mock
+        mock_session_svc.check_llm_rate_limit = AsyncMock(return_value=True)
+        mock_session_svc.get_stt_result = AsyncMock(return_value=None)
+        mock_session_svc.get_audio_chunks = AsyncMock(return_value=[])
+
+        communicator, gw, on_event = await _setup_enriched_consumer(
+            MockGateway, mock_session_svc, mock_get_redis
+        )
+
+        # vad.speech_start → 生成 segment_id
+        await on_event({
+            "type": "vad.speech_start",
+            "data": {"timestamp": 1000},
+        })
+        start_resp = await _receive_json(communicator)
+        assert start_resp["type"] == "vad.speech_start"
+
+        # vad.speech_end → 触发 enriched inference task
+        await on_event({
+            "type": "vad.speech_end",
+            "data": {"timestamp": 2000, "duration_ms": 1000},
+        })
+        end_resp = await _receive_json(communicator)
+        assert end_resp["type"] == "vad.speech_end"
+
+        # 等一下让 task 启动执行
+        await asyncio.sleep(0.3)
+
+        # enriched 推理被启动（因为 audio_chunks 为空，提前 return）
+        mock_session_svc.check_llm_rate_limit.assert_called_once()
+        mock_session_svc.start_stt_transcription.assert_called_once()
+
+        await _safe_disconnect(communicator)
+
+
+@pytest.mark.asyncio
+class TestEnrichedRateLimit:
+    """enriched 模式频率限制"""
+
+    @patch(f"{_C}.get_redis")
+    @patch(f"{_C}.voice_session_service")
+    @patch(f"{_C}.voice_context_service")
+    @patch(f"{_C}.GatewayClient")
+    async def test_rate_limit_exceeded_sends_error(
+        self,
+        MockGateway,
+        mock_ctx_svc,
+        mock_session_svc,
+        mock_get_redis,
+    ):
+        """频率超限 → 发送 LLM_RATE_LIMIT 错误"""
+        mock_session_svc.check_llm_rate_limit = AsyncMock(
+            return_value=False
+        )
+
+        communicator, gw, on_event = await _setup_enriched_consumer(
+            MockGateway, mock_session_svc, mock_get_redis
+        )
+
+        # 模拟 vad.speech_start + speech_end
+        await on_event({
+            "type": "vad.speech_start",
+            "data": {"timestamp": 1000},
+        })
+        await _receive_json(communicator)  # vad.speech_start
+
+        await on_event({
+            "type": "vad.speech_end",
+            "data": {"timestamp": 2000, "duration_ms": 1000},
+        })
+        await _receive_json(communicator)  # vad.speech_end
+
+        # 等 enriched task 执行
+        await asyncio.sleep(0.3)
+
+        # 应收到频率限制错误
+        resp = await _receive_json(communicator, timeout=2)
+        assert resp["type"] == "error"
+        assert resp["data"]["code"] == "LLM_RATE_LIMIT"
+
+        await _safe_disconnect(communicator)
+
+
+@pytest.mark.asyncio
+class TestEnrichedNoAudio:
+    """enriched 模式：无音频帧"""
+
+    @patch(f"{_C}.get_redis")
+    @patch(f"{_C}.voice_session_service")
+    @patch(f"{_C}.voice_context_service")
+    @patch(f"{_C}.speaker_service")
+    @patch(f"{_C}.GatewayClient")
+    async def test_no_audio_chunks_sends_error(
+        self,
+        MockGateway,
+        mock_speaker_svc,
+        mock_ctx_svc,
+        mock_session_svc,
+        mock_get_redis,
+    ):
+        """无音频帧 → 发送 NO_AUDIO_DATA 错误，前端可恢复到 listening"""
+        mock_session_svc.check_llm_rate_limit = AsyncMock(
+            return_value=True
+        )
+        # STT 立即返回（跳过 5s 轮询）
+        mock_session_svc.get_stt_result = AsyncMock(
+            return_value="测试"
+        )
+        mock_session_svc.get_audio_chunks = AsyncMock(return_value=[])
+        mock_ctx_svc.build_enriched_context = AsyncMock(
+            return_value={
+                "system_prompt": "test system",
+                "user_prompt": "test user",
+            }
+        )
+        mock_speaker_svc.identify_speaker = AsyncMock(
+            return_value={
+                "user_id": 42,
+                "username": "alice",
+                "speaker_name": "Alice",
+            }
+        )
+
+        communicator, gw, on_event = await _setup_enriched_consumer(
+            MockGateway, mock_session_svc, mock_get_redis
+        )
+
+        await on_event({
+            "type": "vad.speech_start",
+            "data": {"timestamp": 1000},
+        })
+        await _receive_json(communicator)
+
+        # 发送 speaker.identified 解除声纹等待阻塞
+        await on_event({
+            "type": "speaker.identified",
+            "data": {
+                "identified": True,
+                "speaker_id": "spk-test",
+                "confidence": 0.9,
+            },
+        })
+        await _receive_json(communicator)  # speaker.identified
+
+        await on_event({
+            "type": "vad.speech_end",
+            "data": {"timestamp": 2000, "duration_ms": 1000},
+        })
+        await _receive_json(communicator)
+
+        await asyncio.sleep(0.5)
+
+        # 应收到 NO_AUDIO_DATA 错误（前端可从 processing 恢复到 listening）
+        resp = await _receive_json(communicator, timeout=2)
+        assert resp["type"] == "error"
+        assert resp["data"]["code"] == "NO_AUDIO_DATA"
+        assert resp["data"]["recoverable"] is True
+
+        await _safe_disconnect(communicator)
+
+
+@pytest.mark.asyncio
+class TestEnrichedFullFlow:
+    """enriched 模式完整流程（声纹识别 + 上下文构建 + HTTP 推理）"""
+
+    @patch(f"{_C}.get_redis")
+    @patch(f"{_C}.voice_session_service")
+    @patch(f"{_C}.voice_context_service")
+    @patch(f"{_C}.speaker_service")
+    @patch(f"{_C}.GatewayClient")
+    async def test_full_enriched_flow_with_speaker(
+        self,
+        MockGateway,
+        mock_speaker_svc,
+        mock_ctx_svc,
+        mock_session_svc,
+        mock_get_redis,
+    ):
+        """完整流程：声纹匹配成功 → 构建上下文 → 推理 → 持久化"""
+        # 配置所有 mock
+        mock_session_svc.check_llm_rate_limit = AsyncMock(
+            return_value=True
+        )
+        # get_stt_result 首次调用返回结果（跳过 5s 轮询等待）
+        mock_session_svc.get_stt_result = AsyncMock(
+            return_value="你好，今天天气怎么样"
+        )
+        mock_session_svc.get_audio_chunks = AsyncMock(
+            return_value=[b"\x00\x01" * 800]
+        )
+        mock_session_svc.merge_pcm_to_wav = MagicMock(
+            return_value=b"RIFF" + b"\x00" * 100
+        )
+        mock_session_svc.do_enriched_inference = AsyncMock(
+            return_value={
+                "content": "今天天气不错，适合出门散步。",
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 20,
+                },
+            }
+        )
+        mock_session_svc.persist_voice_message = AsyncMock(
+            return_value={
+                "user_message_id": 101,
+                "user_message_uuid": "uuid-user-101",
+                "assistant_message_id": 102,
+                "assistant_message_uuid": "uuid-asst-102",
+            }
+        )
+        # _check_and_send_transcription 需要的 mock
+        mock_session_svc.get_stt_status = AsyncMock(
+            return_value="completed"
+        )
+        mock_session_svc.update_message_content = AsyncMock()
+
+        mock_ctx_svc.build_enriched_context = AsyncMock(
+            return_value={
+                "system_prompt": "当前时间：2026年02月27日",
+                "user_prompt": "以下为用户 alice 的语音输入。",
+            }
+        )
+
+        mock_speaker_svc.identify_speaker = AsyncMock(
+            return_value={
+                "user_id": 42,
+                "username": "alice",
+                "speaker_name": "Alice",
+            }
+        )
+
+        communicator, gw, on_event = await _setup_enriched_consumer(
+            MockGateway, mock_session_svc, mock_get_redis
+        )
+
+        # 1. vad.speech_start
+        await on_event({
+            "type": "vad.speech_start",
+            "data": {"timestamp": 1000},
+        })
+        start_msg = await _receive_json(communicator)
+        assert start_msg["type"] == "vad.speech_start"
+
+        # 2. speaker.identified
+        await on_event({
+            "type": "speaker.identified",
+            "data": {
+                "identified": True,
+                "speaker_id": "spk-alice-001",
+                "confidence": 0.95,
+            },
+        })
+        speaker_msg = await _receive_json(communicator)
+        assert speaker_msg["type"] == "speaker.identified"
+        assert speaker_msg["data"]["user_id"] == 42
+
+        # 3. vad.speech_end → 触发 enriched inference
+        await on_event({
+            "type": "vad.speech_end",
+            "data": {"timestamp": 3000, "duration_ms": 2000},
+        })
+        end_msg = await _receive_json(communicator)
+        assert end_msg["type"] == "vad.speech_end"
+
+        # 4. 等待 enriched 推理完成
+        await asyncio.sleep(0.5)
+
+        # 5. 收集推理结果事件
+        events = []
+        for _ in range(10):
+            try:
+                evt = await _receive_json(communicator, timeout=2)
+                events.append(evt)
+            except asyncio.TimeoutError:
+                break
+
+        event_types = [e["type"] for e in events]
+
+        # 验证事件序列
+        assert "response.start" in event_types
+        assert "response.end" in event_types
+        assert "message.saved" in event_types
+
+        # 验证 response.start
+        rs = next(e for e in events if e["type"] == "response.start")
+        assert rs["data"]["response_id"].startswith("enriched_")
+
+        # 验证 response.end
+        re_evt = next(e for e in events if e["type"] == "response.end")
+        assert "usage" in re_evt["data"]
+
+        # 验证 message.saved
+        ms = next(e for e in events if e["type"] == "message.saved")
+        assert ms["data"]["user_message_id"] == 101
+        assert ms["data"]["assistant_message_id"] == 102
+
+        # 验证上下文构建使用了声纹识别的用户
+        mock_ctx_svc.build_enriched_context.assert_called_once_with(
+            user_id=42,
+            query="你好，今天天气怎么样",
+            username="alice",
+        )
+
+        # 验证 HTTP 推理
+        mock_session_svc.do_enriched_inference.assert_called_once()
+        call_kwargs = (
+            mock_session_svc.do_enriched_inference.call_args
+        )
+        messages = call_kwargs[1]["messages"]
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert messages[1]["content"][0]["type"] == "text"
+        assert messages[1]["content"][1]["type"] == "audio_url"
+
+        # 验证持久化
+        mock_session_svc.persist_voice_message.assert_called_once()
+
+        await _safe_disconnect(communicator)
+
+    @patch(f"{_C}.get_redis")
+    @patch(f"{_C}.voice_session_service")
+    @patch(f"{_C}.voice_context_service")
+    @patch(f"{_C}.user_repo")
+    @patch(f"{_C}.GatewayClient")
+    async def test_enriched_flow_speaker_not_found_fallback(
+        self,
+        MockGateway,
+        mock_user_repo,
+        mock_ctx_svc,
+        mock_session_svc,
+        mock_get_redis,
+    ):
+        """声纹未匹配 → 降级使用 WS 连接用户自身"""
+        mock_session_svc.check_llm_rate_limit = AsyncMock(
+            return_value=True
+        )
+        # STT 返回 None（5s 轮询后降级到 "语音对话"）
+        # 为了加速测试，前 2 次返回 None 后返回结果
+        _stt_call_count = {"n": 0}
+
+        async def _stt_side_effect(uid, seg):
+            _stt_call_count["n"] += 1
+            return None  # 始终返回 None
+
+        mock_session_svc.get_stt_result = AsyncMock(
+            side_effect=_stt_side_effect
+        )
+        mock_session_svc.get_audio_chunks = AsyncMock(
+            return_value=[b"\x00\x01" * 800]
+        )
+        mock_session_svc.merge_pcm_to_wav = MagicMock(
+            return_value=b"RIFF" + b"\x00" * 100
+        )
+        mock_session_svc.do_enriched_inference = AsyncMock(
+            return_value={"content": "你好", "usage": {}}
+        )
+        mock_session_svc.persist_voice_message = AsyncMock(
+            return_value=None  # 简化：不触发 _check_and_send_transcription
+        )
+        mock_session_svc.get_stt_status = AsyncMock(
+            return_value="pending"
+        )
+
+        mock_ctx_svc.build_enriched_context = AsyncMock(
+            return_value={
+                "system_prompt": "sys",
+                "user_prompt": "user",
+            }
+        )
+
+        # unknown user for _assign_unknown_user
+        mock_user_repo.find_by_username = AsyncMock(return_value=None)
+
+        communicator, gw, on_event = await _setup_enriched_consumer(
+            MockGateway, mock_session_svc, mock_get_redis
+        )
+
+        # vad.speech_start
+        await on_event({
+            "type": "vad.speech_start",
+            "data": {"timestamp": 1000},
+        })
+        await _receive_json(communicator)
+
+        # vad.speech_end（声纹识别事件未到来就触发了 enriched）
+        await on_event({
+            "type": "vad.speech_end",
+            "data": {"timestamp": 2000, "duration_ms": 1000},
+        })
+        await _receive_json(communicator)
+
+        # 声纹在 100ms 后以 identified=false 到来
+        await asyncio.sleep(0.1)
+        await on_event({
+            "type": "speaker.identified",
+            "data": {
+                "identified": False,
+                "speaker_id": None,
+                "confidence": 0.0,
+            },
+        })
+
+        # 等待 STT 轮询完成 + 推理（最多 ~6s）
+        await asyncio.sleep(6.0)
+
+        # 收集事件
+        events = []
+        for _ in range(15):
+            try:
+                evt = await _receive_json(communicator, timeout=2)
+                events.append(evt)
+            except asyncio.TimeoutError:
+                break
+
+        event_types = [e["type"] for e in events]
+
+        # 应有 response.start + response.end（降级模式也正常推理）
+        assert "response.start" in event_types
+        assert "response.end" in event_types
+
+        # 验证 build_enriched_context 使用连接用户自身
+        mock_ctx_svc.build_enriched_context.assert_called_once()
+        call_args = (
+            mock_ctx_svc.build_enriched_context.call_args
+        )
+        assert call_args[1]["user_id"] == 42  # 降级到 WS 用户
+        assert call_args[1]["query"] == "语音对话"  # STT 始终 None
+
+        await _safe_disconnect(communicator)
+
+
+@pytest.mark.asyncio
+class TestEnrichedSpeakerSync:
+    """enriched 模式声纹识别同步测试"""
+
+    @patch(f"{_C}.get_redis")
+    @patch(f"{_C}.voice_session_service")
+    @patch(f"{_C}.voice_context_service")
+    @patch(f"{_C}.speaker_service")
+    @patch(f"{_C}.GatewayClient")
+    async def test_speaker_event_before_speech_end(
+        self,
+        MockGateway,
+        mock_speaker_svc,
+        mock_ctx_svc,
+        mock_session_svc,
+        mock_get_redis,
+    ):
+        """声纹识别在 speech_end 之前到来"""
+        mock_session_svc.check_llm_rate_limit = AsyncMock(
+            return_value=True
+        )
+        # get_stt_result 立即返回结果（跳过 5s 轮询）
+        mock_session_svc.get_stt_result = AsyncMock(
+            return_value="测试语音"
+        )
+        mock_session_svc.get_audio_chunks = AsyncMock(
+            return_value=[b"\x00\x01" * 400]
+        )
+        mock_session_svc.merge_pcm_to_wav = MagicMock(
+            return_value=b"RIFF" + b"\x00" * 50
+        )
+        mock_session_svc.do_enriched_inference = AsyncMock(
+            return_value={"content": "OK", "usage": {}}
+        )
+        mock_session_svc.persist_voice_message = AsyncMock(
+            return_value=None  # 持久化返回 None 不影响流程
+        )
+
+        mock_ctx_svc.build_enriched_context = AsyncMock(
+            return_value={
+                "system_prompt": "sys",
+                "user_prompt": "user",
+            }
+        )
+
+        mock_speaker_svc.identify_speaker = AsyncMock(
+            return_value={
+                "user_id": 99,
+                "username": "bob",
+                "speaker_name": "Bob",
+            }
+        )
+
+        communicator, gw, on_event = await _setup_enriched_consumer(
+            MockGateway, mock_session_svc, mock_get_redis
+        )
+
+        # vad.speech_start
+        await on_event({
+            "type": "vad.speech_start",
+            "data": {"timestamp": 1000},
+        })
+        await _receive_json(communicator)
+
+        # speaker.identified 在 speech_end 之前
+        await on_event({
+            "type": "speaker.identified",
+            "data": {
+                "identified": True,
+                "speaker_id": "spk-bob",
+                "confidence": 0.9,
+            },
+        })
+        await _receive_json(communicator)  # speaker.identified
+
+        # vad.speech_end
+        await on_event({
+            "type": "vad.speech_end",
+            "data": {"timestamp": 2000, "duration_ms": 1000},
+        })
+        await _receive_json(communicator)
+
+        await asyncio.sleep(1.0)
+
+        # 验证使用了识别到的用户
+        mock_ctx_svc.build_enriched_context.assert_called_once()
+        call_args = (
+            mock_ctx_svc.build_enriched_context.call_args
+        )
+        assert call_args[1]["user_id"] == 99
+        assert call_args[1]["username"] == "bob"
+
+        await _safe_disconnect(communicator)
+
+
+@pytest.mark.asyncio
+class TestEnrichedInferenceError:
+    """enriched 推理异常处理"""
+
+    @patch(f"{_C}.get_redis")
+    @patch(f"{_C}.voice_session_service")
+    @patch(f"{_C}.voice_context_service")
+    @patch(f"{_C}.speaker_service")
+    @patch(f"{_C}.GatewayClient")
+    async def test_inference_exception_sends_error(
+        self,
+        MockGateway,
+        mock_speaker_svc,
+        mock_ctx_svc,
+        mock_session_svc,
+        mock_get_redis,
+    ):
+        """推理过程异常 → 发送 ENRICHED_INFERENCE_ERROR"""
+        mock_session_svc.check_llm_rate_limit = AsyncMock(
+            return_value=True
+        )
+        # STT 立即返回结果（跳过 5s 轮询）
+        mock_session_svc.get_stt_result = AsyncMock(
+            return_value="测试"
+        )
+        mock_session_svc.get_audio_chunks = AsyncMock(
+            return_value=[b"\x00\x01" * 400]
+        )
+        mock_session_svc.merge_pcm_to_wav = MagicMock(
+            return_value=b"RIFF" + b"\x00" * 50
+        )
+
+        # 声纹识别成功（快速解除等待）
+        mock_speaker_svc.identify_speaker = AsyncMock(
+            return_value={
+                "user_id": 42,
+                "username": "alice",
+                "speaker_name": "Alice",
+            }
+        )
+
+        # 上下文构建异常
+        mock_ctx_svc.build_enriched_context = AsyncMock(
+            side_effect=Exception("Memory service unavailable")
+        )
+
+        communicator, gw, on_event = await _setup_enriched_consumer(
+            MockGateway, mock_session_svc, mock_get_redis
+        )
+
+        await on_event({
+            "type": "vad.speech_start",
+            "data": {"timestamp": 1000},
+        })
+        await _receive_json(communicator)
+
+        # speaker.identified=true（快速解除声纹等待）
+        await on_event({
+            "type": "speaker.identified",
+            "data": {
+                "identified": True,
+                "speaker_id": "spk-alice",
+                "confidence": 0.9,
+            },
+        })
+        await _receive_json(communicator)  # speaker.identified 事件
+
+        await on_event({
+            "type": "vad.speech_end",
+            "data": {"timestamp": 2000, "duration_ms": 1000},
+        })
+        await _receive_json(communicator)  # vad.speech_end
+
+        await asyncio.sleep(0.5)
+
+        # 应收到 ENRICHED_INFERENCE_ERROR
+        resp = await _receive_json(communicator, timeout=2)
+        assert resp["type"] == "error"
+        assert resp["data"]["code"] == "ENRICHED_INFERENCE_ERROR"
+        assert resp["data"]["recoverable"] is True
+
+        await _safe_disconnect(communicator)

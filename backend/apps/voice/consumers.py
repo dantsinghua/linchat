@@ -14,11 +14,12 @@
 """
 
 import asyncio
+import base64
 import json
 import logging
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import parse_qs
 
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -32,6 +33,7 @@ from apps.voice.services.response_decision_service import (
     response_decision_service,
 )
 from apps.voice.services.speaker_service import speaker_service
+from apps.voice.services.voice_context_service import voice_context_service
 from apps.voice.services.voice_session_service import voice_session_service
 from core.redis import get_redis
 
@@ -142,8 +144,11 @@ class VoiceConsumer(AsyncWebsocketConsumer):
         self._idle_check_task: Optional[asyncio.Task] = None
         self._configured: bool = False
         self._identified_user_id: Optional[int] = None
-        self._mode: str = "voice_chat"  # voice_chat | continuous_listen
+        self._mode: str = "voice_chat"  # voice_chat | continuous_listen | voice_chat_enriched
         self._closed: bool = False  # 标记 WebSocket 是否已关闭
+        # voice_chat_enriched 模式：声纹识别同步
+        self._speaker_identified_event: Optional[asyncio.Event] = None
+        self._identified_speaker_info: Optional[dict] = None
 
         logger.info("Voice WS connected: user_id=%s", user_id)
         await self.accept()
@@ -285,11 +290,12 @@ class VoiceConsumer(AsyncWebsocketConsumer):
 
         # T042: 解析模式参数
         mode = data.get("mode", "voice_chat")
-        if mode not in ("voice_chat", "continuous_listen"):
+        if mode not in ("voice_chat", "continuous_listen", "voice_chat_enriched"):
             mode = "voice_chat"
         self._mode = mode
 
         is_continuous = mode == "continuous_listen"
+        is_enriched = mode == "voice_chat_enriched"
 
         # 构建 llmgateway session.configure 参数
         config = {
@@ -298,11 +304,12 @@ class VoiceConsumer(AsyncWebsocketConsumer):
                 "vad_threshold", settings.VOICE_VAD_THRESHOLD
             ),
             "speaker_identify": data.get("speaker_identify", False)
-            or is_continuous,  # continuous_listen 强制开启声纹识别
+            or is_continuous
+            or is_enriched,  # continuous_listen / enriched 强制开启声纹识别
             "speaker_threshold": data.get(
                 "speaker_threshold", settings.VOICE_SPEAKER_THRESHOLD
             ),
-            "auto_respond": not is_continuous,  # continuous_listen 禁用自动回复
+            "auto_respond": not is_continuous and not is_enriched,  # enriched 也禁用自动回复
             "audio_output": False,  # 当前版本不请求音频回复
             "model": "minicpm-o",
             "chunk_duration_ms": 30,
@@ -566,6 +573,11 @@ class VoiceConsumer(AsyncWebsocketConsumer):
         self._current_segment_id = str(uuid.uuid4())[:8]
         self._last_activity = time.time()
 
+        # voice_chat_enriched 模式：初始化声纹识别等待事件
+        if self._mode == "voice_chat_enriched":
+            self._speaker_identified_event = asyncio.Event()
+            self._identified_speaker_info = None
+
         # 标记活跃对话
         await voice_session_service.set_active_conversation(
             self.user_id
@@ -616,6 +628,12 @@ class VoiceConsumer(AsyncWebsocketConsumer):
                     self._continuous_listen_decision(segment_id),
                     name=f"cl_decision_{self.user_id}_{segment_id}",
                 )
+            # voice_chat_enriched 模式：启动富上下文推理
+            elif self._mode == "voice_chat_enriched":
+                asyncio.create_task(
+                    self._enriched_voice_inference(segment_id),
+                    name=f"enriched_inference_{self.user_id}_{segment_id}",
+                )
 
         logger.info(
             "VAD speech_end: user_id=%s, segment=%s, duration=%sms, "
@@ -651,6 +669,11 @@ class VoiceConsumer(AsyncWebsocketConsumer):
                 self._current_speaker_id = gateway_speaker_id
                 self._identified_user_id = speaker_info["user_id"]
 
+                # voice_chat_enriched: 通知等待方声纹识别成功
+                self._identified_speaker_info = speaker_info
+                if self._speaker_identified_event:
+                    self._speaker_identified_event.set()
+
                 # 在 data 中附加用户信息，转发给客户端
                 data["user_id"] = speaker_info["user_id"]
                 data["user_name"] = speaker_info["username"]
@@ -674,6 +697,10 @@ class VoiceConsumer(AsyncWebsocketConsumer):
                 # 映射表无记录，归属 unknown 用户
                 await self._assign_unknown_user()
 
+                # voice_chat_enriched: 通知等待方识别失败
+                if self._speaker_identified_event:
+                    self._speaker_identified_event.set()
+
                 await self._send_error(
                     "SPEAKER_NOT_FOUND",
                     "声纹未注册，无法识别说话人",
@@ -693,6 +720,10 @@ class VoiceConsumer(AsyncWebsocketConsumer):
         else:
             # identified=false，归属 unknown 用户
             await self._assign_unknown_user()
+
+            # voice_chat_enriched: 通知等待方识别失败
+            if self._speaker_identified_event:
+                self._speaker_identified_event.set()
 
             await self._send_error(
                 "SPEAKER_NOT_FOUND",
@@ -1167,6 +1198,233 @@ class VoiceConsumer(AsyncWebsocketConsumer):
         self._current_speaker_id = None
         self._response_cancelled = False
         # segment_id 保持到下一次 vad.speech_start 更新
+
+    # ========== voice_chat_enriched 模式 ==========
+
+    async def _enriched_voice_inference(
+        self, segment_id: str
+    ) -> None:
+        """voice_chat_enriched 模式核心编排
+
+        流程：频率限制 → 等待声纹识别 → 确定用户身份 →
+        等待 STT → 构建富上下文 → HTTP 流式推理 → 持久化
+        """
+        try:
+            await self._do_enriched_voice_inference(segment_id)
+        except Exception:
+            logger.exception(
+                "Enriched inference unexpected error: "
+                "user_id=%s, segment=%s",
+                self.user_id,
+                segment_id,
+            )
+            await self._send_error(
+                "ENRICHED_INFERENCE_ERROR",
+                "语音推理异常",
+                recoverable=True,
+            )
+
+    async def _do_enriched_voice_inference(
+        self, segment_id: str
+    ) -> None:
+        """enriched 推理实际逻辑（异常由上层捕获）"""
+        # 1. 频率限制检查
+        allowed = await voice_session_service.check_llm_rate_limit(
+            self.user_id
+        )
+        if not allowed:
+            await self._send_error(
+                "LLM_RATE_LIMIT",
+                "语音推理频率超限，请稍后再试",
+                recoverable=True,
+            )
+            return
+
+        # 2. 等待声纹识别（最多 10s）
+        if self._speaker_identified_event:
+            try:
+                await asyncio.wait_for(
+                    self._speaker_identified_event.wait(),
+                    timeout=10,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Speaker identification timeout in enriched mode: "
+                    "user_id=%s, segment=%s",
+                    self.user_id,
+                    segment_id,
+                )
+
+        # 3. 确定用户身份
+        speaker_info = self._identified_speaker_info
+        if speaker_info:
+            target_user_id = speaker_info["user_id"]
+            username = speaker_info.get("username", "未知用户")
+        else:
+            # 降级：使用 WS 连接用户自身
+            target_user_id = self.user_id
+            username = getattr(self, "username", "未知用户") or "未知用户"
+
+        # 4. 等待 STT 结果（最多 5s，用于记忆搜索 query）
+        stt_text = await self._wait_for_stt_result(segment_id)
+
+        # 5. 构建富上下文
+        context = await voice_context_service.build_enriched_context(
+            user_id=target_user_id,
+            query=stt_text or "语音对话",
+            username=username,
+        )
+
+        # 6. 获取音频 WAV
+        pcm_chunks = await voice_session_service.get_audio_chunks(
+            self.user_id, segment_id
+        )
+        if not pcm_chunks:
+            logger.warning(
+                "Enriched inference no audio: user_id=%s, segment=%s",
+                self.user_id,
+                segment_id,
+            )
+            await self._send_error(
+                "NO_AUDIO_DATA",
+                "未检测到有效音频，请重试",
+                recoverable=True,
+            )
+            return
+        wav_data = voice_session_service.merge_pcm_to_wav(pcm_chunks)
+        audio_b64 = base64.b64encode(wav_data).decode()
+
+        # 7. 构建多模态消息
+        messages = [
+            {
+                "role": "system",
+                "content": context["system_prompt"],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": context["user_prompt"]},
+                    {
+                        "type": "audio_url",
+                        "audio_url": {
+                            "url": f"data:audio/wav;base64,{audio_b64}"
+                        },
+                    },
+                ],
+            },
+        ]
+
+        # 8. 发送 response.start
+        response_id = f"enriched_{segment_id}"
+        self._current_response_id = response_id
+        self._accumulated_content = ""
+        self._response_start_time = time.time()
+        self._response_cancelled = False
+
+        await self._send_json({
+            "type": "response.start",
+            "data": {"response_id": response_id},
+        })
+
+        # 9. HTTP 流式推理
+        result = await voice_session_service.do_enriched_inference(
+            user_id=target_user_id,
+            segment_id=segment_id,
+            messages=messages,
+            on_delta=lambda content: self._send_json({
+                "type": "response.delta",
+                "data": {
+                    "delta": {"content": content},
+                    "response_id": response_id,
+                },
+            }),
+        )
+
+        # 10. 累积内容并发送 response.end
+        self._accumulated_content = result.get("content", "")
+        usage = result.get("usage", {})
+
+        await self._send_json({
+            "type": "response.end",
+            "data": {
+                "response_id": response_id,
+                "usage": usage,
+            },
+        })
+
+        # 11. 持久化消息
+        persist_user_id = self._identified_user_id or self.user_id
+        response_time_ms = None
+        if self._response_start_time:
+            response_time_ms = int(
+                (time.time() - self._response_start_time) * 1000
+            )
+
+        if self._accumulated_content:
+            persist_result = (
+                await voice_session_service.persist_voice_message(
+                    user_id=persist_user_id,
+                    segment_id=segment_id,
+                    assistant_content=self._accumulated_content,
+                    speaker_id=self._current_speaker_id,
+                    response_usage=usage,
+                    response_time_ms=response_time_ms,
+                )
+            )
+
+            if persist_result:
+                await self._send_json({
+                    "type": "message.saved",
+                    "data": {
+                        "user_message_id": persist_result.get(
+                            "user_message_id"
+                        ),
+                        "user_message_uuid": persist_result.get(
+                            "user_message_uuid"
+                        ),
+                        "assistant_message_id": persist_result.get(
+                            "assistant_message_id"
+                        ),
+                        "assistant_message_uuid": persist_result.get(
+                            "assistant_message_uuid"
+                        ),
+                        "response_id": response_id,
+                    },
+                })
+
+                # 检查 STT 转写结果
+                await self._check_and_send_transcription(
+                    segment_id, persist_result
+                )
+
+        # 12. 刷新活跃对话
+        await voice_session_service.set_active_conversation(self.user_id)
+
+        # 重置状态
+        self._reset_response_state()
+
+        logger.info(
+            "Enriched inference done: user_id=%s, target=%s, "
+            "segment=%s, content_len=%d, time=%sms",
+            self.user_id,
+            target_user_id,
+            segment_id,
+            len(self._accumulated_content or ""),
+            response_time_ms,
+        )
+
+    async def _wait_for_stt_result(
+        self, segment_id: str
+    ) -> Optional[str]:
+        """轮询等待 STT 结果就绪（最多 5s）"""
+        for _ in range(50):  # 50 * 0.1s = 5s
+            result = await voice_session_service.get_stt_result(
+                self.user_id, segment_id
+            )
+            if result is not None:
+                return result
+            await asyncio.sleep(0.1)
+        return None
 
     async def _idle_timeout_loop(self) -> None:
         """空闲超时检测循环

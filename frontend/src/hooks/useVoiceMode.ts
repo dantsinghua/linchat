@@ -24,6 +24,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { usePCMAudioCapture } from '@/hooks/usePCMAudioCapture';
 import { useVoiceWebSocket } from '@/hooks/useVoiceWebSocket';
+import { getSpeakerProfile } from '@/services/voiceApi';
 import { useVoiceStore } from '@/stores/voiceStore';
 import type { VoiceSessionState } from '@/types/voice';
 
@@ -91,6 +92,7 @@ export function useVoiceMode(): UseVoiceModeReturn {
   const storeReset = useVoiceStore((s) => s.reset);
   const storeSettings = useVoiceStore((s) => s.settings);
   const recordingMode = useVoiceStore((s) => s.recordingMode);
+  const storeSetHasSpeakerProfile = useVoiceStore((s) => s.setHasSpeakerProfile);
 
   /**
    * 同步更新本地 state 和 ref
@@ -319,7 +321,7 @@ export function useVoiceMode(): UseVoiceModeReturn {
    *
    * 流程: connect WebSocket → 发送 session.configure → 等待 session.configured
    */
-  const enableVoiceMode = useCallback(() => {
+  const enableVoiceMode = useCallback(async () => {
     if (sessionStateRef.current !== 'idle' && sessionStateRef.current !== 'error') {
       return;
     }
@@ -338,12 +340,22 @@ export function useVoiceMode(): UseVoiceModeReturn {
     storeSetCurrentTranscription('');
     storeSetError(null);
 
+    // 检查用户是否已注册声纹（决定使用哪种模式）
+    try {
+      const resp = await getSpeakerProfile();
+      const has = resp.data != null;
+      storeSetHasSpeakerProfile(has);
+    } catch {
+      // 检查失败不阻塞，降级使用 voice_chat 模式
+      storeSetHasSpeakerProfile(false);
+    }
+
     // 进入 configuring 状态
     updateSessionState('configuring');
 
     // 连接 WebSocket
     connect();
-  }, [connect, updateSessionState, updateError, storeSetVoiceMode, storeSetCurrentTranscription, storeSetError]);
+  }, [connect, updateSessionState, updateError, storeSetVoiceMode, storeSetCurrentTranscription, storeSetError, storeSetHasSpeakerProfile]);
 
   /**
    * WebSocket 连接建立后自动发送配置
@@ -356,20 +368,25 @@ export function useVoiceMode(): UseVoiceModeReturn {
   useEffect(() => {
     if (!isConnected) return;
 
+    const { hasSpeakerProfile: hasSpeaker } = useVoiceStore.getState();
+    const voiceMode = hasSpeaker ? 'voice_chat_enriched' : 'voice_chat';
+
     const state = sessionStateRef.current;
     if (state === 'configuring') {
       // 首次连接
       configure({
-        mode: 'voice_chat',
+        mode: voiceMode,
         vad_threshold: storeSettings?.vadSensitivity ?? 0.5,
+        speaker_identify: hasSpeaker,
         recording_mode: recordingModeRef.current,
       });
     } else if (state !== 'idle' && state !== 'error') {
       // 断线重连：重新配置
       updateSessionState('configuring');
       configure({
-        mode: 'voice_chat',
+        mode: voiceMode,
         vad_threshold: storeSettings?.vadSensitivity ?? 0.5,
+        speaker_identify: hasSpeaker,
         recording_mode: recordingModeRef.current,
       });
     }

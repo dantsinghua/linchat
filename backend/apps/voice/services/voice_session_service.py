@@ -554,6 +554,118 @@ class VoiceSessionService:
         """更新消息内容（STT 完成后回填）"""
         await message_repo.update_content(message_id, content)
 
+    # ========== 富上下文 HTTP 流式推理 ==========
+
+    async def do_enriched_inference(
+        self,
+        user_id: int,
+        segment_id: str,
+        messages: list[dict],
+        on_delta: Any,
+    ) -> dict[str, Any]:
+        """HTTP 流式推理 /v1/chat/completions
+
+        使用 httpx 流式请求 llmgateway HTTP API，逐行解析 SSE 格式，
+        通过 on_delta 回调推送增量文本。
+
+        Args:
+            user_id: 用户 ID（仅用于日志）
+            segment_id: 语音段 ID（仅用于日志）
+            messages: 多模态消息列表（system + user with audio_url）
+            on_delta: async callable，接收增量文本
+
+        Returns:
+            {"content": str, "usage": dict}
+        """
+        gateway_url = settings.LLM_GATEWAY_HTTP_URL
+        api_key = settings.LLM_GATEWAY_WS_API_KEY
+
+        accumulated = ""
+        usage = {}
+        start_time = time.time()
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(
+                    connect=10.0,
+                    read=60.0,
+                    write=10.0,
+                    pool=10.0,
+                )
+            ) as client:
+                async with client.stream(
+                    "POST",
+                    f"{gateway_url}/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json={
+                        "model": "minicpm-o",
+                        "messages": messages,
+                        "stream": True,
+                    },
+                ) as resp:
+                    resp.raise_for_status()
+
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+
+                        payload = line[6:]  # strip "data: "
+                        if payload.strip() == "[DONE]":
+                            break
+
+                        try:
+                            chunk = json.loads(payload)
+                        except json.JSONDecodeError:
+                            continue
+
+                        # 提取 usage（通常在最后一个 chunk）
+                        chunk_usage = chunk.get("usage")
+                        if chunk_usage:
+                            usage = chunk_usage
+
+                        # 提取增量内容
+                        choices = chunk.get("choices", [])
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta", {})
+                        content = delta.get("content")
+                        if content:
+                            accumulated += content
+                            await on_delta(content)
+
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            logger.info(
+                "Enriched inference completed: user_id=%s, "
+                "segment=%s, content_len=%d, elapsed=%dms",
+                user_id,
+                segment_id,
+                len(accumulated),
+                elapsed_ms,
+            )
+
+        except httpx.TimeoutException:
+            logger.warning(
+                "Enriched inference timeout: user_id=%s, segment=%s",
+                user_id,
+                segment_id,
+            )
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "Enriched inference HTTP error: user_id=%s, "
+                "segment=%s, status=%s",
+                user_id,
+                segment_id,
+                e.response.status_code,
+            )
+        except Exception:
+            logger.exception(
+                "Enriched inference failed: user_id=%s, segment=%s",
+                user_id,
+                segment_id,
+            )
+
+        return {"content": accumulated, "usage": usage}
+
     # ========== LLM 频率限制 ==========
 
     async def check_llm_rate_limit(self, user_id: int) -> bool:

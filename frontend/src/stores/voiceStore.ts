@@ -27,6 +27,8 @@ interface VoiceState {
   isConnected: boolean;
   // 当前识别的说话人
   currentSpeakerId: string | null;
+  // 用户是否已注册声纹
+  hasSpeakerProfile: boolean;
 
   // Actions
   setVoiceMode: (enabled: boolean) => void;
@@ -38,6 +40,7 @@ interface VoiceState {
   setError: (error: string | null) => void;
   setIsConnected: (connected: boolean) => void;
   setCurrentSpeakerId: (speakerId: string | null) => void;
+  setHasSpeakerProfile: (has: boolean) => void;
   reset: () => void;
 }
 
@@ -51,6 +54,7 @@ const initialState = {
   error: null as string | null,
   isConnected: false,
   currentSpeakerId: null as string | null,
+  hasSpeakerProfile: false,
 };
 
 export const useVoiceStore = create<VoiceState>((set) => ({
@@ -65,5 +69,6 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   setError: (error) => set({ error }),
   setIsConnected: (connected) => set({ isConnected: connected }),
   setCurrentSpeakerId: (speakerId) => set({ currentSpeakerId: speakerId }),
+  setHasSpeakerProfile: (has) => set({ hasSpeakerProfile: has }),
   reset: () => set(initialState),
 }));
