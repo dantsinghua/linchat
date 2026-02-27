@@ -58,7 +58,7 @@ class ChatService:
         if len(content) > settings.MAX_MESSAGE_LENGTH:
             raise MessageTooLongException(f"消息长度不能超过{settings.MAX_MESSAGE_LENGTH}字符")
 
-        request_id = f"req_{uuid.uuid4().hex[:16]}"
+        request_id = uuid.uuid4().hex
         thread_id = get_thread_id(user_id)
 
         async for chunk in AgentService.execute(

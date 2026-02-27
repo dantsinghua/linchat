@@ -224,30 +224,22 @@ def record_gateway_span(
             host=host,
         )
 
-        trace = langfuse.trace(
-            name=f"gateway_{request_type}",
-            metadata={
-                "request_type": request_type,
-                "model": model,
-                "request_id": request_id or "",
-            },
-        )
-
-        span_data: dict[str, Any] = {
-            "name": request_type,
-            "metadata": {
-                "model": model,
-                "request_type": request_type,
-                "duration": round(duration, 3),
-                "status_code": status_code,
-                "request_id": request_id or "",
-            },
+        metadata: dict[str, Any] = {
+            "model": model,
+            "request_type": request_type,
+            "duration": round(duration, 3),
+            "status_code": status_code,
+            "request_id": request_id or "",
         }
         if error:
-            span_data["metadata"]["error"] = error
-            span_data["level"] = "ERROR"
+            metadata["error"] = error
 
-        trace.span(**span_data)
+        span = langfuse.start_span(
+            name=f"gateway_{request_type}",
+            metadata=metadata,
+            level="ERROR" if error else "DEFAULT",
+        )
+        span.end()
         langfuse.flush()
 
     except Exception as e:

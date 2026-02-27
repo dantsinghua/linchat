@@ -274,17 +274,6 @@ def _init_langfuse(
             trace_context={"trace_id": request_id},
         )
 
-        # T068: 多模态推理元数据注入到 Langfuse trace
-        if multimodal_metadata and handler.client:
-            try:
-                handler.client.trace(
-                    id=request_id,
-                    metadata=multimodal_metadata,
-                    tags=["multimodal"] + multimodal_metadata.get("media_types", []),
-                )
-            except Exception as e:
-                logger.debug("Langfuse multimodal metadata injection: %s", e)
-
         return handler
     except Exception as e:
         logger.warning("Langfuse init failed: %s", e)
@@ -729,36 +718,39 @@ class AgentService:
 
                             elif event.get("event") == "on_tool_end":
                                 # 追踪工具调用 [005-context-monitoring]
-                                try:
-                                    from apps.common.tokenizer import \
-                                        count_tokens
+                                # 仅追踪主 Agent 直接调用的工具，
+                                # 过滤 SubAgent 内部工具（depth > 3）
+                                if len(event.get("parent_ids", [])) <= 3:
+                                    try:
+                                        from apps.common.tokenizer import \
+                                            count_tokens
 
-                                    tool_name = event.get("name", "unknown")
-                                    if tool_name == "memory_subagent":
-                                        memory_modified = True
-                                    tool_output = str(
-                                        event.get("data", {}).get("output", "")
-                                    )
-                                    tool_input = str(
-                                        event.get("data", {}).get("input", "")
-                                    )
-                                    t_in = count_tokens(tool_input)
-                                    t_out = count_tokens(tool_output)
-                                    breakdown.tool_calls += t_in
-                                    breakdown.tool_results += t_out
-                                    breakdown.tool_call_count += 1
-                                    tool_processes.append(
-                                        {
-                                            "name": tool_name,
-                                            "task": (
-                                                tool_input[:50] if tool_input else ""
-                                            ),
-                                            "input_tokens": t_in,
-                                            "output_tokens": t_out,
-                                        }
-                                    )
-                                except Exception:
-                                    pass
+                                        tool_name = event.get("name", "unknown")
+                                        if tool_name == "memory_subagent":
+                                            memory_modified = True
+                                        tool_output = str(
+                                            event.get("data", {}).get("output", "")
+                                        )
+                                        tool_input = str(
+                                            event.get("data", {}).get("input", "")
+                                        )
+                                        t_in = count_tokens(tool_input)
+                                        t_out = count_tokens(tool_output)
+                                        breakdown.tool_calls += t_in
+                                        breakdown.tool_results += t_out
+                                        breakdown.tool_call_count += 1
+                                        tool_processes.append(
+                                            {
+                                                "name": tool_name,
+                                                "task": (
+                                                    tool_input[:50] if tool_input else ""
+                                                ),
+                                                "input_tokens": t_in,
+                                                "output_tokens": t_out,
+                                            }
+                                        )
+                                    except Exception:
+                                        pass
 
                             # 500ms 定时推送 [005-context-monitoring]
                             try:

@@ -31,6 +31,11 @@ MULTIMODAL_PROMPT = """你是多媒体分析助手。分析用户上传的图片
 - PDF、DOCX 文档附件 → 使用 document_parse 工具
 - 混合附件（如图片+文档）→ 分别调用对应工具
 
+## 重要规则（必须遵守）
+- 收到分析请求时，必须直接调用对应工具，不要质疑或确认附件是否存在
+- 附件由工具内部自动从上下文加载，你无需预先验证附件
+- 即使你在消息中看不到附件内容，也必须调用工具——工具会自行处理
+
 ## 执行策略
 - 根据附件类型选择正确的工具
 - 将分析结果如实、完整地返回
@@ -137,6 +142,9 @@ async def document_parse(task: str, config: RunnableConfig) -> str:
                     skip_background_poll=True,
                 )
                 task_id = task_result.get("task_id", "")
+                logger.info(
+                    "文档解析任务创建: task_id=%s, file=%s", task_id, doc.file_name
+                )
 
                 if not task_id:
                     results.append(f"[{doc.file_name}] 创建解析任务失败")
@@ -166,9 +174,20 @@ async def document_parse(task: str, config: RunnableConfig) -> str:
                     final_status = status_data.get("status", "")
 
                     if final_status == "completed":
+                        logger.info(
+                            "文档解析轮询完成: task_id=%s, status=completed, elapsed=%ds",
+                            task_id,
+                            elapsed,
+                        )
                         break
                     elif final_status == "failed":
                         error_msg = status_data.get("error_message", "未知错误")
+                        logger.info(
+                            "文档解析失败: task_id=%s, error=%s, elapsed=%ds",
+                            task_id,
+                            error_msg,
+                            elapsed,
+                        )
                         results.append(f"[{doc.file_name}] 解析失败: {error_msg}")
                         break
 
@@ -177,6 +196,11 @@ async def document_parse(task: str, config: RunnableConfig) -> str:
                     try:
                         content = await DocumentParseService.get_task_result(
                             task_id, format="markdown"
+                        )
+                        logger.info(
+                            "文档解析结果: file=%s, result_length=%d",
+                            doc.file_name,
+                            len(content) if isinstance(content, str) else 0,
                         )
                         if isinstance(content, str) and len(content) > max_result_length:
                             content = content[:max_result_length] + "\n\n[内容已截断]"
@@ -206,13 +230,28 @@ async def document_parse(task: str, config: RunnableConfig) -> str:
             )
             results.append(f"[{doc.file_name}] 解析异常: {e}")
 
-    return "\n\n".join(results) if results else "未能解析任何文档"
+    total_result = "\n\n".join(results) if results else "未能解析任何文档"
+    logger.info(
+        "文档解析工具返回: total_files=%d, total_result_length=%d",
+        len(doc_attachments),
+        len(total_result),
+    )
+    return total_result
 
 
 @tool
 async def multimodal_subagent(task: str, config: RunnableConfig) -> str:
     """分析用户上传的图片、视频、音频、文档等多媒体文件内容。
     当用户上传了附件并需要理解其内容时使用。"""
+    # 将附件信息注入 task，让内部 LLM 知道附件确实存在
+    configurable = config.get("configurable", {})
+    attachment_uuids = configurable.get("attachment_uuids", [])
+    if attachment_uuids:
+        task = (
+            f"{task}\n\n"
+            f"[系统：用户已上传 {len(attachment_uuids)} 个附件，"
+            f"请直接调用对应工具进行分析，附件会自动从上下文加载。]"
+        )
     return await run_subagent(
         task,
         config,
