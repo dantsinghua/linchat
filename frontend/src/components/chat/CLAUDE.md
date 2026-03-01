@@ -42,7 +42,7 @@
 ### ContextMonitorPanel
 
 - `useContextMonitor()` Hook: 监听 `window.CustomEvent('context_status')` 事件，维护 token 历史（增量模式）和上下文历史，通过 sessionStorage 跨刷新持久化
-- `MonitorSidebar`: 四区块面板 -- 大模型输入输出（折线图）、当前上下文（堆叠柱状图+趋势折线图）、当前记忆（类型占比+记忆卡片）、可用工具（按输出 token 倒序）
+- `MonitorSidebar`: 四区块面板 -- 大模型输入输出（折线图）、当前上下文（堆叠柱状图+趋势折线图）、当前记忆（类型占比+记忆卡片）、工具调用（按输出 token 倒序）
 - `ContextStatusBar`: 上下文占用率提示条，仅 warning/critical 时显示
 - `MonitorToggleButton`: 侧边栏开关按钮
 - 内部纯 SVG 图表组件: `MiniLineChart`（折线图+面积图）、`StackedBar`（横向堆叠柱状图）

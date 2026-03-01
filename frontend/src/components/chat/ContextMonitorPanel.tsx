@@ -551,7 +551,7 @@ export const MonitorSidebar = memo(function MonitorSidebar({
         {/* 工具调用 */}
         <section>
           <SectionHeader
-            title="可用工具"
+            title="工具调用"
             rightText={`总计 ${data.tool_processes.length}`}
             rightSub="个"
           />

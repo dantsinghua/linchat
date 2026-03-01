@@ -111,20 +111,22 @@ npm test                              # 运行测试
 
 | 服务 | 公网地址 | 说明 |
 |------|----------|------|
-| **LinChat** | `http://www.greydan.xin/linchat` | 聊天应用主入口 |
-| **LinChat API** | `http://www.greydan.xin/linchat/api/v1` | 后端 API |
-| **DeepTutor** | `http://www.greydan.xin/` | DeepTutor 主入口 |
+| **LinChat** | `https://www.greydan.xin/linchat` | 聊天应用主入口 |
+| **LinChat API** | `https://www.greydan.xin/linchat/api/v1` | 后端 API |
+| **Home Assistant** | `https://ha.greydan.xin` | 智能家居控制面板 |
 | **Langfuse** | `http://www.greydan.xin:8081` | LLM 监控平台 |
-| **SSH** | `ssh -p 6022 www.greydan.xin` | SSH 远程连接 |
+| **SSH** | stcp 类型，需通过 frpc visitor 连接 | SSH 远程连接 |
 
 ### 流量路径
 
 ```
-公网请求
+公网请求 (HTTPS)
     ↓
-frp 服务端 (120.25.192.185:7000)
-    ↓
-frp 客户端 (本地)
+frp 服务端 (infra.greydan.xin)
+    ↓ wss://infra.greydan.xin:443
+wstunnel client (127.0.0.1:7443)
+    ↓ TCP
+frpc (连接 127.0.0.1:7443)
     ↓
 Nginx (8080)
     ├── /linchat/api/* → LinChat 后端 (8002)
@@ -140,55 +142,91 @@ Nginx (8081)
 
 ## frpc 内网穿透配置
 
+> **架构说明**: 通过 wstunnel 抗 DPI，链路为：frpc → wstunnel client → wss://infra.greydan.xin:443 → wstunnel server → frps
+
 **配置文件**: `/home/dantsinghua/frp/frpc.toml`
 
 ```toml
-# frp 服务端连接
-serverAddr = "120.25.192.185"
-serverPort = 7000
+# frpc 通过 wstunnel 连接到 frps（wstunnel 已处理加密传输）
+serverAddr = "127.0.0.1"
+serverPort = 7443
+
 auth.method = "token"
-auth.token = "Dantsinghua!9871229"
+auth.token = "frps@Greydan2026!Xin#Secure"
 
-# 日志配置
-log.to = "./frpc.log"
-log.level = "info"
-log.maxDays = 7
+# 直接 TCP，不需要 TLS/WebSocket（wstunnel 已处理）
+transport.protocol = "tcp"
+transport.tls.enable = false
+transport.tcpMux = true
+transport.heartbeatInterval = 10
+transport.heartbeatTimeout = 0
 
-# 穿透规则
+# SSH (stcp 类型，需要 visitor 连接)
 [[proxies]]
-name = "nas-vm-ssh"
-type = "tcp"
+name = "anlin-dev-ssh"
+type = "stcp"
+secretKey = "STCP@Greydan2026!Secret"
 localIP = "127.0.0.1"
 localPort = 22
-remotePort = 6022           # 公网 SSH 端口
 
+# LLM Gateway visitor (连接远端 llm-gateway stcp 服务)
+[[visitors]]
+name = "llm-gateway-visitor"
+type = "stcp"
+serverName = "llm-gateway"
+secretKey = "LLMGateway@2026!Secure"
+bindAddr = "127.0.0.1"
+bindPort = 8100
+
+# OpenClaw Gateway (stcp)
 [[proxies]]
-name = "deeptutor-nginx"
-type = "tcp"
+name = "openclaw-gateway"
+type = "stcp"
+secretKey = "OpenClaw@2026!Gateway"
 localIP = "127.0.0.1"
-localPort = 8080            # Nginx 入口
-remotePort = 6080           # 公网 HTTP 端口
+localPort = 18789
 
+# LinChat Web (HTTP 域名代理)
 [[proxies]]
-name = "deeptutor-domain"
+name = "linchat-web"
 type = "http"
 localIP = "127.0.0.1"
 localPort = 8080
-customDomains = ["www.greydan.xin", "greydan.xin"]
+customDomains = ["www.greydan.xin"]
+locations = ["/linchat"]
+
+# Home Assistant (HTTP 域名代理)
+[[proxies]]
+name = "homeassistant"
+type = "http"
+localIP = "127.0.0.1"
+localPort = 8124
+customDomains = ["ha.greydan.xin"]
+
+# 临时下载服务
+[[proxies]]
+name = "temp-download"
+type = "http"
+localIP = "127.0.0.1"
+localPort = 19999
+customDomains = ["dl.greydan.xin"]
 ```
 
-### frpc 管理命令
+### systemd 服务管理
+
+frpc 和 wstunnel 均由 systemd 管理，**不要手动 nohup 启动**。
 
 ```bash
-# 启动 frpc
-cd /home/dantsinghua/frp
-./frpc -c frpc.toml
+# wstunnel 服务 (/etc/systemd/system/wstunnel.service)
+# ExecStart: wstunnel client -L tcp://127.0.0.1:7443:127.0.0.1:7000 wss://infra.greydan.xin:443
+sudo systemctl start wstunnel    # 启动 wstunnel
+sudo systemctl status wstunnel   # 查看状态
 
-# 后台运行
-nohup ./frpc -c frpc.toml &
-
-# 查看日志
-tail -f /home/dantsinghua/frp/frpc.log
+# frpc 服务 (/etc/systemd/system/frpc.service)
+sudo systemctl restart frpc      # 重启 frpc（修改配置后）
+sudo systemctl status frpc       # 查看状态
+journalctl -u frpc -f            # 查看实时日志
+journalctl -u wstunnel -f        # 查看 wstunnel 日志
 ```
 
 ---
@@ -321,9 +359,9 @@ docker compose up -d
 # 2. 启动 Nginx
 sudo systemctl start nginx
 
-# 3. 启动 frpc
-cd /home/dantsinghua/frp
-nohup ./frpc -c frpc.toml &
+# 3. 启动 wstunnel + frpc (systemd 管理，勿手动 nohup)
+sudo systemctl start wstunnel
+sudo systemctl start frpc
 
 # 4. 启动 LinChat 后端 (⚠️ 必须使用 uvicorn ASGI 模式)
 source /home/dantsinghua/work/linchat/linchat/bin/activate
@@ -355,9 +393,10 @@ docker compose ps
 sudo systemctl status nginx
 curl http://localhost:8080/nginx-health
 
-# 检查 frpc
-ps aux | grep frpc
-tail -f /home/dantsinghua/frp/frpc.log
+# 检查 wstunnel + frpc (systemd 管理)
+sudo systemctl status wstunnel
+sudo systemctl status frpc
+journalctl -u frpc --since "10 min ago"
 
 # 检查端口占用
 ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
@@ -370,7 +409,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 | 前端 404 | 检查是否执行了 `npm run build`，检查 Nginx 配置 |
 | API 502 | 检查后端是否启动，检查虚拟环境是否激活 |
 | 数据库连接失败 | 检查 Docker PostgreSQL 是否运行 |
-| 公网无法访问 | 检查 frpc 是否运行，检查防火墙规则 |
+| 公网无法访问 | 依次检查: `systemctl status wstunnel` → `systemctl status frpc` → Nginx 是否运行 |
 
 ---
 
