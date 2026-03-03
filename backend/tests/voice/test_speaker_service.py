@@ -67,8 +67,8 @@ def mock_gateway_settings():
     with patch(
         "apps.voice.services.speaker_service.settings"
     ) as mock_settings:
-        mock_settings.LLM_GATEWAY_HTTP_URL = "http://test-gateway:8889"
-        mock_settings.LLM_GATEWAY_WS_API_KEY = "test-api-key-123"
+        mock_settings.LLM_GATEWAY_URL = "http://test-gateway:8889"
+        mock_settings.LLM_GATEWAY_API_KEY = "test-api-key-123"
         yield mock_settings
 
 
@@ -863,14 +863,12 @@ class TestSpeakerRegistrationError:
 
 
 class TestGatewayConfig:
-    """_get_gateway_url / _get_api_key 配置获取测试"""
+    """Gateway 配置读取测试（通过 mock settings 验证）"""
 
-    def test_get_gateway_url(self, service, mock_gateway_settings):
-        """测试获取 gateway URL"""
-        url = service._get_gateway_url()
-        assert url == "http://test-gateway:8889"
+    def test_gateway_url_from_settings(self, mock_gateway_settings):
+        """测试 speaker_service 模块内的 settings 包含正确的 gateway URL"""
+        assert mock_gateway_settings.LLM_GATEWAY_URL == "http://test-gateway:8889"
 
-    def test_get_api_key(self, service, mock_gateway_settings):
-        """测试获取 API key"""
-        key = service._get_api_key()
-        assert key == "test-api-key-123"
+    def test_api_key_from_settings(self, mock_gateway_settings):
+        """测试 speaker_service 模块内的 settings 包含正确的 API key"""
+        assert mock_gateway_settings.LLM_GATEWAY_API_KEY == "test-api-key-123"

@@ -39,7 +39,7 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute=0),  # 每小时整点执行
     },
     "clean-expired-media": {
-        "task": "chat.clean_expired_media",
+        "task": "media.clean_expired_media",
         "schedule": crontab(hour=3, minute=0),  # 每日凌晨 3 点
     },
 }

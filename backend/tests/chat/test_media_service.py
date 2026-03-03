@@ -24,8 +24,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from PIL import Image
 
-from apps.chat.models import MediaAttachment
-from apps.chat.services.media_service import (
+from apps.media.models import MediaAttachment
+from apps.media.services.image import get_image_dimensions
+from apps.media.services.upload import (
     SUPPORTED_AUDIO_TYPES,
     SUPPORTED_IMAGE_TYPES,
     SUPPORTED_VIDEO_TYPES,
@@ -84,7 +85,7 @@ class TestMediaServiceValidation:
         assert exc_info.value.code == "INVALID_FILE_TYPE"
         assert "不支持的文件格式" in exc_info.value.message
 
-    @patch("apps.chat.services.media_service.settings")
+    @patch("apps.media.services.upload.settings")
     def test_validate_file_image_too_large(self, mock_settings):
         """测试验证图片文件过大"""
         mock_settings.MEDIA_MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
@@ -98,7 +99,7 @@ class TestMediaServiceValidation:
         assert exc_info.value.code == "FILE_TOO_LARGE"
         assert "超出限制" in exc_info.value.message
 
-    @patch("apps.chat.services.media_service.settings")
+    @patch("apps.media.services.upload.settings")
     def test_validate_file_video_too_large(self, mock_settings):
         """测试验证视频文件过大"""
         mock_settings.MEDIA_MAX_VIDEO_SIZE = 20 * 1024 * 1024  # 20MB
@@ -132,9 +133,9 @@ class TestMediaServiceUpload:
         return buffer.getvalue()
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.settings")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.settings")
     async def test_upload_image_success(
         self, mock_settings, mock_minio, mock_repo, sample_image_bytes
     ):
@@ -164,7 +165,7 @@ class TestMediaServiceUpload:
         mock_repo.create.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.media_service.settings")
+    @patch("apps.media.services.upload.settings")
     async def test_upload_unsupported_type(self, mock_settings):
         """测试上传不支持的文件类型"""
         with pytest.raises(MediaUploadError) as exc_info:
@@ -178,9 +179,9 @@ class TestMediaServiceUpload:
         assert exc_info.value.code == "INVALID_FILE_TYPE"
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.settings")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.settings")
     async def test_upload_image_rgba_conversion(
         self, mock_settings, mock_minio, mock_repo, sample_rgba_image_bytes
     ):
@@ -204,9 +205,9 @@ class TestMediaServiceUpload:
         assert result.height == 300
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.settings")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.settings")
     async def test_upload_image_no_extension(
         self, mock_settings, mock_minio, mock_repo, sample_image_bytes
     ):
@@ -231,7 +232,7 @@ class TestMediaServiceUpload:
 
 
 class TestMediaServiceGetDimensions:
-    """MediaService 图片尺寸获取测试"""
+    """图片尺寸获取测试（独立函数 get_image_dimensions）"""
 
     def test_get_image_dimensions_success(self):
         """测试获取图片尺寸成功"""
@@ -239,14 +240,14 @@ class TestMediaServiceGetDimensions:
         buffer = BytesIO()
         img.save(buffer, format="JPEG")
 
-        width, height = MediaService._get_image_dimensions(buffer.getvalue())
+        width, height = get_image_dimensions(buffer.getvalue())
 
         assert width == 640
         assert height == 480
 
     def test_get_image_dimensions_invalid_data(self):
         """测试无效图片数据返回默认尺寸"""
-        width, height = MediaService._get_image_dimensions(b"not an image")
+        width, height = get_image_dimensions(b"not an image")
 
         assert width == 0
         assert height == 0
@@ -256,7 +257,7 @@ class TestMediaServiceGetAttachment:
     """MediaService 获取附件测试"""
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.media_service.media_attachment_repo")
+    @patch("apps.media.services.upload.media_attachment_repo")
     async def test_get_attachment_success(self, mock_repo):
         """测试获取附件成功"""
         mock_attachment = MagicMock(spec=MediaAttachment)
@@ -272,7 +273,7 @@ class TestMediaServiceGetAttachment:
         mock_repo.get_by_uuid.assert_called_once_with("test-uuid", 123)
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.media_service.media_attachment_repo")
+    @patch("apps.media.services.upload.media_attachment_repo")
     async def test_get_attachment_not_found(self, mock_repo):
         """测试附件不存在返回 None"""
         mock_repo.get_by_uuid = AsyncMock(return_value=None)
@@ -285,7 +286,7 @@ class TestMediaServiceGetAttachment:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.media_service.media_attachment_repo")
+    @patch("apps.media.services.upload.media_attachment_repo")
     async def test_get_attachments_by_uuids_success(self, mock_repo):
         """测试批量获取附件成功"""
         mock_attachments = [
@@ -322,8 +323,8 @@ class TestMediaServiceGetFile:
         attachment.is_expired = True
         return attachment
 
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.settings")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.settings")
     def test_get_media_file_success(self, mock_settings, mock_minio, valid_attachment):
         """测试获取原始文件成功"""
         mock_settings.MINIO_BUCKET_MEDIA = "media"
@@ -348,7 +349,7 @@ class TestMediaServiceAssociate:
     """MediaService 关联附件测试"""
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.media_service.media_attachment_repo")
+    @patch("apps.media.services.upload.media_attachment_repo")
     async def test_associate_attachments_to_message_success(self, mock_repo):
         """测试关联附件到消息成功"""
         mock_attachments = [
@@ -367,13 +368,13 @@ class TestMediaServiceAssociate:
         assert result == 2
         mock_repo.get_by_uuids.assert_called_once_with(["uuid-1", "uuid-2"], 123)
         mock_repo.associate_message.assert_called_once_with(
-            attachment_ids=[1, 2],
-            message_id=100,
-            user_id=123,
+            [1, 2],
+            100,
+            123,
         )
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.media_service.media_attachment_repo")
+    @patch("apps.media.services.upload.media_attachment_repo")
     async def test_associate_attachments_no_valid_attachments(self, mock_repo):
         """测试关联附件但无有效附件返回 0"""
         mock_repo.get_by_uuids = AsyncMock(return_value=[])

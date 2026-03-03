@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.common",
     "apps.users",
     "apps.chat",
+    "apps.media",
     "apps.models",
     "apps.memory",
     "apps.graph",
@@ -399,11 +400,16 @@ CHANNEL_LAYERS = {
     },
 }
 
-# ============ 语音交互配置 (009-voice-interaction) ============
-# llmgateway WebSocket / HTTP 端点
-LLM_GATEWAY_WS_URL = os.getenv("LLM_GATEWAY_WS_URL", "ws://127.0.0.1:8100")
-LLM_GATEWAY_WS_API_KEY = os.getenv("LLM_GATEWAY_WS_API_KEY", "")
-LLM_GATEWAY_HTTP_URL = os.getenv("LLM_GATEWAY_HTTP_URL", "http://127.0.0.1:8100")
+# ============ 语音交互配置 (010-voice-agent-pipeline) ============
+# Gateway ASR/TTS WebSocket 端点（通过 frpc-visitor 127.0.0.1:8100 访问）
+VOICE_ASR_WS_URL = os.getenv("VOICE_ASR_WS_URL", "ws://127.0.0.1:8100/v1/audio/transcriptions/stream")
+VOICE_TTS_URL = os.getenv("VOICE_TTS_URL", "ws://127.0.0.1:8100/v1/audio/speech/stream")
+VOICE_TTS_ENABLED = os.getenv("VOICE_TTS_ENABLED", "true").lower() == "true"
+VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "zf_xiaobei")
+VOICE_TTS_TIMEOUT = int(os.getenv("VOICE_TTS_TIMEOUT", "30"))  # wait_for_done 超时秒数
+VOICE_ASR_SPEECH_PAD_MS = int(os.getenv("VOICE_ASR_SPEECH_PAD_MS", "2000"))
+VOICE_ASR_LANGUAGE = os.getenv("VOICE_ASR_LANGUAGE", "auto")
+VOICE_MAX_SEGMENT_DURATION = int(os.getenv("VOICE_MAX_SEGMENT_DURATION", "60"))  # 单段语音最大时长（秒）
 
 # 语音会话配置
 VOICE_SESSION_TTL = int(os.getenv("VOICE_SESSION_TTL", "120"))  # 会话状态 TTL: 120s

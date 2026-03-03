@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.chat.models import MediaAttachment
+from apps.media.models import MediaAttachment
 
 
 class TestCleanExpiredMedia(TestCase):
@@ -51,7 +51,7 @@ class TestCleanExpiredMedia(TestCase):
             expires_at=expires_at,
         )
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_clean_expired_attachments(self, mock_minio: MagicMock) -> None:
         """过期附件被清理：MinIO 文件删除 + is_expired 标记为 True"""
         mock_minio.delete_file.return_value = True
@@ -76,7 +76,7 @@ class TestCleanExpiredMedia(TestCase):
         assert a1.is_expired is True
         assert a2.is_expired is True
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_empty_result_set(self, mock_minio: MagicMock) -> None:
         """无过期附件时正常返回空统计"""
         from apps.chat.tasks import clean_expired_media
@@ -88,7 +88,7 @@ class TestCleanExpiredMedia(TestCase):
         assert stats["aborted"] is False
         mock_minio.delete_file.assert_not_called()
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_skip_unexpired_attachments(self, mock_minio: MagicMock) -> None:
         """未过期的附件不会被清理"""
         mock_minio.delete_file.return_value = True
@@ -106,7 +106,7 @@ class TestCleanExpiredMedia(TestCase):
         expired.refresh_from_db()
         assert expired.is_expired is True
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_skip_already_expired_attachments(self, mock_minio: MagicMock) -> None:
         """已标记 is_expired=True 的附件不会被重复清理"""
         mock_minio.delete_file.return_value = True
@@ -120,7 +120,7 @@ class TestCleanExpiredMedia(TestCase):
         assert stats["cleaned"] == 0
         mock_minio.delete_file.assert_not_called()
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_single_minio_failure_skips_and_keeps_is_expired_false(
         self, mock_minio: MagicMock
     ) -> None:
@@ -146,7 +146,7 @@ class TestCleanExpiredMedia(TestCase):
         a2.refresh_from_db()
         assert a2.is_expired is True
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_consecutive_failures_abort(self, mock_minio: MagicMock) -> None:
         """连续 10 条 MinIO 删除失败：终止本轮清理并记录 CRITICAL"""
         mock_minio.delete_file.return_value = False
@@ -158,7 +158,7 @@ class TestCleanExpiredMedia(TestCase):
 
         from apps.chat.tasks import clean_expired_media
 
-        with self.assertLogs("apps.chat.tasks", level="CRITICAL") as cm:
+        with self.assertLogs("apps.media.tasks", level="CRITICAL") as cm:
             stats = clean_expired_media()
 
         assert stats["aborted"] is True
@@ -173,7 +173,7 @@ class TestCleanExpiredMedia(TestCase):
             att.refresh_from_db()
             assert att.is_expired is False
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_consecutive_failure_counter_resets_on_success(
         self, mock_minio: MagicMock
     ) -> None:
@@ -192,7 +192,7 @@ class TestCleanExpiredMedia(TestCase):
         assert stats["cleaned"] == 1
         assert stats["failed"] == 9
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_minio_delete_called_with_correct_params(
         self, mock_minio: MagicMock
     ) -> None:
@@ -210,7 +210,7 @@ class TestCleanExpiredMedia(TestCase):
             object_name=att.storage_path,
         )
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_batch_processing(self, mock_minio: MagicMock) -> None:
         """批量处理：超过 batch_size 时多次循环"""
         mock_minio.delete_file.return_value = True

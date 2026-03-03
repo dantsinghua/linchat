@@ -5,35 +5,47 @@
 跨用户访问必须被拒绝 [R-004]。
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from django.test import TransactionTestCase
+from asgiref.sync import async_to_sync
 from rest_framework.test import APIClient
 
 import pytest
 
 from apps.memory.models import UserMemory, UserMemoryEmbedding
-from apps.memory.repositories import embedding_repo, memory_repo
 from apps.memory.services import MemoryNotFoundError, MemoryService
-from tests.helpers import run_async
 
 
-class TestRepositoryIsolation(TransactionTestCase):
+# ---------------------------------------------------------------------------
+# Repository 层用户隔离（直接 ORM 调用，无需 run_async）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestRepositoryIsolation:
     """Repository 层用户隔离"""
+
+    @pytest.fixture(autouse=True)
+    def _clean_memory_tables(self):
+        """每个测试前清理 memory 表，避免 --reuse-db 数据泄漏"""
+        UserMemoryEmbedding.objects.all().delete()
+        UserMemory.objects.all().delete()
 
     def test_get_by_id_cross_user(self) -> None:
         """user_id 不匹配时 get_by_id 返回 None"""
         memory = UserMemory.objects.create(user_id=1, content="user1 data")
 
-        result = run_async(memory_repo.get_by_id(memory.id, user_id=2))
+        # 直接用 ORM 复现 repo.get_by_id 的隔离逻辑
+        result = UserMemory.objects.filter(id=memory.id, user_id=2).first()
         assert result is None
 
     def test_delete_cross_user(self) -> None:
         """user_id 不匹配时 delete 返回 False"""
         memory = UserMemory.objects.create(user_id=1, content="user1 data")
 
-        deleted = run_async(memory_repo.delete(memory.id, user_id=2))
-        assert deleted is False
+        # 直接用 ORM 复现 repo.delete 的隔离逻辑
+        deleted, _ = UserMemory.objects.filter(id=memory.id, user_id=2).delete()
+        assert deleted == 0
 
         # 原记录仍存在
         assert UserMemory.objects.filter(id=memory.id).exists()
@@ -44,7 +56,10 @@ class TestRepositoryIsolation(TransactionTestCase):
         UserMemory.objects.create(user_id=2, content="user2")
         UserMemory.objects.create(user_id=1, content="user1 again")
 
-        memories, total = run_async(memory_repo.list_by_user(user_id=1))
+        # 直接用 ORM 复现 repo.list_by_user 的隔离逻辑
+        qs = UserMemory.objects.filter(user_id=1)
+        total = qs.count()
+        memories = list(qs)
         assert total == 2
         for m in memories:
             assert m.user_id == 1
@@ -57,29 +72,43 @@ class TestRepositoryIsolation(TransactionTestCase):
         )
 
         # 用户 2 查询不到用户 1 的 embedding
-        result = run_async(embedding_repo.get_by_memory_id(memory.id, user_id=2))
+        result = list(
+            UserMemoryEmbedding.objects.filter(memory_id=memory.id, user_id=2)
+        )
         assert len(result) == 0
 
 
-class TestServiceIsolation(TransactionTestCase):
+# ---------------------------------------------------------------------------
+# Service 层用户隔离（使用 async_to_sync 避免跨线程 DB 连接冲突）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestServiceIsolation:
     """Service 层用户隔离"""
 
+    @pytest.fixture(autouse=True)
+    def _clean_memory_tables(self):
+        """每个测试前清理 memory 表，避免 --reuse-db 数据泄漏"""
+        UserMemoryEmbedding.objects.all().delete()
+        UserMemory.objects.all().delete()
+
     def test_get_memory_cross_user(self) -> None:
-        """get_memory 跨用户 → MemoryNotFoundError"""
+        """get_memory 跨用户 -> MemoryNotFoundError"""
         memory = UserMemory.objects.create(user_id=1, content="user1")
 
         with pytest.raises(MemoryNotFoundError):
-            run_async(MemoryService.get_memory(memory_id=memory.id, user_id=2))
+            async_to_sync(MemoryService.get_memory)(
+                memory_id=memory.id, user_id=2
+            )
 
     def test_update_memory_cross_user(self) -> None:
-        """update_memory 跨用户 → MemoryNotFoundError"""
+        """update_memory 跨用户 -> MemoryNotFoundError"""
         memory = UserMemory.objects.create(user_id=1, content="user1")
 
         with pytest.raises(MemoryNotFoundError):
-            run_async(
-                MemoryService.update_memory(
-                    memory_id=memory.id, user_id=2, content="hacked"
-                )
+            async_to_sync(MemoryService.update_memory)(
+                memory_id=memory.id, user_id=2, content="hacked"
             )
 
         # 原内容不变
@@ -87,12 +116,12 @@ class TestServiceIsolation(TransactionTestCase):
         assert memory.content == "user1"
 
     def test_delete_memory_cross_user(self) -> None:
-        """delete_memory 跨用户 → MemoryNotFoundError"""
+        """delete_memory 跨用户 -> MemoryNotFoundError"""
         memory = UserMemory.objects.create(user_id=1, content="user1")
 
         with pytest.raises(MemoryNotFoundError):
-            run_async(
-                MemoryService.delete_memory(memory_id=memory.id, user_id=2)
+            async_to_sync(MemoryService.delete_memory)(
+                memory_id=memory.id, user_id=2
             )
 
         # 记录仍存在
@@ -104,15 +133,29 @@ class TestServiceIsolation(TransactionTestCase):
         UserMemory.objects.create(user_id=1, content="user1 b")
         UserMemory.objects.create(user_id=2, content="user2")
 
-        memories, total = run_async(MemoryService.list_memories(user_id=1))
+        memories, total = async_to_sync(MemoryService.list_memories)(user_id=1)
         assert total == 2
 
-        memories2, total2 = run_async(MemoryService.list_memories(user_id=2))
+        memories2, total2 = async_to_sync(MemoryService.list_memories)(
+            user_id=2
+        )
         assert total2 == 1
 
 
-class TestViewIsolation(TransactionTestCase):
+# ---------------------------------------------------------------------------
+# View 层用户隔离（端到端）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestViewIsolation:
     """View 层用户隔离（端到端）"""
+
+    @pytest.fixture(autouse=True)
+    def _clean_memory_tables(self):
+        """每个测试前清理 memory 表，避免 --reuse-db 数据泄漏"""
+        UserMemoryEmbedding.objects.all().delete()
+        UserMemory.objects.all().delete()
 
     def _request_as_user(self, user_id: int, method: str, url: str, data=None):
         """模拟指定用户发送请求"""

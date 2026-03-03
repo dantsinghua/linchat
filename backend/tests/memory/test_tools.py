@@ -90,7 +90,7 @@ class TestMemoryTools:
         assert "42" in result
         assert "已保存" in result
         mock_create.assert_called_once_with(
-            user_id=1, content="新记忆", name=None,
+            user_id=1, content="新记忆", name=None, tag=None,
         )
 
     @patch(f"{_SVC}.update_memory", new_callable=AsyncMock)
@@ -105,7 +105,7 @@ class TestMemoryTools:
 
         assert "已更新" in result
         mock_update.assert_called_once_with(
-            memory_id=10, user_id=1, content="更新内容",
+            memory_id=10, user_id=1, content="更新内容", tag=None,
         )
 
     @patch(f"{_SVC}.update_memory", new_callable=AsyncMock)

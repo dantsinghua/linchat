@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from minio.error import S3Error
 
-from apps.chat.services.minio_service import MinioService
+from apps.common.storage.minio_service import MinioService
 
 
 class TestMinioService:
@@ -320,8 +320,8 @@ class TestMinioService:
 
     # ============ client 懒加载测试 ============
 
-    @patch("apps.chat.services.minio_service.settings")
-    @patch("apps.chat.services.minio_service.Minio")
+    @patch("apps.common.storage.minio_service.settings")
+    @patch("apps.common.storage.minio_service.Minio")
     def test_client_lazy_loading(self, mock_minio_class, mock_settings):
         """测试客户端懒加载"""
         mock_settings.MINIO_ENDPOINT = "localhost:9000"

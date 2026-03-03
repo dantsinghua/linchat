@@ -22,8 +22,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from django.utils import timezone
 
-from apps.chat.models import MediaAttachment
-from apps.chat.repositories import MediaAttachmentRepository
+from apps.media.models import MediaAttachment
+from apps.media.repositories import MediaAttachmentRepository
 
 
 def _make_attachment(**overrides) -> MagicMock:
@@ -59,7 +59,7 @@ class TestMediaAttachmentRepository:
     # ============ get_by_uuid 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_get_by_uuid_found(self, mock_objects, repo):
         """按 UUID 查询：存在且所有权匹配"""
         expected = _make_attachment()
@@ -73,7 +73,7 @@ class TestMediaAttachmentRepository:
         )
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_get_by_uuid_not_found(self, mock_objects, repo):
         """按 UUID 查询：不存在"""
         mock_objects.get.side_effect = MediaAttachment.DoesNotExist
@@ -83,7 +83,7 @@ class TestMediaAttachmentRepository:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_get_by_uuid_wrong_user(self, mock_objects, repo):
         """按 UUID 查询：UUID 存在但所有权不匹配返回 None [R_DATA_001]"""
         mock_objects.get.side_effect = MediaAttachment.DoesNotExist
@@ -98,7 +98,7 @@ class TestMediaAttachmentRepository:
     # ============ get_by_uuid_any_user 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_get_by_uuid_any_user_found(self, mock_objects, repo):
         """按 UUID 查询（不校验所有权）：存在"""
         expected = _make_attachment()
@@ -110,7 +110,7 @@ class TestMediaAttachmentRepository:
         mock_objects.get.assert_called_once_with(attachment_uuid="test-uuid-001")
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_get_by_uuid_any_user_not_found(self, mock_objects, repo):
         """按 UUID 查询（不校验所有权）：不存在"""
         mock_objects.get.side_effect = MediaAttachment.DoesNotExist
@@ -122,7 +122,7 @@ class TestMediaAttachmentRepository:
     # ============ get_by_uuids 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_get_by_uuids_all_found(self, mock_objects, repo):
         """批量查询：全部找到"""
         a1 = _make_attachment(attachment_uuid="uuid-1")
@@ -139,7 +139,7 @@ class TestMediaAttachmentRepository:
         )
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_get_by_uuids_partial_user_filter(self, mock_objects, repo):
         """批量查询：user_id 过滤仅返回属于该用户的附件 [R_DATA_001]"""
         a_mine = _make_attachment(attachment_uuid="uuid-mine")
@@ -155,7 +155,7 @@ class TestMediaAttachmentRepository:
         )
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_get_by_uuids_empty_list(self, mock_objects, repo):
         """批量查询：空列表"""
         mock_qs = MagicMock()
@@ -195,7 +195,7 @@ class TestMediaAttachmentRepository:
     # ============ associate_message 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_associate_message_success(self, mock_objects, repo):
         """关联附件到消息"""
         mock_qs = MagicMock()
@@ -213,7 +213,7 @@ class TestMediaAttachmentRepository:
         mock_qs.update.assert_called_once_with(message_id=100)
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_associate_message_wrong_user(self, mock_objects, repo):
         """关联附件到消息：附件不属于当前用户 [R_DATA_001]"""
         mock_qs = MagicMock()
@@ -227,7 +227,7 @@ class TestMediaAttachmentRepository:
         assert count == 0
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_associate_message_empty_ids(self, mock_objects, repo):
         """关联附件到消息：空 ID 列表"""
         mock_qs = MagicMock()
@@ -243,7 +243,7 @@ class TestMediaAttachmentRepository:
     # ============ find_expired 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_find_expired_found(self, mock_objects, repo):
         """查询过期附件：有过期未标记记录"""
         expired_att = _make_attachment(is_expired=False, file_name="expired.jpg")
@@ -260,7 +260,7 @@ class TestMediaAttachmentRepository:
         )
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_find_expired_empty(self, mock_objects, repo):
         """查询过期附件：无过期记录"""
         mock_qs = MagicMock()
@@ -272,7 +272,7 @@ class TestMediaAttachmentRepository:
         assert len(result) == 0
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_find_expired_custom_limit(self, mock_objects, repo):
         """查询过期附件：自定义 limit"""
         items = [_make_attachment(attachment_id=i) for i in range(3)]
@@ -287,7 +287,7 @@ class TestMediaAttachmentRepository:
     # ============ mark_expired 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_mark_expired_success(self, mock_objects, repo):
         """批量标记过期"""
         mock_qs = MagicMock()
@@ -301,7 +301,7 @@ class TestMediaAttachmentRepository:
         mock_qs.update.assert_called_once_with(is_expired=True)
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_mark_expired_empty_list(self, mock_objects, repo):
         """批量标记过期：空列表"""
         mock_qs = MagicMock()
@@ -315,7 +315,7 @@ class TestMediaAttachmentRepository:
     # ============ 按 message_id 关联查询测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.repositories.MediaAttachment.objects")
+    @patch("apps.media.repositories.MediaAttachment.objects")
     async def test_associate_and_query_by_message(self, mock_objects, repo):
         """验证关联后通过 message_id + user_id 可查询到附件"""
         a1 = _make_attachment(attachment_id=1, message_id=100)

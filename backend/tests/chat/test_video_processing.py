@@ -3,7 +3,7 @@
 
 覆盖:
 - MediaService.upload(): 视频上传处理（格式校验、大小校验 ≤50MB）
-- MediaService._get_video_duration(): 视频时长检测
+- get_video_duration(): 视频时长检测
 - MediaService.validate_file(): 视频格式和大小校验
 - build_multimodal_messages(): 视频消息格式构建
 - Langfuse trace 验证: media_types 含 "video"、model 为 minicpm-v
@@ -18,13 +18,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from apps.chat.models import MediaAttachment
-from apps.chat.services.media_service import (
+from apps.media.models import MediaAttachment
+from apps.media.services.upload import (
     MAX_VIDEO_DURATION,
     SUPPORTED_VIDEO_TYPES,
     MediaService,
     MediaUploadError,
 )
+from apps.media.services.video import get_video_duration
 
 
 def run_async(coro):
@@ -101,7 +102,7 @@ class TestVideoValidation:
 class TestVideoDuration:
     """视频时长检测测试"""
 
-    @patch("apps.chat.services.media_service.subprocess.run")
+    @patch("apps.media.services.video.subprocess.run")
     def test_get_duration_success(self, mock_run):
         """成功获取视频时长"""
         mock_run.return_value = MagicMock(
@@ -109,11 +110,11 @@ class TestVideoDuration:
             stdout=json.dumps({"format": {"duration": "15.5"}}),
             stderr="",
         )
-        duration = MediaService._get_video_duration(b"fake-video-bytes")
+        duration = get_video_duration(b"fake-video-bytes")
         assert duration == 15.5
         mock_run.assert_called_once()
 
-    @patch("apps.chat.services.media_service.subprocess.run")
+    @patch("apps.media.services.video.subprocess.run")
     def test_get_duration_ffprobe_failure(self, mock_run):
         """ffprobe 执行失败返回 None"""
         mock_run.return_value = MagicMock(
@@ -121,10 +122,10 @@ class TestVideoDuration:
             stdout="",
             stderr="Error",
         )
-        duration = MediaService._get_video_duration(b"fake-video-bytes")
+        duration = get_video_duration(b"fake-video-bytes")
         assert duration is None
 
-    @patch("apps.chat.services.media_service.subprocess.run")
+    @patch("apps.media.services.video.subprocess.run")
     def test_get_duration_invalid_json(self, mock_run):
         """ffprobe 输出无效 JSON 返回 None"""
         mock_run.return_value = MagicMock(
@@ -132,19 +133,19 @@ class TestVideoDuration:
             stdout="not json",
             stderr="",
         )
-        duration = MediaService._get_video_duration(b"fake-video-bytes")
+        duration = get_video_duration(b"fake-video-bytes")
         assert duration is None
 
-    @patch("apps.chat.services.media_service.subprocess.run")
+    @patch("apps.media.services.video.subprocess.run")
     def test_get_duration_timeout(self, mock_run):
         """ffprobe 超时返回 None"""
         import subprocess
 
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="ffprobe", timeout=10)
-        duration = MediaService._get_video_duration(b"fake-video-bytes")
+        duration = get_video_duration(b"fake-video-bytes")
         assert duration is None
 
-    @patch("apps.chat.services.media_service.subprocess.run")
+    @patch("apps.media.services.video.subprocess.run")
     def test_get_duration_rounding(self, mock_run):
         """时长精度保留两位小数"""
         mock_run.return_value = MagicMock(
@@ -152,7 +153,7 @@ class TestVideoDuration:
             stdout=json.dumps({"format": {"duration": "30.12345"}}),
             stderr="",
         )
-        duration = MediaService._get_video_duration(b"fake")
+        duration = get_video_duration(b"fake")
         assert duration == 30.12
 
 
@@ -162,9 +163,9 @@ class TestVideoDuration:
 class TestVideoUpload:
     """视频上传完整流程测试"""
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.get_video_duration")
     def test_upload_video_success(self, mock_duration, mock_minio, mock_repo):
         """视频上传成功"""
         mock_duration.return_value = 30.0
@@ -189,9 +190,9 @@ class TestVideoUpload:
         mock_minio.upload_bytes.assert_called_once()
         mock_repo.create.assert_called_once()
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.get_video_duration")
     def test_upload_video_duration_too_long(self, mock_duration, mock_minio, mock_repo):
         """视频时长超过 60 秒拒绝上传"""
         mock_duration.return_value = 75.0
@@ -213,9 +214,9 @@ class TestVideoUpload:
         mock_minio.upload_bytes.assert_not_called()
         mock_repo.create.assert_not_called()
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.get_video_duration")
     def test_upload_video_at_duration_limit(self, mock_duration, mock_minio, mock_repo):
         """视频恰好 60 秒上传成功"""
         mock_duration.return_value = 60.0
@@ -233,9 +234,9 @@ class TestVideoUpload:
         )
         assert attachment.duration_seconds == 60.0
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.get_video_duration")
     def test_upload_video_duration_detection_fails(
         self, mock_duration, mock_minio, mock_repo
     ):
@@ -257,8 +258,8 @@ class TestVideoUpload:
         assert attachment.duration_seconds is None
         mock_minio.upload_bytes.assert_called_once()
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
     def test_upload_image_via_general_upload(self, mock_minio, mock_repo):
         """通用 upload() 方法处理图片"""
         mock_repo.create = AsyncMock(side_effect=lambda att: att)
@@ -287,8 +288,8 @@ class TestVideoUpload:
         assert attachment.height == 200
         assert attachment.duration_seconds is None
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
     def test_upload_document_via_general_upload(self, mock_minio, mock_repo):
         """通用 upload() 方法处理文档"""
         mock_repo.create = AsyncMock(side_effect=lambda att: att)
@@ -308,9 +309,9 @@ class TestVideoUpload:
         assert attachment.width is None
         assert attachment.duration_seconds is None
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.get_video_duration")
     def test_upload_video_storage_path_format(
         self, mock_duration, mock_minio, mock_repo
     ):
@@ -339,8 +340,8 @@ class TestVideoUpload:
 class TestBuildMultimodalMessagesVideo:
     """build_multimodal_messages 视频支持测试"""
 
-    @patch("apps.graph.agent._preprocess_video", return_value=b"processed-video")
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.media.services.video.preprocess_video", return_value=b"processed-video")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_video_message_format(self, mock_minio, mock_preprocess):
         """视频附件经预处理后生成 video_url 格式消息"""
         from apps.graph.agent import build_multimodal_messages
@@ -368,8 +369,8 @@ class TestBuildMultimodalMessagesVideo:
         # 验证调用了预处理
         mock_preprocess.assert_called_once_with(b"video-bytes")
 
-    @patch("apps.graph.agent._preprocess_video", return_value=b"processed")
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.media.services.video.preprocess_video", return_value=b"processed")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_video_uses_minicpm_o_model(self, mock_minio, mock_preprocess):
         """视频附件推理使用 minicpm-o 模型"""
         from apps.graph.agent import build_multimodal_messages
@@ -386,8 +387,8 @@ class TestBuildMultimodalMessagesVideo:
         _, media_types = build_multimodal_messages("描述", [video_att])
         assert media_types == ["video"]
 
-    @patch("apps.graph.agent._preprocess_video", return_value=b"processed")
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.media.services.video.preprocess_video", return_value=b"processed")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_mixed_video_image_uses_minicpm_o(self, mock_minio, mock_preprocess):
         """图片+视频混合附件使用 minicpm-o"""
         from apps.graph.agent import build_multimodal_messages
@@ -414,8 +415,8 @@ class TestBuildMultimodalMessagesVideo:
         assert "image" in media_types
         assert "video" in media_types
 
-    @patch("apps.graph.agent._preprocess_video", return_value=b"processed")
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.media.services.video.preprocess_video", return_value=b"processed")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_mixed_video_audio_uses_minicpm_o(self, mock_minio, mock_preprocess):
         """视频+音频混合附件使用 minicpm-o（音频优先级最高）"""
         from apps.graph.agent import build_multimodal_messages
@@ -442,7 +443,7 @@ class TestBuildMultimodalMessagesVideo:
         assert "video" in media_types
         assert "audio" in media_types
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_video_attachment_download_failure(self, mock_minio):
         """视频附件下载失败添加错误提示"""
         from apps.graph.agent import build_multimodal_messages
@@ -473,8 +474,8 @@ class TestBuildMultimodalMessagesVideo:
 class TestVideoLangfuseTrace:
     """验证视频推理 Langfuse trace 元数据"""
 
-    @patch("apps.graph.agent._preprocess_video", return_value=b"processed")
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.media.services.video.preprocess_video", return_value=b"processed")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_video_trace_media_types(self, mock_minio, mock_preprocess):
         """视频附件推理后 media_types 含 'video'"""
         from apps.graph.agent import build_multimodal_messages
@@ -495,8 +496,8 @@ class TestVideoLangfuseTrace:
         # Langfuse trace 中应记录的元数据
         assert "video" in media_types
 
-    @patch("apps.graph.agent._preprocess_video", return_value=b"processed")
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.media.services.video.preprocess_video", return_value=b"processed")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_video_trace_model_is_minicpm_o(self, mock_minio, mock_preprocess):
         """视频推理 Langfuse span 使用 minicpm-o 模型"""
         from apps.graph.agent import build_multimodal_messages
@@ -523,7 +524,7 @@ class TestVideoLangfuseTrace:
 class TestPreprocessVideo:
     """_preprocess_video 单元测试"""
 
-    @patch("apps.graph.agent.subprocess.run")
+    @patch("apps.media.services.video.subprocess.run")
     def test_preprocess_success(self, mock_run):
         """预处理成功返回处理后的字节"""
         from apps.graph.agent import _preprocess_video
@@ -548,7 +549,7 @@ class TestPreprocessVideo:
         assert "10" in call_cmd  # 10fps
         assert "-an" in call_cmd  # 去音轨
 
-    @patch("apps.graph.agent.subprocess.run")
+    @patch("apps.media.services.video.subprocess.run")
     def test_preprocess_ffmpeg_failure_returns_original(self, mock_run):
         """ffmpeg 失败时降级返回原始字节"""
         from apps.graph.agent import _preprocess_video
@@ -558,7 +559,7 @@ class TestPreprocessVideo:
         result = _preprocess_video(b"original-bytes")
         assert result == b"original-bytes"
 
-    @patch("apps.graph.agent.subprocess.run")
+    @patch("apps.media.services.video.subprocess.run")
     def test_preprocess_timeout_returns_original(self, mock_run):
         """ffmpeg 超时返回原始字节"""
         import subprocess

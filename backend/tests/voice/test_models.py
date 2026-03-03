@@ -138,8 +138,8 @@ class TestSpeakerProfile:
 
     def test_verbose_name(self):
         """测试 verbose_name"""
-        assert SpeakerProfile._meta.verbose_name == "声纹档案"
-        assert SpeakerProfile._meta.verbose_name_plural == "声纹档案"
+        assert SpeakerProfile._meta.verbose_name == "speaker profile"
+        assert SpeakerProfile._meta.verbose_name_plural == "speaker profiles"
 
     def test_auto_now_add_enrolled_at(self, speaker_profile):
         """测试 enrolled_at 自动设置"""
@@ -274,8 +274,8 @@ class TestRegisteredDevice:
 
     def test_verbose_name(self):
         """测试 verbose_name"""
-        assert RegisteredDevice._meta.verbose_name == "注册设备"
-        assert RegisteredDevice._meta.verbose_name_plural == "注册设备"
+        assert RegisteredDevice._meta.verbose_name == "registered device"
+        assert RegisteredDevice._meta.verbose_name_plural == "registered devices"
 
     def test_related_name(self, registered_device, user):
         """测试反向关联名称 registered_devices"""
@@ -436,8 +436,8 @@ class TestVoiceSettings:
 
     def test_verbose_name(self):
         """测试 verbose_name"""
-        assert VoiceSettings._meta.verbose_name == "语音设置"
-        assert VoiceSettings._meta.verbose_name_plural == "语音设置"
+        assert VoiceSettings._meta.verbose_name == "voice settings"
+        assert VoiceSettings._meta.verbose_name_plural == "voice settingss"
 
     def test_related_name(self, voice_settings, user):
         """测试反向关联名称 voice_settings"""

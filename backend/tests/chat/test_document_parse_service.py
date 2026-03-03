@@ -29,7 +29,7 @@ class TestDocumentParseService:
 
     # ============ _get_gateway_url 测试 ============
 
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.settings")
     def test_get_gateway_url_configured(self, mock_settings):
         """测试已配置 Gateway URL"""
         mock_settings.LLM_GATEWAY_URL = "http://gateway:8100"
@@ -38,7 +38,7 @@ class TestDocumentParseService:
 
         assert url == "http://gateway:8100"
 
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.settings")
     def test_get_gateway_url_not_configured(self, mock_settings):
         """测试未配置 Gateway URL 抛出异常"""
         mock_settings.LLM_GATEWAY_URL = ""
@@ -51,10 +51,10 @@ class TestDocumentParseService:
     # ============ create_parse_task 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.record_gateway_span")
-    @patch("apps.chat.services.document_parse_service.build_gateway_headers")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.record_gateway_span")
+    @patch("apps.media.services.document.build_gateway_headers")
+    @patch("apps.media.services.document.httpx.AsyncClient")
+    @patch("apps.media.services.document.settings")
     async def test_create_parse_task_success(
         self, mock_settings, mock_client_class, mock_build_headers, mock_record_span
     ):
@@ -93,10 +93,10 @@ class TestDocumentParseService:
         assert call_kwargs.kwargs["headers"] == expected_headers
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.record_gateway_span")
-    @patch("apps.chat.services.document_parse_service.build_gateway_headers")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.record_gateway_span")
+    @patch("apps.media.services.document.build_gateway_headers")
+    @patch("apps.media.services.document.httpx.AsyncClient")
+    @patch("apps.media.services.document.settings")
     async def test_create_parse_task_invalid_file(
         self, mock_settings, mock_client_class, mock_build_headers, mock_record_span
     ):
@@ -131,10 +131,10 @@ class TestDocumentParseService:
         assert exc_info.value.code == "E6002"
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.record_gateway_span")
-    @patch("apps.chat.services.document_parse_service.build_gateway_headers")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.record_gateway_span")
+    @patch("apps.media.services.document.build_gateway_headers")
+    @patch("apps.media.services.document.httpx.AsyncClient")
+    @patch("apps.media.services.document.settings")
     async def test_create_parse_task_timeout(
         self, mock_settings, mock_client_class, mock_build_headers, mock_record_span
     ):
@@ -161,9 +161,9 @@ class TestDocumentParseService:
     # ============ poll_task_status 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.build_gateway_headers")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.build_gateway_headers")
+    @patch("apps.media.services.document.httpx.AsyncClient")
+    @patch("apps.media.services.document.settings")
     async def test_poll_task_completed(self, mock_settings, mock_client_class, mock_build_headers):
         """测试轮询到完成状态"""
         mock_settings.LLM_GATEWAY_URL = "http://gateway:8100"
@@ -189,9 +189,9 @@ class TestDocumentParseService:
         assert result["progress"]["current"] == 10
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.build_gateway_headers")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.build_gateway_headers")
+    @patch("apps.media.services.document.httpx.AsyncClient")
+    @patch("apps.media.services.document.settings")
     async def test_poll_task_failed(self, mock_settings, mock_client_class, mock_build_headers):
         """测试轮询到失败状态"""
         mock_settings.LLM_GATEWAY_URL = "http://gateway:8100"
@@ -217,9 +217,9 @@ class TestDocumentParseService:
         assert result["error_message"] == "解析失败"
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.build_gateway_headers")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.build_gateway_headers")
+    @patch("apps.media.services.document.httpx.AsyncClient")
+    @patch("apps.media.services.document.settings")
     async def test_poll_task_not_found(self, mock_settings, mock_client_class, mock_build_headers):
         """测试轮询不存在的任务"""
         mock_settings.LLM_GATEWAY_URL = "http://gateway:8100"
@@ -248,9 +248,9 @@ class TestDocumentParseService:
     # ============ get_task_result 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.build_gateway_headers")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.build_gateway_headers")
+    @patch("apps.media.services.document.httpx.AsyncClient")
+    @patch("apps.media.services.document.settings")
     async def test_get_result_markdown(self, mock_settings, mock_client_class, mock_build_headers):
         """测试获取 Markdown 结果"""
         mock_settings.LLM_GATEWAY_URL = "http://gateway:8100"
@@ -272,9 +272,9 @@ class TestDocumentParseService:
         assert result == "# Title\n\nContent here"
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.build_gateway_headers")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.build_gateway_headers")
+    @patch("apps.media.services.document.httpx.AsyncClient")
+    @patch("apps.media.services.document.settings")
     async def test_get_result_json(self, mock_settings, mock_client_class, mock_build_headers):
         """测试获取 JSON 结果"""
         mock_settings.LLM_GATEWAY_URL = "http://gateway:8100"
@@ -302,9 +302,9 @@ class TestDocumentParseService:
         assert result == expected_json
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.build_gateway_headers")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.build_gateway_headers")
+    @patch("apps.media.services.document.httpx.AsyncClient")
+    @patch("apps.media.services.document.settings")
     async def test_get_result_task_not_completed(self, mock_settings, mock_client_class, mock_build_headers):
         """测试任务未完成时获取结果"""
         mock_settings.LLM_GATEWAY_URL = "http://gateway:8100"
@@ -333,9 +333,9 @@ class TestDocumentParseService:
     # ============ auth_header 验证 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.build_gateway_headers")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.build_gateway_headers")
+    @patch("apps.media.services.document.httpx.AsyncClient")
+    @patch("apps.media.services.document.settings")
     async def test_auth_header_sent(self, mock_settings, mock_client_class, mock_build_headers):
         """测试所有 httpx 请求使用 build_gateway_headers 构建 headers"""
         mock_settings.LLM_GATEWAY_URL = "http://gateway:8100"
@@ -362,10 +362,10 @@ class TestDocumentParseService:
     # ============ _poll_and_notify 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.EventService.publish_event")
-    @patch("apps.chat.services.document_parse_service.DocumentParseService.poll_task_status")
-    @patch("apps.chat.services.document_parse_service.asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.EventService.publish_event")
+    @patch("apps.media.services.document.DocumentParseService.poll_task_status")
+    @patch("apps.media.services.document.asyncio.sleep", new_callable=AsyncMock)
+    @patch("apps.media.services.document.settings")
     async def test_poll_and_notify_completed(
         self, mock_settings, mock_sleep, mock_poll, mock_publish
     ):
@@ -393,10 +393,10 @@ class TestDocumentParseService:
         assert second_call_data["status"] == "completed"
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.EventService.publish_event")
-    @patch("apps.chat.services.document_parse_service.DocumentParseService.poll_task_status")
-    @patch("apps.chat.services.document_parse_service.asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.EventService.publish_event")
+    @patch("apps.media.services.document.DocumentParseService.poll_task_status")
+    @patch("apps.media.services.document.asyncio.sleep", new_callable=AsyncMock)
+    @patch("apps.media.services.document.settings")
     async def test_poll_and_notify_timeout(
         self, mock_settings, mock_sleep, mock_poll, mock_publish
     ):
@@ -420,10 +420,10 @@ class TestDocumentParseService:
         assert "超时" in last_call_data["error_message"]
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.EventService.publish_event")
-    @patch("apps.chat.services.document_parse_service.DocumentParseService.poll_task_status")
-    @patch("apps.chat.services.document_parse_service.asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.EventService.publish_event")
+    @patch("apps.media.services.document.DocumentParseService.poll_task_status")
+    @patch("apps.media.services.document.asyncio.sleep", new_callable=AsyncMock)
+    @patch("apps.media.services.document.settings")
     async def test_poll_and_notify_failed(
         self, mock_settings, mock_sleep, mock_poll, mock_publish
     ):
@@ -446,10 +446,10 @@ class TestDocumentParseService:
         assert call_data["error_message"] == "解析引擎错误"
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.EventService.publish_event")
-    @patch("apps.chat.services.document_parse_service.DocumentParseService.poll_task_status")
-    @patch("apps.chat.services.document_parse_service.asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.EventService.publish_event")
+    @patch("apps.media.services.document.DocumentParseService.poll_task_status")
+    @patch("apps.media.services.document.asyncio.sleep", new_callable=AsyncMock)
+    @patch("apps.media.services.document.settings")
     async def test_progress_event_published(
         self, mock_settings, mock_sleep, mock_poll, mock_publish
     ):
@@ -482,8 +482,8 @@ class TestDocumentParseService:
     # ============ Gateway 错误响应处理测试（通过 _gateway_request） ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.record_gateway_span")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
+    @patch("apps.media.services.document.record_gateway_span")
+    @patch("apps.media.services.document.httpx.AsyncClient")
     async def test_gateway_request_error_with_json(self, mock_client_cls, mock_span):
         """测试 Gateway 返回 JSON 格式错误时解析为 DocumentParseError"""
         mock_response = MagicMock()
@@ -512,8 +512,8 @@ class TestDocumentParseService:
         assert exc_info.value.code == "E3001"
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.document_parse_service.record_gateway_span")
-    @patch("apps.chat.services.document_parse_service.httpx.AsyncClient")
+    @patch("apps.media.services.document.record_gateway_span")
+    @patch("apps.media.services.document.httpx.AsyncClient")
     async def test_gateway_request_error_without_json(self, mock_client_cls, mock_span):
         """测试 Gateway 返回非 JSON 格式错误"""
         mock_response = MagicMock()
@@ -539,9 +539,9 @@ class TestDocumentParseService:
 
     @pytest.mark.asyncio
     @patch("core.redis.get_redis", new_callable=AsyncMock)
-    @patch("apps.chat.services.document_parse_service.asyncio.create_task")
-    @patch("apps.chat.services.document_parse_service.DocumentParseService.create_parse_task")
-    @patch("apps.chat.services.document_parse_service.settings")
+    @patch("apps.media.services.document.asyncio.create_task")
+    @patch("apps.media.services.document.DocumentParseService.create_parse_task")
+    @patch("apps.media.services.document.settings")
     async def test_parse_document_success(
         self, mock_settings, mock_create, mock_create_task, mock_get_redis
     ):
@@ -572,8 +572,8 @@ class TestDocumentParseService:
             "status": "pending",
         }
 
-        with patch("apps.chat.repositories.media_attachment_repo", mock_repo):
-            with patch("apps.chat.services.minio_service.minio_service", mock_minio):
+        with patch("apps.media.repositories.media_attachment_repo", mock_repo):
+            with patch("apps.common.storage.minio_service.minio_service", mock_minio):
                 result = await DocumentParseService.parse_document(
                     user_id=123,
                     attachment_uuid="test-uuid",
