@@ -10,13 +10,13 @@
 
 | 文件 | 职责 | 全局实例 |
 |------|------|---------|
-| `asr_stream_client.py` | Gateway ASR WebSocket 流式客户端（连接/配置/音频转发/事件接收） | 无（每个 Consumer 创建） |
-| `tts_stream_client.py` | Gateway TTS 流式 WebSocket 客户端（文本输入/PCM 音频输出） | 无（每次 pipeline 创建） |
-| `voice_pipeline.py` | 语音推理管道编排（ASR→Agent→TTS + 持久化 + 持续监听） | 无（静态方法） |
-| `voice_session_service.py` | 语音会话生命周期 + Redis 状态 + 音频缓存 + 频率限制 | `voice_session_service` |
-| `voice_persist_service.py` | PCM→WAV 转换 + MinIO 上传/删除 | `voice_persist_service` |
-| `speaker_service.py` | 声纹注册/删除/识别（对接 Gateway HTTP） | `speaker_service` |
-| `device_service.py` | 设备注册/Token 管理（SM4 加密） | `device_service` |
+| `asr_stream_client.py` | Gateway ASR WebSocket 流式客户端（连接/配置/音频转发/事件接收循环） | 无（每个 Consumer 创建） |
+| `tts_stream_client.py` | Gateway TTS 流式 WebSocket 客户端（text.delta 输入 / PCM 音频输出 / sentence 事件 / audio.done） | 无（每次 pipeline 创建） |
+| `voice_pipeline.py` | 语音推理管道编排（ASR→Agent→TTS + 持久化 + 持续监听 + barge-in 打断） | 无（静态方法 + 类方法） |
+| `voice_session_service.py` | 语音会话生命周期 + Redis 状态 + 音频缓存（base64 编码 PCM）+ LLM 频率限制 | `voice_session_service` |
+| `voice_persist_service.py` | PCM→WAV 转换 + MinIO 上传/删除（事务补偿） | `voice_persist_service` |
+| `speaker_service.py` | 声纹注册/删除/识别（对接 Gateway HTTP /v1/voice/speakers） | `speaker_service` |
+| `device_service.py` | 设备注册/Token 管理（SM4 加密/解密匹配） | `device_service` |
 | `response_decision_service.py` | 唤醒词检测 + 响应决策（RESPOND/RECORD_ONLY/STOP） | `response_decision_service` |
 | `voice_settings_service.py` | 语音设置 CRUD（get_or_create + update） | `voice_settings_service` |
 
@@ -29,10 +29,12 @@ VoiceConsumer
   ├── ASRStreamClient        — Gateway ASR WebSocket 通信
   ├── voice_session_service  — 会话状态 / 音频缓存 / 频率限制
   ├── VoicePipeline          — Agent + TTS 编排 + 持久化
-  │     ├── AgentService（apps.graph）
-  │     ├── TTSStreamClient
-  │     ├── voice_persist_service — PCM→WAV + MinIO
-  │     └── message_repo（apps.chat）
+  │     ├── AgentService（apps.graph）— LangGraph 流式执行
+  │     ├── InferenceService（apps.graph）— 任务注册/取消
+  │     ├── TTSStreamClient  — Gateway TTS 流式合成
+  │     ├── voice_persist_service — PCM→WAV + MinIO 上传
+  │     ├── voice_session_service — 音频缓存读取/清理
+  │     └── message_repo（apps.chat）— Message 创建/更新
   ├── speaker_service        — 声纹识别
   └── response_decision_service — 唤醒词 + 响应决策（continuous_listen 模式）
 ```
@@ -45,15 +47,48 @@ VoiceConsumer
 ASR transcription.completed
   → run_pipeline(mode=voice_chat|continuous_listen)
     → [continuous_listen] ResponseDecisionService.decide()
-      → RESPOND: 完整 pipeline
-      → RECORD_ONLY: 仅保存 user Message + 音频附件
-      → STOP: cancel() 取消
+      → RESPOND: 完整 pipeline（标记活跃对话）
+      → RECORD_ONLY: 仅保存 user Message + 音频附件，不触发 Agent
+      → STOP: cancel() 取消当前 pipeline
     → [voice_chat] 直接进入
-      → rate limit check → InferenceService.register_task()
-      → TTSStreamClient.connect() → AgentService.execute() 流式
-      → response.delta + TTS text.delta → TTS flush → response.end
-      → persist_audio_attachment()
+      → barge-in 检查: 旧 pipeline 正在运行 → cancel + 等待锁释放
+      → asyncio.Lock 互斥（同一用户同时只有 1 个 pipeline）
+      → rate limit check（60次/分）→ InferenceService.register_task()
+      → TTSStreamClient.connect() + configure(voice)
+      → response.start → AgentService.execute() 流式
+        → response.delta + TTS text.delta（Gateway 自动分句合成）
+        → 异常/中断处理
+      → TTS text.done → wait audio.done → TTS disconnect
+      → response.end
+      → _persist_audio_attachment()（事务: 标记 is_voice + 创建 MediaAttachment）
 ```
+
+---
+
+## ASRStreamClient（asr_stream_client.py）
+
+| 方法 | 说明 |
+|------|------|
+| `connect()` | 建立 ASR WS 连接，等待 session.created，启动 _receive_loop |
+| `configure()` | 发送配置消息（auto_commit, speech_pad_ms, language） |
+| `send_audio(pcm_data)` | 转发 PCM 音频帧（binary） |
+| `send_commit()` | 手动触发转录（语音段超时安全网） |
+| `disconnect()` | 关闭连接，取消接收任务 |
+
+---
+
+## TTSStreamClient（tts_stream_client.py）
+
+| 方法 | 说明 |
+|------|------|
+| `connect()` | 建立 TTS WS 连接，等待 session.created，获取 sample_rate |
+| `configure(voice, speed)` | 配置声音和语速 |
+| `send_text_delta(text)` | 发送文本增量（Agent 每个 chunk 调用一次） |
+| `send_text_done()` | 通知文本输入完毕（Gateway flush 剩余缓冲） |
+| `wait_for_done(timeout)` | 等待 audio.done 信号 |
+| `disconnect()` | 关闭连接 |
+
+回调: `on_audio(bytes)` → Consumer._send_binary() 转发前端; `on_sentence_start(idx, text)` / `on_done()`
 
 ---
 
@@ -62,14 +97,9 @@ ASR transcription.completed
 | 优先级 | 条件 | 结果 |
 |--------|------|------|
 | 1 | 紧急停止词（停/取消/闭嘴/停止/别说了） | STOP |
-| 2 | 唤醒词精确匹配 | RESPOND |
+| 2 | 唤醒词精确匹配（`w in text`） | RESPOND |
 | 3 | 唤醒词模糊匹配（编辑距离<=1 或拼音相似>=0.8） | RESPOND |
-| 4 | 活跃对话状态（Redis 键存在） | RESPOND |
-| 5 | 多 speaker 活跃（recent_speakers >= 2） | RECORD_ONLY |
-| 6 | 单 speaker + 问句特征 | RESPOND |
+| 4 | 活跃对话状态（Redis voice:active_conv 键存在） | RESPOND |
+| 5 | 多 speaker 活跃（voice:recent_speakers SCARD >= 2） | RECORD_ONLY |
+| 6 | 单 speaker + 问句特征（？/问句词/语气词） | RESPOND |
 | 7 | 默认 | RECORD_ONLY |
-
-
-<claude-mem-context>
-
-</claude-mem-context>

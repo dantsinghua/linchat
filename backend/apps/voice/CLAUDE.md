@@ -4,20 +4,24 @@
 
 > 语音交互模块：WebSocket 语音流 → ASR 流式转录 → Agent Pipeline → TTS 流式合成、声纹注册/识别、设备管理、响应决策。
 
+---
+
 ## 文件清单
 
 | 文件 | 职责 |
 |------|------|
-| `consumers.py` | VoiceConsumer 骨架（Mixin 组装 + connect/disconnect/receive） |
-| `consumer_events.py` | EventMixin — ASR 事件翻译：VAD/转录/错误 → 前端协议 |
-| `consumer_inference.py` | InferenceMixin — VoicePipeline 启动、空闲超时 |
-| `consumer_session.py` | SessionMixin — ASRStreamClient 会话管理、音频帧转发 |
+| `consumers.py` | VoiceConsumer 骨架（Mixin 组装 + connect/disconnect/receive + 设备 Token 认证 + WS 连接频率限制） |
+| `consumer_events.py` | EventMixin — ASR 事件分发：vad.speech_start/end、transcription.completed/failed、error → 前端协议翻译 |
+| `consumer_inference.py` | InferenceMixin — VoicePipeline 后台启动（voice_chat/continuous_listen）、空闲超时循环 |
+| `consumer_session.py` | SessionMixin — ASRStreamClient 连接/配置/断开、cancel（VoicePipeline.cancel）、音频帧转发、语音段超时定时器 |
 | `models.py` | SpeakerProfile / RegisteredDevice / VoiceSettings |
-| `repositories.py` | 3 个 Repo（Speaker/Device/VoiceSettings） |
-| `serializers.py` | 声纹/设备/设置序列化器 |
-| `views.py` | REST 视图：声纹/设备/设置 CRUD |
-| `urls.py` | REST 路由 |
+| `repositories.py` | 3 个 Repo（SpeakerProfile/RegisteredDevice/VoiceSettings） |
+| `serializers.py` | 6 个序列化器（SpeakerProfile/Device/Settings/SettingsUpdate/CreateDevice/CreateSpeaker） |
+| `views.py` | REST 视图：声纹注册/删除、设备注册/删除/列表、语音设置 CRUD |
+| `urls.py` | REST 路由（speakers/、devices/、settings/） |
 | `routing.py` | WebSocket 路由（`ws/voice/`） |
+
+---
 
 ## Consumer Mixin 架构
 
@@ -25,9 +29,11 @@
 VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketConsumer)
 ```
 
-- **SessionMixin** (`consumer_session.py`): ASRStreamClient 连接/配置/断开、cancel、音频帧转发
-- **EventMixin** (`consumer_events.py`): Gateway ASR 事件 → 前端协议翻译（VAD/转录/错误）
-- **InferenceMixin** (`consumer_inference.py`): VoicePipeline 启动（voice_chat / continuous_listen）、空闲超时
+- **SessionMixin** (`consumer_session.py`): ASRStreamClient 连接/配置/断开、response.cancel → VoicePipeline.cancel()、音频帧转发 + PCM 缓存、语音段超时保护（VOICE_MAX_SEGMENT_DURATION → ASR commit）
+- **EventMixin** (`consumer_events.py`): Gateway ASR 事件 → 前端协议翻译（vad.speech_start/end、transcription.complete/failed、error），transcription.completed 触发 InferenceMixin._start_voice_pipeline()
+- **InferenceMixin** (`consumer_inference.py`): VoicePipeline.run_pipeline() 后台 asyncio.Task 启动，15 秒周期空闲超时检查（VOICE_IDLE_TIMEOUT）
+
+---
 
 ## 语音模式
 
@@ -38,36 +44,60 @@ VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketConsumer)
 
 > `voice_chat_enriched` 已废弃，前端发送时静默映射为 `voice_chat` (SC-008)
 
+---
+
 ## 核心模型
 
 | 模型 | 表名 | 说明 |
 |------|------|------|
-| SpeakerProfile | `voice_speaker_profile` | OneToOne->SysUser，gateway_speaker_id |
-| RegisteredDevice | `voice_registered_device` | SM4 加密 Token，token_prefix 快速查找 |
-| VoiceSettings | `voice_settings` | 唤醒词、录音模式、VAD 灵敏度 |
+| SpeakerProfile | `voice_speaker_profile` | OneToOne->SysUser，gateway_speaker_id，quality_score |
+| RegisteredDevice | `voice_registered_device` | SM4 加密 Token（api_token_encrypted），token_prefix 快速查找，is_active |
+| VoiceSettings | `voice_settings` | wake_words（JSON 数组）、recording_mode（hold/toggle）、vad_sensitivity（0.0~1.0） |
+
+---
+
+## API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/voice/speakers/` | 查询当前用户声纹 |
+| POST | `/api/v1/voice/speakers/` | 注册声纹（MultiPart: name + audio WAV） |
+| DELETE | `/api/v1/voice/speakers/delete/` | 删除声纹 |
+| GET | `/api/v1/voice/devices/` | 设备列表 |
+| POST | `/api/v1/voice/devices/` | 注册设备（返回明文 Token） |
+| DELETE | `/api/v1/voice/devices/<uuid>/` | 停用设备 |
+| GET | `/api/v1/voice/settings/` | 获取语音设置 |
+| PUT | `/api/v1/voice/settings/` | 更新语音设置 |
+
+---
 
 ## Redis 键
 
 | 键模式 | TTL | 用途 |
 |--------|-----|------|
-| `voice:session:{uid}` | 120s | 会话状态（含 asr_session_id） |
-| `voice:active_conv:{uid}` | 30s | 活跃对话标记 |
-| `voice:audio_chunks:{uid}:{seg}` | 300s | PCM 缓冲 |
-| `voice:llm_rate:{uid}` | 60s | LLM 频率限制 |
-| `voice:recent_speakers:{uid}` | 60s | 说话人集合 |
-| `voice:ws_connect_rate:{uid}` | 60s | WS 连接限制 |
+| `voice:session:{uid}` | VOICE_SESSION_TTL | 会话状态 JSON（state, started_at, upstream_connected, asr_session_id） |
+| `voice:active_conv:{uid}` | VOICE_ACTIVE_CONV_TTL | 活跃对话标记（continuous_listen 模式自动 RESPOND） |
+| `voice:audio_chunks:{uid}:{seg}` | VOICE_AUDIO_CACHE_TTL | PCM 帧列表（base64 编码，RPUSH） |
+| `voice:llm_rate:{uid}` | 60s | LLM 频率限制（每分钟 60 次） |
+| `voice:recent_speakers:{uid}` | 60s | 说话人集合（SCARD >= 2 → RECORD_ONLY） |
+| `voice:ws_connect_rate:{uid}` | 60s | WS 连接频率限制（每分钟 10 次） |
+
+---
 
 ## 关键依赖
 
 | 依赖 | 说明 |
 |------|------|
-| `apps.chat` | Message 模型（语音消息复用） |
-| `apps.media` | MediaAttachment（音频附件） |
-| `apps.graph` | AgentService（LangGraph 推理）、InferenceService（任务管理） |
-| `apps.users` | SysUser + SM4 加密 |
+| `apps.chat` | Message 模型（语音消息复用，is_voice 标记） |
+| `apps.media` | MediaAttachment（音频附件 WAV 持久化） |
+| `apps.graph` | AgentService（LangGraph 推理）、InferenceService（任务注册/取消） |
+| `apps.common.storage` | MinIO 音频文件上传/删除 |
+| `apps.users` | SysUser + SM4 加密（设备 Token） |
 | Django Channels | WebSocket（Redis DB3） |
-| websockets | Gateway ASR WS + TTS WS |
-| pypinyin | 唤醒词模糊匹配 |
+| websockets | Gateway ASR WS 客户端 + TTS 流式 WS 客户端 |
+| pypinyin | 唤醒词模糊匹配（拼音相似度） |
+
+---
 
 ## 测试
 

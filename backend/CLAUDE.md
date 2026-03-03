@@ -36,7 +36,7 @@ backend/
 | `memory` | Memory, MemorySummary | 用户记忆 CRUD、向量搜索、Embedding、每日/每月总结 |
 | `models` | LLMModelConfig | LLM 模型配置 CRUD、SM4 加密密钥、活跃模型查询 |
 | `users` | SysUser | 验证码、登录/登出、Token 鉴权、SSO、账户锁定 |
-| `voice` | SpeakerProfile, RegisteredDevice, VoiceSettings | WebSocket 语音流、声纹识别、设备管理、响应决策 |
+| `voice` | SpeakerProfile, RegisteredDevice, VoiceSettings | WebSocket 语音流 → ASR 流式转录 → Agent Pipeline → TTS 流式合成、声纹、设备、响应决策 |
 
 ## 关键依赖
 
@@ -50,6 +50,7 @@ backend/
 | 对象存储 | MinIO (minio SDK) |
 | WebSocket | Django Channels 4.0+ (Redis DB3) |
 | HTTP 客户端 | httpx (异步 Gateway 调用) |
+| Gateway WS 客户端 | websockets 12.0+ (ASR 流式转录 + TTS 流式合成) |
 | 国密算法 | gmssl (SM3 + SM4) |
 
 ## 常用命令

@@ -635,7 +635,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 | 007-home-assistant-tools | `specs/007-home-assistant-tools/spec.md` | ✅ 已完成 |
 | 008-multimodal-minicpm | `specs/008-multimodal-minicpm/spec.md` | ✅ 已完成 |
 | 009-voice-interaction | `specs/009-voice-interaction/spec.md` | ✅ 已完成 |
-| **010-voice-agent-pipeline** | `specs/010-voice-agent-pipeline/spec.md` | 🔄 开发中 |
+| **010-voice-agent-pipeline** | `specs/010-voice-agent-pipeline/spec.md` | ✅ 已完成 |
 
 ---
 

@@ -72,6 +72,7 @@
 - `apps.graph.agent`: 调用 build_preamble 构建 Agent 前导消息
 - `apps.memory.tasks`: 使用兼容常量（CRONMEM_PROMPT_TEMPLATE 等）
 - `apps.graph.services.inference_service`: 使用 ContextMonitor 构建监控数据
+- `apps.voice.services.voice_pipeline`: 通过 AgentService 间接使用 PromptBuilder
 
 ---
 

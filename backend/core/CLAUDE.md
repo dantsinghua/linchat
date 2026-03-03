@@ -9,7 +9,7 @@
 | 文件 | 职责 |
 |------|------|
 | `settings.py` | Django 全局配置（数据库、Redis、LLM、媒体、Celery、Langfuse、安全、语音等） |
-| `urls.py` | 顶层 URL 路由分发（`api/v1/` 前缀，含媒体和推理取消子路由） |
+| `urls.py` | 顶层 URL 路由分发（`api/v1/` 前缀，含媒体、推理取消、graph 子路由） |
 | `asgi.py` | ASGI 入口，ProtocolTypeRouter 分发 HTTP 和 WebSocket（语音）请求 |
 | `wsgi.py` | WSGI 入口（已废弃，禁止使用） |
 | `celery.py` | Celery 应用配置 + Beat 定时任务（5 个定时任务） |
@@ -67,7 +67,10 @@
 | MinIO | 端点、媒体/缩略图桶名 |
 | 媒体限制 | 图片 10MB、视频 50MB、时长 60s、7 天过期 |
 | 多模态 | max_tokens 1024、限流 60s、SubAgent 超时 20min |
-| 语音 | 会话 120s、录音 30s、唤醒词"小鱼"、声纹阈值 0.5 |
+| 语音 Gateway | ASR WS `VOICE_ASR_WS_URL`、TTS WS `VOICE_TTS_URL`、TTS 音色/超时/启用开关 |
+| 语音 ASR | speech_pad 2000ms、语言 auto、单段最大 60s |
+| 语音会话 | 会话 120s、活跃对话 30s、音频缓存 300s、录音 30s、空闲超时 60s、STT 超时 30s |
+| 语音唤醒/VAD | 唤醒词"小鱼"、声纹阈值 0.5、VAD 阈值 0.5、模糊匹配阈值 0.8 |
 | 认证 | Token 空闲 1h/绝对 24h、验证码 2min、锁定 15min |
 | Memory | Embedding 1024 维、搜索 top5、向量权重 0.7 |
 | 安全 | httpOnly Cookie、SM4 密钥、DRF 限流 100/h(匿名) 1000/h(认证) |

@@ -41,7 +41,7 @@
 `task_helpers.py` 实现单 GPU 环境下 Embedding/语言模型互斥：
 - `has_active_users()` — Redis `auth:token:*` 扫描，有用户在线时跳过
 - `warmup_language_model()` — embedding 成功后发最小请求，强制 vLLM 加载回 GPU
-- `collect_content()` — 收集总结数据（primary_type -> message 降级 -> unknown 用户语音消息）
+- `collect_content()` — 收集总结数据（primary_type -> message 降级 -> unknown 用户语音消息（is_voice=True 标记））
 - `run_summary()` — 查找活跃用户 -> 收集 -> LLM 事实抽取 -> 存储
 
 ### 定时总结

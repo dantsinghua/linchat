@@ -24,13 +24,13 @@ SubAgent 子代理模块，主 Agent 通过工具调用委派任务给专属 Sub
 
 | 文件 | 职责 | 启用条件 |
 |------|------|---------|
-| `__init__.py` | `get_subagent_tools()` -- 按条件组装可用 SubAgent 工具列表 | - |
-| `base.py` | `run_subagent()` 工厂函数 + `get_common_tools()` + `_merge_tools()` | - |
+| `__init__.py` | `get_subagent_tools()` -- 按条件组装可用 SubAgent 工具列表 + `history_search` | - |
+| `base.py` | `run_subagent()` 工厂函数 + `get_common_tools()` + `_merge_tools()` + `_get_llm_instance()` | - |
 | `search_agent.py` | `search_subagent` -- 互联网搜索 | `BRAVE_SEARCH_API_KEY` 非空 |
 | `memory_agent.py` | `memory_subagent` -- 记忆 CRUD | 始终启用 |
 | `code_agent.py` | `code_subagent` -- Python 代码执行 | 始终启用 |
 | `ha_agent.py` | `ha_subagent` -- Home Assistant 智能家居 | `HA_ENABLED=True` |
-| `multimodal_agent.py` | `multimodal_subagent` -- 图片/视频/音频/文档分析 | 始终启用 |
+| `multimodal_agent.py` | `multimodal_subagent` + `multimodal_analyze` + `document_parse` -- 图片/视频/音频/文档分析 | 始终启用 |
 
 ---
 
@@ -38,13 +38,13 @@ SubAgent 子代理模块，主 Agent 通过工具调用委派任务给专属 Sub
 
 ### `run_subagent(task, config, tools, prompt, llm=None, name, timeout=None)`
 
-1. 从 config 提取 `user_id`
-2. 获取 LLM（传入 > Django `get_llm()` > 环境变量降级）
-3. 合并专属工具 + 公共工具（`_merge_tools`，按名去重）
-4. `create_react_agent` 创建内部 Agent
-5. 转发父 config 全部 configurable 键（`attachment_uuids`/`stop_event` 等）
-6. `asyncio.timeout` 超时控制（默认 60s）
-7. 异常处理：超时/限流/内容过滤/配额用尽
+1. 从 config 提取 `user_id`（`_get_user_id`）
+2. 获取 LLM（`_get_llm_instance`：传入 > Django `get_llm()` > 环境变量降级）
+3. 合并专属工具 + 公共工具（`_merge_tools`，按名去重，专属优先）
+4. `create_react_agent` 创建内部 Agent（设置 `prompt` 和 `name`）
+5. 转发父 config 全部 configurable 键（`attachment_uuids`/`stop_event`/`request_id` 等）
+6. `asyncio.timeout` 超时控制（默认 `SUBAGENT_TIMEOUT` = 60s）
+7. 异常处理：超时/限流(`LLMRateLimitError`)/内容过滤(`LLMContentFilterError`)/配额用尽(`LLMQuotaExceededError`)
 
 ### `get_common_tools()`
 
@@ -56,32 +56,34 @@ SubAgent 子代理模块，主 Agent 通过工具调用委派任务给专属 Sub
 
 ### search_subagent -- 互联网搜索
 
-专属工具：`web_search`。策略：先查记忆了解背景，结果用 `[[N]]` 引用。超时 60s。
+专属工具：`web_search`（SEARCH_TOOLS）。策略：先查记忆了解背景，结果用 `[[N]]` 引用并附参考来源列表。超时 60s。
 
 ### memory_subagent -- 记忆管理
 
-专属工具：`mem_search/cache/update/delete`。策略：保存前先搜索去重，保存精炼事实。超时 60s。
+专属工具：`mem_search/cache/update/delete`（MEMORY_TOOLS）。策略：保存前先搜索去重，保存精炼事实；更新 vs 删除按用户意图区分。超时 60s。
 
 ### code_subagent -- 代码执行
 
-专属工具：`python_exec`。策略：执行前查记忆和实时数据，失败可搜索方案后重试。超时 60s。
+专属工具：`python_exec`（REPL_TOOLS）。策略：执行前查记忆和实时数据，失败可搜索方案后重试。超时 60s。
 
 ### ha_subagent -- 智能家居
 
-专属工具：`ha_query/control/diagnose`。策略：设备名模糊先查列表；敏感操作返回确认。超时 60s。
+专属工具：`ha_query/control/diagnose`（HA_TOOLS）。策略：设备名模糊先查列表；敏感操作（L3 解锁/车库、L4 禁用自动化）返回确认提示。超时 60s。
 
 ### multimodal_subagent -- 多媒体分析
 
-专属工具：`multimodal_analyze` + `document_parse`。超时 1200s（`MULTIMODAL_SUBAGENT_TIMEOUT`）。
-入口函数在 task 中注入附件提示，确保内部 LLM 知道附件存在并调用工具。
+专属工具：`multimodal_analyze` + `document_parse`（定义在 multimodal_agent.py 内）。超时 1200s（`MULTIMODAL_SUBAGENT_TIMEOUT`）。
+入口函数在 task 中注入附件数量提示（`[系统：用户已上传 N 个附件...]`），确保内部 LLM 知道附件存在并调用工具。
+
+MULTIMODAL_PROMPT 核心规则：收到分析请求必须直接调用工具，不质疑附件是否存在；根据类型选择 multimodal_analyze（图/视/音）或 document_parse（PDF/DOCX）。
 
 #### multimodal_analyze
 
-从 `config.configurable` 获取 `attachment_uuids` -> 加载附件（排除 document）-> `build_multimodal_messages` -> 获取 GPU 锁 -> `stream_multimodal_httpx` 直连推理。
+从 `config.configurable` 获取 `attachment_uuids` + `stop_event` + `request_id` -> 加载附件（排除 document 类型）-> `build_multimodal_messages` -> 获取多模态模型配置 -> 获取 GPU 锁 -> `stream_multimodal_httpx` 直连推理。
 
 #### document_parse
 
-从 `config.configurable` 获取 `attachment_uuids` -> 加载文档附件 -> 获取 GPU 锁 -> `DocumentParseService.parse_document` 创建任务 -> 轮询状态（3s 间隔，最长 900s）-> 获取 Markdown 结果（截断 8000 字符）。轮询期间续期推理任务 TTL。
+从 `config.configurable` 获取 `attachment_uuids` + `request_id` -> 加载文档附件（仅 document 类型）-> 获取 GPU 锁 -> `DocumentParseService.parse_document` 创建任务 -> 轮询状态（`DOC_PARSE_POLL_INTERVAL` 3s 间隔，`DOC_PARSE_POLL_MAX_WAIT` 最长 900s）-> 获取 Markdown 结果（`DOC_PARSE_MAX_RESULT_LENGTH` 截断 8000 字符）。轮询期间续期推理任务 TTL。
 
 ---
 
@@ -98,6 +100,7 @@ from apps.graph.subagents.multimodal_agent import multimodal_subagent, multimoda
 ## 注意事项
 
 1. SubAgent 内部 LLM 输出通过 `parent_ids` 深度 > 3 过滤，不推送到 SSE
-2. `run_subagent` 转发父 config 全部 configurable 键，确保附件/取消信号传递
+2. `run_subagent` 转发父 config 全部 configurable 键，确保附件/取消信号/request_id 传递
 3. 多模态 SubAgent 超时远大于其他（1200s vs 60s），因 GPU 推理和文档解析耗时长
 4. GPU 锁（`acquire_gpu_lock`）确保同一时间只有一个 GPU 推理任务运行
+5. `multimodal_analyze` 和 `document_parse` 的 GPU 锁引用路径是 `apps.chat.services.gpu_lock`（兼容）
