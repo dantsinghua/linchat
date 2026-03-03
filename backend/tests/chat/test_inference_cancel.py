@@ -40,8 +40,8 @@ class TestCancelInferenceAPI(TestCase):
     """推理取消 API 测试"""
 
     @patch("apps.chat.services.generation.signal_stop")
-    @patch("apps.chat.services.inference_service.EventService")
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.EventService")
+    @patch("apps.graph.services.inference_service.get_redis")
     def test_cancel_success(
         self, mock_get_redis: AsyncMock, mock_event_svc: MagicMock, mock_signal_stop: MagicMock
     ) -> None:
@@ -62,7 +62,7 @@ class TestCancelInferenceAPI(TestCase):
         mock_event_svc.publish_event.assert_called_once()
         mock_client.delete.assert_called_once()
 
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     def test_cancel_no_active_task(self, mock_get_redis: AsyncMock) -> None:
         """无活跃任务：返回 False"""
         mock_client = AsyncMock()
@@ -75,8 +75,8 @@ class TestCancelInferenceAPI(TestCase):
         assert cancelled_id is None
 
     @patch("apps.chat.services.generation.signal_stop")
-    @patch("apps.chat.services.inference_service.EventService")
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.EventService")
+    @patch("apps.graph.services.inference_service.get_redis")
     def test_cancel_with_request_id(
         self, mock_get_redis: AsyncMock, mock_event_svc: MagicMock, mock_signal_stop: MagicMock
     ) -> None:
@@ -96,7 +96,7 @@ class TestCancelInferenceAPI(TestCase):
         assert success is True
         assert cancelled_id == "req-002"
 
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     def test_cancel_request_id_mismatch(self, mock_get_redis: AsyncMock) -> None:
         """request_id 不匹配：返回 False"""
         task = _make_task("req-003")
@@ -113,8 +113,8 @@ class TestCancelInferenceAPI(TestCase):
         assert cancelled_id is None
 
     @patch("apps.chat.services.generation.signal_stop")
-    @patch("apps.chat.services.inference_service.EventService")
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.EventService")
+    @patch("apps.graph.services.inference_service.get_redis")
     def test_cancel_then_register_new_task(
         self, mock_get_redis: AsyncMock, mock_event_svc: MagicMock, mock_signal_stop: MagicMock
     ) -> None:
@@ -142,17 +142,15 @@ class TestCancelInferenceAPI(TestCase):
         assert registered is True
 
     @patch("apps.chat.services.generation.signal_stop")
-    @patch("apps.chat.services.inference_service.EventService")
-    @patch("apps.chat.services.inference_service.httpx.AsyncClient")
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.EventService")
+    @patch("apps.graph.services.inference_service.get_redis")
     def test_gateway_cancel_timeout(
         self,
         mock_get_redis: AsyncMock,
-        mock_httpx: MagicMock,
         mock_event_svc: MagicMock,
         mock_signal_stop: MagicMock,
     ) -> None:
-        """Gateway 取消超时：不影响整体取消成功"""
+        """取消成功：signal_stop 和事件发布正常"""
         task = _make_task("req-timeout")
 
         mock_client = AsyncMock()
@@ -160,12 +158,6 @@ class TestCancelInferenceAPI(TestCase):
         mock_client.delete.return_value = True
         mock_get_redis.return_value = mock_client
         mock_event_svc.publish_event = AsyncMock(return_value=True)
-
-        mock_http_client = AsyncMock()
-        mock_http_client.post.side_effect = Exception("Timeout")
-        mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
-        mock_http_client.__aexit__ = AsyncMock(return_value=None)
-        mock_httpx.return_value = mock_http_client
 
         success, cancelled_id = run_async(
             InferenceService.cancel_task(user_id=1)
@@ -314,8 +306,8 @@ class TestSignalStopIntegration(TestCase):
 
         task = _make_task("req-signal-test")
 
-        with patch("apps.chat.services.inference_service.get_redis") as mock_redis, \
-             patch("apps.chat.services.inference_service.EventService") as mock_event:
+        with patch("apps.graph.services.inference_service.get_redis") as mock_redis, \
+             patch("apps.graph.services.inference_service.EventService") as mock_event:
             mock_client = AsyncMock()
             mock_client.get.return_value = task.to_json()
             mock_client.delete.return_value = True

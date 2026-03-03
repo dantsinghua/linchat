@@ -18,8 +18,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from apps.chat.models import MediaAttachment
-from apps.chat.services.media_service import (
+from apps.media.models import MediaAttachment
+from apps.media.services.upload import (
     MAX_AUDIO_DURATION,
     MIN_AUDIO_DURATION,
     SUPPORTED_AUDIO_TYPES,
@@ -140,7 +140,7 @@ class TestWebmMimeTypeDistinction:
 class TestAudioDuration:
     """音频时长检测测试"""
 
-    @patch("apps.chat.services.media_service.subprocess.run")
+    @patch("apps.media.services.video.subprocess.run")
     def test_get_audio_duration_success(self, mock_run):
         """成功获取音频时长"""
         mock_run.return_value = MagicMock(
@@ -148,16 +148,18 @@ class TestAudioDuration:
             stdout=json.dumps({"format": {"duration": "5.2"}}),
             stderr="",
         )
-        duration = MediaService._get_audio_duration(b"fake-audio")
+        from apps.media.services.video import get_audio_duration
+        duration = get_audio_duration(b"fake-audio")
         assert duration == 5.2
 
-    @patch("apps.chat.services.media_service.subprocess.run")
+    @patch("apps.media.services.video.subprocess.run")
     def test_get_audio_duration_failure(self, mock_run):
         """ffprobe 失败返回 None"""
         mock_run.return_value = MagicMock(
             returncode=1, stdout="", stderr="Error"
         )
-        duration = MediaService._get_audio_duration(b"fake-audio")
+        from apps.media.services.video import get_audio_duration
+        duration = get_audio_duration(b"fake-audio")
         assert duration is None
 
 
@@ -167,9 +169,9 @@ class TestAudioDuration:
 class TestAudioUpload:
     """音频上传完整流程测试"""
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.get_audio_duration")
     def test_upload_audio_success(self, mock_duration, mock_minio, mock_repo):
         """音频上传成功"""
         mock_duration.return_value = 5.0
@@ -189,9 +191,9 @@ class TestAudioUpload:
         assert attachment.media_type == MediaAttachment.TYPE_AUDIO
         assert attachment.duration_seconds == 5.0
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.get_audio_duration")
     def test_upload_audio_duration_too_short(self, mock_duration, mock_minio, mock_repo):
         """音频时长 < 1 秒返回 DURATION_TOO_SHORT"""
         mock_duration.return_value = 0.5
@@ -211,9 +213,9 @@ class TestAudioUpload:
         assert exc_info.value.code == "DURATION_TOO_SHORT"
         mock_minio.upload_bytes.assert_not_called()
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.get_audio_duration")
     def test_upload_audio_duration_too_long(self, mock_duration, mock_minio, mock_repo):
         """音频时长 > 60 秒返回 DURATION_TOO_LONG"""
         mock_duration.return_value = 75.0
@@ -233,9 +235,9 @@ class TestAudioUpload:
         assert exc_info.value.code == "DURATION_TOO_LONG"
         mock_minio.upload_bytes.assert_not_called()
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.get_audio_duration")
     def test_upload_audio_at_min_duration(self, mock_duration, mock_minio, mock_repo):
         """音频恰好 1 秒上传成功"""
         mock_duration.return_value = 1.0
@@ -253,9 +255,9 @@ class TestAudioUpload:
         )
         assert attachment.duration_seconds == 1.0
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.get_audio_duration")
     def test_upload_webm_audio(self, mock_duration, mock_minio, mock_repo):
         """WebM 音频上传成功"""
         mock_duration.return_value = 10.0
@@ -274,9 +276,9 @@ class TestAudioUpload:
         assert attachment.media_type == MediaAttachment.TYPE_AUDIO
         assert attachment.mime_type == "audio/webm"
 
-    @patch("apps.chat.services.media_service.media_attachment_repo")
-    @patch("apps.chat.services.media_service.minio_service")
-    @patch("apps.chat.services.media_service.MediaService._get_media_duration")
+    @patch("apps.media.services.upload.media_attachment_repo")
+    @patch("apps.media.services.upload.minio_service")
+    @patch("apps.media.services.upload.get_audio_duration")
     def test_upload_mp3_audio(self, mock_duration, mock_minio, mock_repo):
         """MP3 音频上传成功"""
         mock_duration.return_value = 30.0
@@ -302,7 +304,7 @@ class TestAudioUpload:
 class TestVoicePlaceholderReplacement:
     """build_multimodal_messages 占位文本替换逻辑测试"""
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_voice_placeholder_replaced_with_audio(self, mock_minio):
         """携带 audio 附件时，content=[语音消息] 替换为空字符串"""
         from apps.graph.agent import build_multimodal_messages
@@ -329,7 +331,7 @@ class TestVoicePlaceholderReplacement:
         audio_parts = [p for p in content if p.get("type") == "audio_url"]
         assert len(audio_parts) == 1
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_user_text_preserved_with_audio(self, mock_minio):
         """携带 audio 附件时，用户追加文字保留文本"""
         from apps.graph.agent import build_multimodal_messages
@@ -350,7 +352,7 @@ class TestVoicePlaceholderReplacement:
         assert len(text_parts) == 1
         assert text_parts[0]["text"] == "请帮我翻译这段话"
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_voice_placeholder_preserved_without_audio(self, mock_minio):
         """无 audio 附件时，content=[语音消息] 保留原文（负向测试）"""
         from apps.graph.agent import build_multimodal_messages
@@ -371,7 +373,7 @@ class TestVoicePlaceholderReplacement:
         assert len(text_parts) == 1
         assert text_parts[0]["text"] == "[语音消息]"
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_empty_message_with_audio_only(self, mock_minio):
         """空消息+音频附件，不添加文本部分"""
         from apps.graph.agent import build_multimodal_messages
@@ -398,7 +400,7 @@ class TestVoicePlaceholderReplacement:
 class TestAudioModelSelection:
     """音频推理模型选择测试"""
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_audio_uses_minicpm_o(self, mock_minio):
         """纯音频附件使用 minicpm-o"""
         from apps.graph.agent import build_multimodal_messages
@@ -415,7 +417,7 @@ class TestAudioModelSelection:
         _, media_types = build_multimodal_messages("识别", [audio_att])
         assert media_types == ["audio"]
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_audio_priority_over_image(self, mock_minio):
         """音频+图片混合附件使用 minicpm-o（音频优先级最高）"""
         from apps.graph.agent import build_multimodal_messages
@@ -449,7 +451,7 @@ class TestAudioModelSelection:
 class TestAudioLangfuseTrace:
     """验证音频推理 Langfuse trace 元数据"""
 
-    @patch("apps.chat.services.minio_service.minio_service")
+    @patch("apps.common.storage.minio_service.minio_service")
     def test_audio_trace_metadata(self, mock_minio):
         """音频附件推理后 media_types 含 'audio'、model 为 minicpm-o"""
         from apps.graph.agent import build_multimodal_messages

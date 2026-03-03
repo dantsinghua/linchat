@@ -9,20 +9,28 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from django.test import TransactionTestCase, override_settings
+from django.test import override_settings
 from django.utils import timezone
 
 from apps.memory.models import UserMemory, UserMemoryEmbedding
 from apps.memory.tasks import generate_embedding, retry_failed_embeddings
 
 
+pytestmark = pytest.mark.django_db
+
 MOCK_EMBEDDING = [0.1] * 1024
 
 
-class TestGenerateEmbeddingActiveUsers(TransactionTestCase):
+class TestGenerateEmbeddingActiveUsers:
     """generate_embedding 活跃用户检查和语言模型预热测试"""
 
-    @patch("apps.memory.tasks._has_active_users", return_value=True)
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        UserMemoryEmbedding.objects.all().delete()
+        UserMemory.objects.all().delete()
+        yield
+
+    @patch("apps.memory.tasks.has_active_users", return_value=True)
     def test_skips_when_active_users(self, mock_active: MagicMock) -> None:
         """有活跃用户时跳过 embedding 生成，不修改记忆状态"""
         memory = UserMemory.objects.create(
@@ -36,8 +44,8 @@ class TestGenerateEmbeddingActiveUsers(TransactionTestCase):
         memory.refresh_from_db()
         assert memory.embedding_status == UserMemory.EmbeddingStatus.PENDING
 
-    @patch("apps.memory.tasks._warmup_language_model")
-    @patch("apps.memory.tasks._has_active_users", return_value=False)
+    @patch("apps.memory.tasks.warmup_language_model")
+    @patch("apps.memory.tasks.has_active_users", return_value=False)
     def test_runs_when_no_active_users(
         self, mock_active: MagicMock, mock_warmup: MagicMock
     ) -> None:
@@ -58,8 +66,8 @@ class TestGenerateEmbeddingActiveUsers(TransactionTestCase):
         memory.refresh_from_db()
         assert memory.embedding_status == UserMemory.EmbeddingStatus.DONE
 
-    @patch("apps.memory.tasks._warmup_language_model")
-    @patch("apps.memory.tasks._has_active_users", return_value=False)
+    @patch("apps.memory.tasks.warmup_language_model")
+    @patch("apps.memory.tasks.has_active_users", return_value=False)
     def test_warmup_called_after_embedding(
         self, mock_active: MagicMock, mock_warmup: MagicMock
     ) -> None:
@@ -79,8 +87,8 @@ class TestGenerateEmbeddingActiveUsers(TransactionTestCase):
 
         mock_warmup.assert_called_once()
 
-    @patch("apps.memory.tasks._warmup_language_model", side_effect=Exception("warmup error"))
-    @patch("apps.memory.tasks._has_active_users", return_value=False)
+    @patch("apps.memory.tasks.warmup_language_model", side_effect=Exception("warmup error"))
+    @patch("apps.memory.tasks.has_active_users", return_value=False)
     def test_warmup_failure_does_not_affect_embedding(
         self, mock_active: MagicMock, mock_warmup: MagicMock
     ) -> None:
@@ -102,19 +110,17 @@ class TestGenerateEmbeddingActiveUsers(TransactionTestCase):
         assert memory.embedding_status == UserMemory.EmbeddingStatus.DONE
 
 
-class TestGenerateEmbedding(TransactionTestCase):
+class TestGenerateEmbedding:
     """generate_embedding Celery 任务测试"""
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def cleanup_and_patch(self):
+        UserMemoryEmbedding.objects.all().delete()
+        UserMemory.objects.all().delete()
         # 默认 mock _has_active_users 返回 False，避免影响原有测试
-        self._active_patcher = patch("apps.memory.tasks._has_active_users", return_value=False)
-        self._warmup_patcher = patch("apps.memory.tasks._warmup_language_model")
-        self._active_patcher.start()
-        self._warmup_patcher.start()
-
-    def tearDown(self):
-        self._active_patcher.stop()
-        self._warmup_patcher.stop()
+        with patch("apps.memory.tasks.has_active_users", return_value=False), \
+             patch("apps.memory.tasks.warmup_language_model"):
+            yield
 
     def test_success_flow(self) -> None:
         """成功路径: pending → processing → done + 写入 embedding 记录"""
@@ -229,15 +235,15 @@ class TestGenerateEmbedding(TransactionTestCase):
         assert memory.embedding_status == UserMemory.EmbeddingStatus.FAILED
 
 
-class TestRetryFailedEmbeddings(TransactionTestCase):
+class TestRetryFailedEmbeddings:
     """retry_failed_embeddings 定时任务测试"""
 
-    def setUp(self):
-        self._active_patcher = patch("apps.memory.tasks._has_active_users", return_value=False)
-        self._active_patcher.start()
-
-    def tearDown(self):
-        self._active_patcher.stop()
+    @pytest.fixture(autouse=True)
+    def cleanup_and_patch(self):
+        UserMemoryEmbedding.objects.all().delete()
+        UserMemory.objects.all().delete()
+        with patch("apps.memory.tasks.has_active_users", return_value=False):
+            yield
 
     @override_settings(
         MEMORY_EMBEDDING_MAX_RETRY=3,
@@ -245,8 +251,7 @@ class TestRetryFailedEmbeddings(TransactionTestCase):
     )
     def test_skips_when_active_users(self) -> None:
         """有活跃用户时跳过整个重试扫描"""
-        self._active_patcher.stop()
-        with patch("apps.memory.tasks._has_active_users", return_value=True):
+        with patch("apps.memory.tasks.has_active_users", return_value=True):
             UserMemory.objects.create(
                 user_id=1,
                 content="retryable",
@@ -258,7 +263,6 @@ class TestRetryFailedEmbeddings(TransactionTestCase):
                 retry_failed_embeddings()
 
             mock_delay.assert_not_called()
-        self._active_patcher.start()
 
     @override_settings(
         MEMORY_EMBEDDING_MAX_RETRY=3,
@@ -335,8 +339,14 @@ class TestRetryFailedEmbeddings(TransactionTestCase):
 # ============================================================================
 
 
-class TestGenerateDailySummary(TransactionTestCase):
+class TestGenerateDailySummary:
     """generate_daily_summary Celery 任务测试 [T068]"""
+
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        UserMemoryEmbedding.objects.all().delete()
+        UserMemory.objects.all().delete()
+        yield
 
     def _create_memory_at(self, user_id, content, mem_type, target_time):
         """创建记忆并手动设置 created_at（绕过 auto_now_add）"""
@@ -411,8 +421,14 @@ class TestGenerateDailySummary(TransactionTestCase):
         assert mock_summarize.call_count == 2
 
 
-class TestGenerateMonthlySummary(TransactionTestCase):
+class TestGenerateMonthlySummary:
     """generate_monthly_summary Celery 任务测试 [T068]"""
+
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        UserMemoryEmbedding.objects.all().delete()
+        UserMemory.objects.all().delete()
+        yield
 
     def _create_memory_at(self, user_id, content, mem_type, target_time):
         """创建记忆并手动设置 created_at"""

@@ -8,14 +8,32 @@ T036: search_memory 混合搜索测试
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from django.test import TransactionTestCase
+
+from asgiref.sync import async_to_sync
 
 from apps.memory.models import UserMemory
 from apps.memory.services import MemoryNotFoundError, MemoryService
-from tests.helpers import run_async
+
+pytestmark = pytest.mark.django_db
+
+# 辅助：将 async 方法包装为同步调用（asgiref 正确管理线程间 DB 连接）
+_create_memory = async_to_sync(MemoryService.create_memory)
+_update_memory = async_to_sync(MemoryService.update_memory)
+_delete_memory = async_to_sync(MemoryService.delete_memory)
+_get_memory = async_to_sync(MemoryService.get_memory)
+_list_memories = async_to_sync(MemoryService.list_memories)
+_search_memory = async_to_sync(MemoryService.search_memory)
+_summarize = async_to_sync(MemoryService.summarize_and_store)
 
 
-class TestEmbeddingClientConfig(TransactionTestCase):
+@pytest.fixture(autouse=True)
+def _clean_user_memory():
+    """每个测试前清理 UserMemory 数据，防止 --reuse-db 数据泄漏"""
+    UserMemory.objects.all().delete()
+    yield
+
+
+class TestEmbeddingClientConfig:
     """EmbeddingClient 配置测试"""
 
     @patch("apps.memory.services.EmbeddingClient._get_embedding_config")
@@ -36,14 +54,14 @@ class TestEmbeddingClientConfig(TransactionTestCase):
 
             from apps.memory.services import EmbeddingClient
 
-            run_async(EmbeddingClient.generate_embedding("test"))
+            async_to_sync(EmbeddingClient.generate_embedding)("test")
 
             call_kwargs = mock_cls.call_args.kwargs
             assert call_kwargs["max_retries"] == 3
             assert call_kwargs["timeout"].connect == 40.0
 
 
-class TestMemoryServiceCreate(TransactionTestCase):
+class TestMemoryServiceCreate:
     """MemoryService.create_memory 测试"""
 
     @patch("apps.memory.services.generate_embedding", create=True)
@@ -51,9 +69,7 @@ class TestMemoryServiceCreate(TransactionTestCase):
         """创建记忆成功，投递 Celery 任务"""
         with patch("apps.memory.tasks.generate_embedding") as mock_celery:
             mock_celery.delay = MagicMock()
-            memory = run_async(
-                MemoryService.create_memory(user_id=1, content="测试记忆")
-            )
+            memory = _create_memory(user_id=1, content="测试记忆")
 
         assert memory.id is not None
         assert memory.user_id == 1
@@ -68,12 +84,10 @@ class TestMemoryServiceCreate(TransactionTestCase):
         """系统内部创建可指定 type"""
         with patch("apps.memory.tasks.generate_embedding") as mock_celery:
             mock_celery.delay = MagicMock()
-            memory = run_async(
-                MemoryService.create_memory(
-                    user_id=1,
-                    content="压缩摘要",
-                    type=UserMemory.MemoryType.COMPACTION,
-                )
+            memory = _create_memory(
+                user_id=1,
+                content="压缩摘要",
+                type=UserMemory.MemoryType.COMPACTION,
             )
 
         assert memory.type == UserMemory.MemoryType.COMPACTION
@@ -84,14 +98,12 @@ class TestMemoryServiceCreate(TransactionTestCase):
             "apps.memory.tasks.generate_embedding"
         ) as mock_celery:
             mock_celery.delay.side_effect = Exception("Celery down")
-            memory = run_async(
-                MemoryService.create_memory(user_id=1, content="test")
-            )
+            memory = _create_memory(user_id=1, content="test")
 
         assert memory.embedding_status == UserMemory.EmbeddingStatus.FAILED
 
 
-class TestMemoryServiceUpdate(TransactionTestCase):
+class TestMemoryServiceUpdate:
     """MemoryService.update_memory 测试"""
 
     def test_update_memory_success(self) -> None:
@@ -104,10 +116,8 @@ class TestMemoryServiceUpdate(TransactionTestCase):
 
         with patch("apps.memory.tasks.generate_embedding") as mock_celery:
             mock_celery.delay = MagicMock()
-            updated = run_async(
-                MemoryService.update_memory(
-                    memory_id=memory.id, user_id=1, content="new"
-                )
+            updated = _update_memory(
+                memory_id=memory.id, user_id=1, content="new"
             )
 
         assert updated.content == "new"
@@ -116,72 +126,56 @@ class TestMemoryServiceUpdate(TransactionTestCase):
 
     def test_update_memory_not_found(self) -> None:
         with pytest.raises(MemoryNotFoundError):
-            run_async(
-                MemoryService.update_memory(
-                    memory_id=99999, user_id=1, content="test"
-                )
-            )
+            _update_memory(memory_id=99999, user_id=1, content="test")
 
     def test_update_wrong_user(self) -> None:
         """用户隔离：不能更新他人记忆"""
         memory = UserMemory.objects.create(user_id=1, content="test")
 
         with pytest.raises(MemoryNotFoundError):
-            run_async(
-                MemoryService.update_memory(
-                    memory_id=memory.id, user_id=999, content="hack"
-                )
-            )
+            _update_memory(memory_id=memory.id, user_id=999, content="hack")
 
 
-class TestMemoryServiceDelete(TransactionTestCase):
+class TestMemoryServiceDelete:
     """MemoryService.delete_memory 测试"""
 
     def test_delete_success(self) -> None:
         memory = UserMemory.objects.create(user_id=1, content="test")
 
-        result = run_async(
-            MemoryService.delete_memory(memory_id=memory.id, user_id=1)
-        )
+        result = _delete_memory(memory_id=memory.id, user_id=1)
         assert result is True
         assert UserMemory.objects.filter(id=memory.id).count() == 0
 
     def test_delete_not_found(self) -> None:
         with pytest.raises(MemoryNotFoundError):
-            run_async(MemoryService.delete_memory(memory_id=99999, user_id=1))
+            _delete_memory(memory_id=99999, user_id=1)
 
     def test_delete_wrong_user(self) -> None:
         memory = UserMemory.objects.create(user_id=1, content="test")
 
         with pytest.raises(MemoryNotFoundError):
-            run_async(
-                MemoryService.delete_memory(memory_id=memory.id, user_id=999)
-            )
+            _delete_memory(memory_id=memory.id, user_id=999)
 
 
-class TestMemoryServiceQuery(TransactionTestCase):
+class TestMemoryServiceQuery:
     """MemoryService.get_memory / list_memories 测试"""
 
     def test_get_memory_success(self) -> None:
         memory = UserMemory.objects.create(user_id=1, content="test")
 
-        fetched = run_async(
-            MemoryService.get_memory(memory_id=memory.id, user_id=1)
-        )
+        fetched = _get_memory(memory_id=memory.id, user_id=1)
         assert fetched.id == memory.id
 
     def test_get_memory_not_found(self) -> None:
         with pytest.raises(MemoryNotFoundError):
-            run_async(MemoryService.get_memory(memory_id=99999, user_id=1))
+            _get_memory(memory_id=99999, user_id=1)
 
     def test_list_memories(self) -> None:
         for i in range(3):
             UserMemory.objects.create(user_id=1, content=f"item {i}")
         UserMemory.objects.create(user_id=2, content="other")
 
-        memories, total = run_async(
-            MemoryService.list_memories(user_id=1)
-        )
+        memories, total = _list_memories(user_id=1)
         assert total == 3
         assert len(memories) == 3
 
@@ -189,13 +183,11 @@ class TestMemoryServiceQuery(TransactionTestCase):
         UserMemory.objects.create(user_id=1, content="a", type="memory")
         UserMemory.objects.create(user_id=1, content="b", type="compaction")
 
-        memories, total = run_async(
-            MemoryService.list_memories(user_id=1, type_filter="memory")
-        )
+        memories, total = _list_memories(user_id=1, type_filter="memory")
         assert total == 1
 
 
-class TestMemoryServiceSearchSkipVector(TransactionTestCase):
+class TestMemoryServiceSearchSkipVector:
     """search_memory skip_vector 参数测试"""
 
     MOCK_EMBEDDING = [0.1] * 1024
@@ -213,9 +205,7 @@ class TestMemoryServiceSearchSkipVector(TransactionTestCase):
         )
         mock_keyword.return_value = [(m1.id, 0.7)]
 
-        results = run_async(
-            MemoryService.search_memory(user_id=1, query="test", skip_vector=True)
-        )
+        results = _search_memory(user_id=1, query="test", skip_vector=True)
 
         mock_embed.assert_not_called()
         assert len(results) == 1
@@ -238,16 +228,14 @@ class TestMemoryServiceSearchSkipVector(TransactionTestCase):
         mock_vector.return_value = [(m1.id, 0.9)]
         mock_keyword.return_value = [(m1.id, 0.5)]
 
-        results = run_async(
-            MemoryService.search_memory(user_id=1, query="test", skip_vector=False)
-        )
+        results = _search_memory(user_id=1, query="test", skip_vector=False)
 
         mock_embed.assert_called_once()
         assert len(results) == 1
         assert results[0]["match_type"] == "hybrid"
 
 
-class TestMemoryServiceSearch(TransactionTestCase):
+class TestMemoryServiceSearch:
     """MemoryService.search_memory 混合搜索测试 [T036]"""
 
     MOCK_EMBEDDING = [0.1] * 1024
@@ -274,9 +262,7 @@ class TestMemoryServiceSearch(TransactionTestCase):
         mock_vector.return_value = [(m1.id, 0.9), (m2.id, 0.5)]
         mock_keyword.return_value = [(m2.id, 0.8), (m1.id, 0.3)]
 
-        results = run_async(
-            MemoryService.search_memory(user_id=1, query="编程")
-        )
+        results = _search_memory(user_id=1, query="编程")
 
         assert len(results) == 2
         # m1: 0.9*0.7 + 0.3*0.3 = 0.72, m2: 0.5*0.7 + 0.8*0.3 = 0.59
@@ -297,9 +283,7 @@ class TestMemoryServiceSearch(TransactionTestCase):
         mock_vector.return_value = []
         mock_keyword.return_value = []
 
-        results = run_async(
-            MemoryService.search_memory(user_id=1, query="不存在")
-        )
+        results = _search_memory(user_id=1, query="不存在")
         assert results == []
 
     @patch("apps.memory.services.embedding_repo.keyword_search", new_callable=AsyncMock)
@@ -323,9 +307,7 @@ class TestMemoryServiceSearch(TransactionTestCase):
         mock_vector.return_value = [(m1.id, 0.8)]
         mock_keyword.return_value = []
 
-        results = run_async(
-            MemoryService.search_memory(user_id=1, query="data")
-        )
+        results = _search_memory(user_id=1, query="data")
         assert len(results) == 1
         assert results[0]["memory"].user_id == 1
 
@@ -344,9 +326,7 @@ class TestMemoryServiceSearch(TransactionTestCase):
         mock_embed.side_effect = Exception("Embedding unavailable")
         mock_keyword.return_value = [(m1.id, 0.7)]
 
-        results = run_async(
-            MemoryService.search_memory(user_id=1, query="keyword")
-        )
+        results = _search_memory(user_id=1, query="keyword")
 
         assert len(results) == 1
         assert results[0]["match_type"] == "keyword"
@@ -372,13 +352,11 @@ class TestMemoryServiceSearch(TransactionTestCase):
         mock_vector.return_value = [(m.id, 0.9 - i * 0.05) for i, m in enumerate(memories)]
         mock_keyword.return_value = []
 
-        results = run_async(
-            MemoryService.search_memory(user_id=1, query="item", limit=5)
-        )
+        results = _search_memory(user_id=1, query="item", limit=5)
         assert len(results) <= 5
 
 
-class TestMemoryServiceSummarize(TransactionTestCase):
+class TestMemoryServiceSummarize:
     """MemoryService.summarize_and_store 测试 [T067]"""
 
     @patch("apps.memory.tasks.generate_embedding")
@@ -392,13 +370,11 @@ class TestMemoryServiceSummarize(TransactionTestCase):
         mock_llm_instance.ainvoke.return_value = mock_response
         mock_get_llm.return_value = mock_llm_instance
 
-        result = run_async(
-            MemoryService.summarize_and_store(
-                user_id=1,
-                content="我很喜欢用 Python 编程",
-                summary_type="daily-summary",
-                summary_name="daily-2024-01-01",
-            )
+        result = _summarize(
+            user_id=1,
+            content="我很喜欢用 Python 编程",
+            summary_type="daily-summary",
+            summary_name="daily-2024-01-01",
         )
 
         assert result is not None
@@ -410,13 +386,11 @@ class TestMemoryServiceSummarize(TransactionTestCase):
     @patch("apps.graph.agent.get_llm", new_callable=AsyncMock)
     def test_summarize_empty_content(self, mock_get_llm, mock_celery) -> None:
         """空内容不生成总结 [R-007]"""
-        result = run_async(
-            MemoryService.summarize_and_store(
-                user_id=1,
-                content="",
-                summary_type="daily-summary",
-                summary_name="daily-2024-01-01",
-            )
+        result = _summarize(
+            user_id=1,
+            content="",
+            summary_type="daily-summary",
+            summary_name="daily-2024-01-01",
         )
 
         assert result is None
@@ -430,13 +404,11 @@ class TestMemoryServiceSummarize(TransactionTestCase):
         mock_llm_instance.ainvoke.side_effect = Exception("LLM down")
         mock_get_llm.return_value = mock_llm_instance
 
-        result = run_async(
-            MemoryService.summarize_and_store(
-                user_id=1,
-                content="some content",
-                summary_type="daily-summary",
-                summary_name="daily-2024-01-01",
-            )
+        result = _summarize(
+            user_id=1,
+            content="some content",
+            summary_type="daily-summary",
+            summary_name="daily-2024-01-01",
         )
 
         assert result is None
@@ -453,13 +425,11 @@ class TestMemoryServiceSummarize(TransactionTestCase):
         mock_llm_instance.ainvoke.return_value = mock_response
         mock_get_llm.return_value = mock_llm_instance
 
-        result = run_async(
-            MemoryService.summarize_and_store(
-                user_id=1,
-                content="test content",
-                summary_type="compaction",
-                summary_name="compaction-1",
-            )
+        result = _summarize(
+            user_id=1,
+            content="test content",
+            summary_type="compaction",
+            summary_name="compaction-1",
         )
 
         assert result is not None
@@ -475,13 +445,11 @@ class TestMemoryServiceSummarize(TransactionTestCase):
         mock_llm_instance.ainvoke.return_value = mock_response
         mock_get_llm.return_value = mock_llm_instance
 
-        result = run_async(
-            MemoryService.summarize_and_store(
-                user_id=1,
-                content="some content",
-                summary_type="daily-summary",
-                summary_name="daily-2024-01-01",
-            )
+        result = _summarize(
+            user_id=1,
+            content="some content",
+            summary_type="daily-summary",
+            summary_name="daily-2024-01-01",
         )
 
         assert result is None

@@ -516,6 +516,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 | **1 轮对话** | 1 条 role=user 消息 + 1 条 role=assistant 消息（1 对 user+assistant 消息） |
 | **保留最近 N 轮** | 保留最后 N×2 条 user/assistant 消息（例：2 轮 = 4 条消息） |
 | **隔离粒度** | 永远按 `user_id` 粒度，不存在"会话粒度"或"session 粒度" |
+| **单用户单会话** | 一个用户永远对应一个会话，会话绑定用户。Message 模型中没有会话 ID（conversation_id），只有 `user_id`。不存在多会话概念，不考虑并发会话场景 |
 
 ---
 
@@ -618,6 +619,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 8. **禁止**在 SSE 视图中手动创建临时事件循环（必须使用 ASGI 原生异步视图）
 9. **禁止**使用 `python manage.py runserver` 启动后端（必须使用 uvicorn ASGI 模式）
 10. **禁止**使用"会话粒度"隔离 — 本项目所有隔离操作（数据查询、并发锁、缓存键）永远按 `user_id` 粒度，不存在"会话粒度"或"session 粒度"概念
+11. **禁止**在任何模型或接口中引入 `conversation_id`/`session_id` 字段 — 一个用户永远对应一个会话，会话绑定用户，Message 只有 `user_id`，不存在多会话概念
 
 ---
 
@@ -625,7 +627,15 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 
 | 特性分支 | 规范路径 | 状态 |
 |----------|----------|------|
-| 001-llm-chat-page | [specs/001-llm-chat-page/spec.md](specs/001-llm-chat-page/spec.md) | 规范已完成 |
+| 001-llm-chat-page | `specs/001-llm-chat-page/spec.md` | ✅ 已完成 |
+| 002-asgi-async-views | — | ✅ 已完成 |
+| 004-context-memory | `specs/004-context-memory/spec.md` | ✅ 已完成 |
+| 005-context-monitoring | `specs/005-context-monitoring/spec.md` | ✅ 已完成 |
+| 006-subagent-tools | `specs/006-subagent-tools/spec.md` | ✅ 已完成 |
+| 007-home-assistant-tools | `specs/007-home-assistant-tools/spec.md` | ✅ 已完成 |
+| 008-multimodal-minicpm | `specs/008-multimodal-minicpm/spec.md` | ✅ 已完成 |
+| 009-voice-interaction | `specs/009-voice-interaction/spec.md` | ✅ 已完成 |
+| **010-voice-agent-pipeline** | `specs/010-voice-agent-pipeline/spec.md` | 🔄 开发中 |
 
 ---
 
@@ -633,33 +643,17 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 
 - 宪法文件: [.specify/memory/constitution.md](.specify/memory/constitution.md)
 - 代码示例: [docs/constitution-examples.md](docs/constitution-examples.md)
-- 当前特性规范: [specs/001-llm-chat-page/spec.md](specs/001-llm-chat-page/spec.md)
-- 规范质量检查: [specs/001-llm-chat-page/checklists/requirements.md](specs/001-llm-chat-page/checklists/requirements.md)
+- Gateway 集成指南: [docs/linchat-integration-guide.md](docs/linchat-integration-guide.md)
+- 当前特性规范: [specs/010-voice-agent-pipeline/spec.md](specs/010-voice-agent-pipeline/spec.md)
 
 ---
 
 *本文件随项目演进持续更新，版本与宪法文件同步。*
 
+
 ## Active Technologies
-- Python 3.11+ (后端) / TypeScript 5.0+ (前端) (001-llm-chat-page)
-- Python 3.11+ + Django 4.2+, DRF 3.14+, uvicorn 0.30+, redis-py (async) (002-asgi-async-views)
-- PostgreSQL (主存储), Redis (缓存/Pubsub) (002-asgi-async-views)
-- Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, Celery 5.3+, tiktoken, pgvector, openai SDK, Langfuse (004-context-memory)
-- PostgreSQL 15 + pgvector 扩展（主存储）, Redis（缓存/分布式锁/Celery Broker） (004-context-memory)
-- Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, LangGraph, LangChain, tiktoken, pgvector, openai SDK, Celery 5.3+, Langfuse (004-context-memory)
-- PostgreSQL 15 + pgvector + pg_jieba (主存储), Redis (缓存/分布式锁/Celery Broker DB2) (004-context-memory)
-- Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, LangGraph, tiktoken, redis-py (async), Next.js 14+, React 18+, Zustand (005-context-monitoring)
-- PostgreSQL 15 (主存储), Redis (缓存/PubSub/Celery Broker) (005-context-monitoring)
-- PostgreSQL 15 (主存储), Redis (缓存/PubSub/Celery Broker DB2) (005-context-monitoring)
-- Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, LangGraph, LangChain, httpx, redis-py (async) (006-home-assistant-tools)
-- Redis（限流/缓存键） (006-home-assistant-tools)
-- Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, LangGraph (create_react_agent), LangChain (ChatOpenAI, tool decorator), uvicorn 0.30+, redis-py (async), httpx (006-subagent-tools)
-- PostgreSQL 15 (主存储), Redis (缓存/PubSub) (006-subagent-tools)
-- Python 3.11+ + Django 4.2+, LangGraph, LangChain, httpx, redis-py (async) (007-home-assistant-tools)
-- Redis（速率限制键） (007-home-assistant-tools)
-- Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, LangGraph, LangChain, Pillow (图像处理), ffmpeg-python (视频处理), httpx, redis-py (async), Next.js 14+, React 18+, Zustand (008-multimodal-minicpm)
-- PostgreSQL 15 (主存储, MediaAttachment 元数据), MinIO (媒体文件/缩略图), Redis (推理任务状态/事件推送) (008-multimodal-minicpm)
-- PostgreSQL 15 (新模型: SpeakerProfile, RegisteredDevice, VoiceSettings + Message 扩展字段), Redis (语音会话状态/channel layer), MinIO (音频文件) (009-voice-interaction)
+- Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, channels (WebSocket), websockets (Gateway ASR WS 客户端 + TTS 流式 WS 客户端), LangGraph, LangChain, Langfuse (010-voice-agent-pipeline)
+- PostgreSQL 15 (Message, MediaAttachment, LangGraphExecution), Redis (语音会话状态/音频帧缓存/频率限制), MinIO (音频文件) (010-voice-agent-pipeline)
 
 ## Recent Changes
-- 001-llm-chat-page: Added Python 3.11+ (后端) / TypeScript 5.0+ (前端)
+- 010-voice-agent-pipeline: Added Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, channels (WebSocket), websockets (Gateway ASR WS 客户端 + TTS 流式 WS 客户端), LangGraph, LangChain, Langfuse

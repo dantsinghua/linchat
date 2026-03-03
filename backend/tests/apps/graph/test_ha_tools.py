@@ -50,7 +50,7 @@ class TestRateLimit:
     @pytest.mark.asyncio
     async def test_rate_limit_pass(self):
         """测试速率限制通过"""
-        with patch("apps.graph.tools.homeassistant.aioredis") as mock_redis:
+        with patch("apps.graph.tools.ha_helpers.aioredis") as mock_redis:
             mock_r = AsyncMock()
             mock_r.incr.return_value = 1
             mock_redis.from_url.return_value = mock_r
@@ -63,7 +63,7 @@ class TestRateLimit:
     @pytest.mark.asyncio
     async def test_rate_limit_exceeded(self):
         """测试速率限制超出"""
-        with patch("apps.graph.tools.homeassistant.aioredis") as mock_redis:
+        with patch("apps.graph.tools.ha_helpers.aioredis") as mock_redis:
             mock_r = AsyncMock()
             mock_r.incr.return_value = 15  # 超过 control 的 10/min 限制
             mock_redis.from_url.return_value = mock_r
@@ -79,7 +79,7 @@ class TestBlacklist:
 
     def test_blocked_entity(self):
         """测试被屏蔽的设备"""
-        with patch("apps.graph.tools.homeassistant.settings") as mock_settings:
+        with patch("apps.graph.tools.ha_helpers.settings") as mock_settings:
             mock_settings.HA_BLOCKED_ENTITIES = ["lock.front_door", "switch.danger"]
 
             assert _is_blocked("lock.front_door") is True

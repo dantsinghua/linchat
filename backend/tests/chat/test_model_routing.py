@@ -39,7 +39,7 @@ class TestBuildMultimodalMessages:
 
     def test_no_attachments_returns_empty_media_types(self):
         """无附件 → 纯文本消息，media_types 为空列表"""
-        from apps.graph.agent import build_multimodal_messages
+        from apps.graph.multimodal import build_multimodal_messages
 
         message, media_types = build_multimodal_messages(
             user_message="你好", attachments=[]
@@ -49,11 +49,11 @@ class TestBuildMultimodalMessages:
         assert message.content == "你好"
         assert media_types == []
 
-    @patch("apps.chat.services.minio_service.minio_service")
-    @patch("apps.graph.agent.settings")
+    @patch("apps.common.storage.minio_service.minio_service")
+    @patch("apps.graph.multimodal.settings")
     def test_image_attachment_routes_to_vision(self, mock_settings, mock_minio):
         """图片附件 → minicpm-o"""
-        from apps.graph.agent import build_multimodal_messages
+        from apps.graph.multimodal import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
         mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
@@ -78,14 +78,14 @@ class TestBuildMultimodalMessages:
         assert "text" in content_types
         assert "image_url" in content_types
 
-    @patch("apps.graph.agent._preprocess_video", return_value=b"processed-video")
-    @patch("apps.chat.services.minio_service.minio_service")
-    @patch("apps.graph.agent.settings")
+    @patch("apps.media.services.video.preprocess_video", return_value=b"processed-video")
+    @patch("apps.common.storage.minio_service.minio_service")
+    @patch("apps.graph.multimodal.settings")
     def test_video_attachment_routes_to_vision(
         self, mock_settings, mock_minio, mock_preprocess
     ):
         """视频附件 → minicpm-o (视频经预处理后以 video_url 发送)"""
-        from apps.graph.agent import build_multimodal_messages
+        from apps.graph.multimodal import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
         mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
@@ -108,11 +108,11 @@ class TestBuildMultimodalMessages:
         assert "video_url" in content_types
         mock_preprocess.assert_called_once_with(b"fake-video-data")
 
-    @patch("apps.chat.services.minio_service.minio_service")
-    @patch("apps.graph.agent.settings")
+    @patch("apps.common.storage.minio_service.minio_service")
+    @patch("apps.graph.multimodal.settings")
     def test_audio_attachment_routes_to_audio_model(self, mock_settings, mock_minio):
         """音频附件 → minicpm-o"""
-        from apps.graph.agent import build_multimodal_messages
+        from apps.graph.multimodal import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
         mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
@@ -134,13 +134,13 @@ class TestBuildMultimodalMessages:
         content_types = [c["type"] for c in message.content]
         assert "audio_url" in content_types
 
-    @patch("apps.chat.services.minio_service.minio_service")
-    @patch("apps.graph.agent.settings")
+    @patch("apps.common.storage.minio_service.minio_service")
+    @patch("apps.graph.multimodal.settings")
     def test_mixed_image_audio_routes_to_audio_priority(
         self, mock_settings, mock_minio
     ):
         """混合媒体（图片+音频）→ minicpm-o（音频优先）"""
-        from apps.graph.agent import build_multimodal_messages
+        from apps.graph.multimodal import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
         mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
@@ -168,11 +168,11 @@ class TestBuildMultimodalMessages:
         assert "image" in media_types
         assert "audio" in media_types
 
-    @patch("apps.chat.services.minio_service.minio_service")
-    @patch("apps.graph.agent.settings")
+    @patch("apps.common.storage.minio_service.minio_service")
+    @patch("apps.graph.multimodal.settings")
     def test_audio_placeholder_replaced_for_audio(self, mock_settings, mock_minio):
         """音频附件 + '[语音消息]' 占位文本 → 文本被替换为空"""
-        from apps.graph.agent import build_multimodal_messages
+        from apps.graph.multimodal import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
         mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
@@ -194,13 +194,13 @@ class TestBuildMultimodalMessages:
         content_types = [c["type"] for c in message.content]
         assert "text" not in content_types
 
-    @patch("apps.chat.services.minio_service.minio_service")
-    @patch("apps.graph.agent.settings")
+    @patch("apps.common.storage.minio_service.minio_service")
+    @patch("apps.graph.multimodal.settings")
     def test_audio_placeholder_preserved_without_audio(
         self, mock_settings, mock_minio
     ):
         """无音频附件 + '[语音消息]' 文本 → 文本保留（不替换）"""
-        from apps.graph.agent import build_multimodal_messages
+        from apps.graph.multimodal import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
         mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
@@ -224,13 +224,13 @@ class TestBuildMultimodalMessages:
         text_blocks = [c for c in message.content if c["type"] == "text"]
         assert text_blocks[0]["text"] == "[语音消息]"
 
-    @patch("apps.chat.services.minio_service.minio_service")
-    @patch("apps.graph.agent.settings")
+    @patch("apps.common.storage.minio_service.minio_service")
+    @patch("apps.graph.multimodal.settings")
     def test_attachment_download_failure_adds_error_text(
         self, mock_settings, mock_minio
     ):
         """附件下载失败 → 添加错误提示文本"""
-        from apps.graph.agent import build_multimodal_messages
+        from apps.graph.multimodal import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
         mock_settings.MULTIMODAL_MODEL_VISION = "minicpm-o"
@@ -256,11 +256,11 @@ class TestBuildMultimodalMessages:
         assert len(text_blocks) == 1
         assert "broken.png" in text_blocks[0]["text"]
 
-    @patch("apps.chat.services.minio_service.minio_service")
-    @patch("apps.graph.agent.settings")
+    @patch("apps.common.storage.minio_service.minio_service")
+    @patch("apps.graph.multimodal.settings")
     def test_custom_model_names_from_settings(self, mock_settings, mock_minio):
         """自定义模型名称配置"""
-        from apps.graph.agent import build_multimodal_messages
+        from apps.graph.multimodal import build_multimodal_messages
 
         mock_settings.MINIO_BUCKET_MEDIA = "linchat-media"
         mock_settings.MULTIMODAL_MODEL_VISION = "custom-vision-model"

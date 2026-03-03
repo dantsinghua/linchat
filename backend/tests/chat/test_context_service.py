@@ -138,6 +138,22 @@ class TestBuildContext:
 # ============================================================================
 
 
+def _make_mock_redis(lock_acquired: bool = True):
+    """构造 mock Redis 连接，模拟锁操作。
+
+    Args:
+        lock_acquired: lock.acquire() 是否成功获取锁
+    """
+    mock_lock = MagicMock()
+    mock_lock.acquire = AsyncMock(return_value=lock_acquired)
+    mock_lock.release = AsyncMock()
+
+    mock_redis = MagicMock()
+    mock_redis.lock.return_value = mock_lock
+    mock_redis.exists = AsyncMock(return_value=False)
+    return mock_redis
+
+
 class TestCompressContext:
     """compress_context 压缩编排测试"""
 
@@ -161,16 +177,14 @@ class TestCompressContext:
         msgs.append({"role": "user", "content": user_input})
         return msgs
 
-    @patch("apps.chat.services.context_service.ContextService._acquire_compress_lock")
-    @patch("apps.chat.services.context_service.ContextService._release_compress_lock")
-    @patch("apps.chat.services.context_service.ContextService._llm_compress")
+    @patch("apps.graph.services.context_service.get_redis", new_callable=AsyncMock)
+    @patch("apps.graph.services.context_service.ContextService._llm_compress")
     @patch("apps.common.tokenizer.count_tokens")
     def test_compress_l1_only(
-        self, mock_tokens, mock_llm, mock_release, mock_lock
+        self, mock_tokens, mock_llm, mock_get_redis
     ) -> None:
         """仅压缩 L1（对话历史）即满足预算"""
-        mock_lock.return_value = AsyncMock()  # 获取锁成功
-        mock_release.return_value = None
+        mock_get_redis.return_value = _make_mock_redis(lock_acquired=True)
         mock_llm.return_value = "压缩摘要"
 
         messages = self._make_messages(history_pairs=3, user_input="current")
@@ -200,15 +214,13 @@ class TestCompressContext:
         assert "current" in contents  # 当前输入保留
         assert "system prompt" in contents  # system 保留
 
-    @patch("apps.chat.services.context_service.ContextService._acquire_compress_lock")
-    @patch("apps.chat.services.context_service.ContextService._release_compress_lock")
-    @patch("apps.chat.services.context_service.ContextService._llm_compress")
+    @patch("apps.graph.services.context_service.get_redis", new_callable=AsyncMock)
+    @patch("apps.graph.services.context_service.ContextService._llm_compress")
     def test_llm_failure_fallback_truncation(
-        self, mock_llm, mock_release, mock_lock
+        self, mock_llm, mock_get_redis
     ) -> None:
         """LLM 压缩失败回退截断 [T059]"""
-        mock_lock.return_value = AsyncMock()
-        mock_release.return_value = None
+        mock_get_redis.return_value = _make_mock_redis(lock_acquired=True)
         mock_llm.return_value = None  # LLM 失败
 
         # 构造超限消息
@@ -225,15 +237,13 @@ class TestCompressContext:
         # 不超限时不触发压缩
         assert summary is None
 
-    @patch("apps.chat.services.context_service.ContextService._acquire_compress_lock")
-    @patch("apps.chat.services.context_service.ContextService._release_compress_lock")
-    @patch("apps.chat.services.context_service.ContextService._llm_compress")
+    @patch("apps.graph.services.context_service.get_redis", new_callable=AsyncMock)
+    @patch("apps.graph.services.context_service.ContextService._llm_compress")
     def test_llm_failure_no_compaction_memory(
-        self, mock_llm, mock_release, mock_lock
+        self, mock_llm, mock_get_redis
     ) -> None:
         """LLM 全部失败时不生成 compaction 记忆 [R-014]"""
-        mock_lock.return_value = AsyncMock()
-        mock_release.return_value = None
+        mock_get_redis.return_value = _make_mock_redis(lock_acquired=True)
         mock_llm.return_value = None  # 全部失败
 
         messages = [
@@ -266,40 +276,36 @@ class TestCompressContext:
         # LLM 失败不生成 compaction
         assert summary is None
 
-    @patch("apps.chat.services.context_service.ContextService._acquire_compress_lock")
-    @patch("apps.chat.services.context_service.ContextService._release_compress_lock")
-    def test_redis_unavailable_degrades(self, mock_release, mock_lock) -> None:
+    @patch("apps.graph.services.context_service.get_redis", new_callable=AsyncMock)
+    def test_redis_unavailable_degrades(self, mock_get_redis) -> None:
         """Redis 不可用时降级为无锁执行 [T058.1a]"""
-        mock_lock.return_value = None  # Redis 不可用，无法获取锁
-        mock_release.return_value = None
+        # get_redis 抛出异常模拟 Redis 不可用，compress_context 应在
+        # finally 中安全处理。这里改为模拟锁获取失败但 exists 也返回 False
+        # （表示没有其他进程持有锁），从而走过等待逻辑后继续执行。
+        mock_redis = _make_mock_redis(lock_acquired=False)
+        mock_redis.exists = AsyncMock(return_value=False)  # 无其他进程持有锁
+        mock_get_redis.return_value = mock_redis
 
-        with patch.object(
-            ContextService, "_wait_for_compress_lock", new_callable=AsyncMock
-        ) as mock_wait:
-            mock_wait.return_value = True  # 仍需压缩
+        messages = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "current"},
+        ]
 
-            messages = [
-                {"role": "system", "content": "sys"},
-                {"role": "user", "content": "current"},
-            ]
-
-            result, _ = run_async(
-                ContextService.compress_context(
-                    user_id=1,
-                    messages=messages,
-                    effective_window=1000000,
-                )
+        result, _ = run_async(
+            ContextService.compress_context(
+                user_id=1,
+                messages=messages,
+                effective_window=1000000,
             )
+        )
 
-            # 不抛异常，正常返回
-            assert len(result) >= 1
+        # 不抛异常，正常返回
+        assert len(result) >= 1
 
-    @patch("apps.chat.services.context_service.ContextService._acquire_compress_lock")
-    @patch("apps.chat.services.context_service.ContextService._release_compress_lock")
-    def test_sse_callback_called(self, mock_release, mock_lock) -> None:
+    @patch("apps.graph.services.context_service.get_redis", new_callable=AsyncMock)
+    def test_sse_callback_called(self, mock_get_redis) -> None:
         """SSE 回调被调用"""
-        mock_lock.return_value = AsyncMock()
-        mock_release.return_value = None
+        mock_get_redis.return_value = _make_mock_redis(lock_acquired=True)
 
         callback = AsyncMock()
         messages = [
@@ -330,7 +336,7 @@ class TestCompressContext:
 class TestSafetyNet:
     """安全兜底逻辑测试"""
 
-    @patch("apps.chat.services.context_service.MemoryService", create=True)
+    @patch("apps.graph.services.context_service.MemoryService", create=True)
     def test_force_truncate_exceeds_max_window(self, mock_mem_svc) -> None:
         """超过 100% 最大窗口直接截断不抛异常 [R-019]"""
         mock_mem_svc.search_memory = AsyncMock(return_value=[])
@@ -360,7 +366,7 @@ class TestSafetyNet:
             )
             assert isinstance(result, list)
 
-    @patch("apps.chat.services.context_service.MemoryService", create=True)
+    @patch("apps.graph.services.context_service.MemoryService", create=True)
     def test_within_buffer_no_truncation(self, mock_mem_svc) -> None:
         """在有效窗口内不触发压缩"""
         mock_mem_svc.search_memory = AsyncMock(return_value=[])

@@ -648,17 +648,17 @@ class TestAgentServiceExecute(TestCase):
     """AgentService.execute 测试"""
 
     def setUp(self):
-        # _build_prompt_preamble 返回 7 个值:
+        # build_prompt_preamble 返回 7 个值:
         # (preamble, preamble_tokens, effective_window, breakdown, memory_results, model_name, max_context_window)
         from apps.context.types import TokenBreakdown
         mock_breakdown = TokenBreakdown(system_prompt=100, history_messages=200, retrieved_memories=50, tool_definitions=0, user_input=0)
         self._preamble_patcher = patch(
-            "apps.graph.services.agent_service._build_prompt_preamble",
+            "apps.graph.services.agent_service.build_prompt_preamble",
             new_callable=AsyncMock,
             return_value=([], 0, 128000, mock_breakdown, [], "test-model", 128000),
         )
         self._langfuse_patcher = patch(
-            "apps.graph.services.agent_service._init_langfuse",
+            "apps.graph.services.agent_service.init_langfuse",
             return_value=None,
         )
         self._preamble_patcher.start()
@@ -859,12 +859,12 @@ class TestAgentServiceResume(TestCase):
     """AgentService.resume 测试"""
 
     def setUp(self):
-        # _build_prompt_preamble 返回 7 个值:
+        # build_prompt_preamble 返回 7 个值:
         # (preamble, preamble_tokens, effective_window, breakdown, memory_results, model_name, max_context_window)
         from apps.context.types import TokenBreakdown
         mock_breakdown = TokenBreakdown(system_prompt=100, history_messages=200, retrieved_memories=50, tool_definitions=0, user_input=0)
         self._preamble_patcher = patch(
-            "apps.graph.services.agent_service._build_prompt_preamble",
+            "apps.graph.services.agent_service.build_prompt_preamble",
             new_callable=AsyncMock,
             return_value=([], 0, 128000, mock_breakdown, [], "test-model", 128000),
         )
@@ -1161,17 +1161,17 @@ class TestAgentServiceExecuteAdvanced(TestCase):
     """AgentService.execute 高级测试"""
 
     def setUp(self):
-        # _build_prompt_preamble 返回 7 个值:
+        # build_prompt_preamble 返回 7 个值:
         # (preamble, preamble_tokens, effective_window, breakdown, memory_results, model_name, max_context_window)
         from apps.context.types import TokenBreakdown
         mock_breakdown = TokenBreakdown(system_prompt=100, history_messages=200, retrieved_memories=50, tool_definitions=0, user_input=0)
         self._preamble_patcher = patch(
-            "apps.graph.services.agent_service._build_prompt_preamble",
+            "apps.graph.services.agent_service.build_prompt_preamble",
             new_callable=AsyncMock,
             return_value=([], 0, 128000, mock_breakdown, [], "test-model", 128000),
         )
         self._langfuse_patcher = patch(
-            "apps.graph.services.agent_service._init_langfuse",
+            "apps.graph.services.agent_service.init_langfuse",
             return_value=None,
         )
         self._preamble_patcher.start()

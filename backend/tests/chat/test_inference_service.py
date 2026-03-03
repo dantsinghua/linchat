@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from django.utils import timezone
 
-from apps.chat.services.inference_service import InferenceService, _get_inference_task_key
+from apps.graph.services.inference_service import InferenceService, _task_key as _get_inference_task_key
 from apps.chat.services.types import InferenceTask
 
 
@@ -56,7 +56,7 @@ class TestInferenceService:
     # ============ get_active_task 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_get_active_task_exists(self, mock_get_redis, inference_service, sample_task):
         """测试获取存在的活跃任务"""
         mock_redis = AsyncMock()
@@ -71,7 +71,7 @@ class TestInferenceService:
         mock_redis.get.assert_called_once_with("user:123:inference_task")
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_get_active_task_not_exists(self, mock_get_redis, inference_service):
         """测试获取不存在的活跃任务"""
         mock_redis = AsyncMock()
@@ -83,7 +83,7 @@ class TestInferenceService:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_get_active_task_error(self, mock_get_redis, inference_service):
         """测试获取任务 Redis 错误"""
         mock_get_redis.side_effect = Exception("Redis connection error")
@@ -95,7 +95,7 @@ class TestInferenceService:
     # ============ register_task 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_register_task_success(self, mock_get_redis, inference_service):
         """测试注册任务成功"""
         mock_redis = AsyncMock()
@@ -116,7 +116,7 @@ class TestInferenceService:
         assert call_args.kwargs["ex"] == 300  # 默认 TTL
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_register_task_already_exists(self, mock_get_redis, inference_service):
         """测试注册任务但已存在（并发冲突）"""
         mock_redis = AsyncMock()
@@ -132,7 +132,7 @@ class TestInferenceService:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_register_task_error(self, mock_get_redis, inference_service):
         """测试注册任务 Redis 错误"""
         mock_get_redis.side_effect = Exception("Redis connection error")
@@ -148,7 +148,7 @@ class TestInferenceService:
     # ============ complete_task 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_complete_task_success(self, mock_get_redis, inference_service, sample_task):
         """测试完成任务成功"""
         mock_redis = AsyncMock()
@@ -165,7 +165,7 @@ class TestInferenceService:
         mock_redis.delete.assert_called_once_with("user:123:inference_task")
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_complete_task_not_found(self, mock_get_redis, inference_service):
         """测试完成任务但任务不存在"""
         mock_redis = AsyncMock()
@@ -180,7 +180,7 @@ class TestInferenceService:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_complete_task_request_id_mismatch(self, mock_get_redis, inference_service, sample_task):
         """测试完成任务但请求 ID 不匹配"""
         mock_redis = AsyncMock()
@@ -198,8 +198,8 @@ class TestInferenceService:
     # ============ cancel_task 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.EventService.publish_event")
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.EventService.publish_event")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_cancel_task_success(
         self, mock_get_redis, mock_publish_event, inference_service, sample_task
     ):
@@ -218,7 +218,7 @@ class TestInferenceService:
         mock_redis.delete.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_cancel_task_not_found(self, mock_get_redis, inference_service):
         """测试取消任务但无进行中任务"""
         mock_redis = AsyncMock()
@@ -231,7 +231,7 @@ class TestInferenceService:
         assert cancelled_id is None
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_cancel_task_request_id_mismatch(
         self, mock_get_redis, inference_service, sample_task
     ):
@@ -251,7 +251,7 @@ class TestInferenceService:
     # ============ refresh_task_ttl 测试 ============
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_refresh_task_ttl_success(self, mock_get_redis, inference_service):
         """测试刷新任务 TTL 成功"""
         mock_redis = AsyncMock()
@@ -264,7 +264,7 @@ class TestInferenceService:
         mock_redis.expire.assert_called_once_with("user:123:inference_task", 300)
 
     @pytest.mark.asyncio
-    @patch("apps.chat.services.inference_service.get_redis")
+    @patch("apps.graph.services.inference_service.get_redis")
     async def test_refresh_task_ttl_error(self, mock_get_redis, inference_service):
         """测试刷新任务 TTL 错误"""
         mock_get_redis.side_effect = Exception("Redis connection error")

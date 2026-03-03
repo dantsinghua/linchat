@@ -1,40 +1,8 @@
-"""
-聊天模块序列化器
-
-参考:
-- rule-model.md#R_MSG_001 消息长度限制规则
-- rule-model.md#R_MSG_002 空消息拦截规则
-- specs/008-multimodal-minicpm/contracts/media-upload.yaml
-"""
-
 from django.conf import settings
 from rest_framework import serializers
 
-from apps.chat.models import MediaAttachment
-
-
-class MediaAttachmentSerializer(serializers.ModelSerializer):
-    """
-    媒体附件序列化器
-
-    参考: specs/008-multimodal-minicpm/contracts/media-upload.yaml
-    """
-
-    class Meta:
-        model = MediaAttachment
-        fields = [
-            "attachment_uuid",
-            "media_type",
-            "mime_type",
-            "file_name",
-            "file_size",
-            "width",
-            "height",
-            "duration_seconds",
-            "is_expired",
-            "expires_at",
-        ]
-        read_only_fields = fields
+# 兼容层：MediaAttachmentSerializer 已迁移到 apps.media.serializers
+from apps.media.serializers import MediaAttachmentSerializer  # noqa: F401
 
 
 class ChatRequestSerializer(serializers.Serializer):
@@ -112,28 +80,6 @@ class HistoryQuerySerializer(serializers.Serializer):
         error_messages={
             "min_value": "before_sequence 最小为 1",
         },
-    )
-
-
-class DocumentParseRequestSerializer(serializers.Serializer):
-    """文档解析请求序列化器
-
-    参考: specs/008-multimodal-minicpm/contracts/document-parse.yaml
-    接收已上传到 MinIO 的文档附件 UUID，model 由后端 settings 配置决定。
-    """
-
-    attachment_uuid = serializers.CharField(
-        required=True,
-        max_length=36,
-        error_messages={
-            "required": "attachment_uuid 参数为必填项",
-            "blank": "attachment_uuid 不能为空",
-        },
-    )
-    pages = serializers.CharField(
-        required=False,
-        max_length=128,
-        allow_blank=True,
     )
 
 

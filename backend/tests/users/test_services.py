@@ -8,14 +8,17 @@
 - 单点登录: 新登录使旧Token失效、Token索引更新
 
 覆盖率要求: 服务层 ≥ 95%
+
+注意: 不使用 TransactionTestCase + run_async，改用 pytest.mark.django_db +
+async_to_sync，避免 @sync_to_async 线程 DB 连接死锁。
 """
-import asyncio
 from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from asgiref.sync import async_to_sync
 from django.conf import settings
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from apps.common.exceptions import (
@@ -36,10 +39,12 @@ from apps.users.crypto import (
 from apps.users.models import SysUser
 from apps.users.services import AuthService, CaptchaService
 
-
-def run_async(coro):
-    """运行异步函数"""
-    return asyncio.get_event_loop().run_until_complete(coro)
+# async_to_sync 包装器（避免 run_async + @sync_to_async 死锁）
+_login = async_to_sync(AuthService.login)
+_logout = async_to_sync(AuthService.logout)
+_invalidate_old_tokens = async_to_sync(AuthService._invalidate_old_tokens)
+_captcha_generate = async_to_sync(CaptchaService.generate)
+_captcha_verify = async_to_sync(CaptchaService.verify)
 
 
 # ============ Crypto 模块测试 ============
@@ -118,7 +123,7 @@ class TestCaptchaService(TestCase):
     def test_generate_captcha(self, mock_key, mock_setex):
         mock_key.return_value = "auth:captcha:test-id"
         mock_setex.return_value = True
-        result = run_async(CaptchaService.generate())
+        result = _captcha_generate()
         self.assertIn("captcha_id", result)
         self.assertTrue(result["captcha_image"].startswith("data:image/png;base64,"))
         mock_setex.assert_called_once()
@@ -128,7 +133,7 @@ class TestCaptchaService(TestCase):
     def test_generate_captcha_custom_size(self, mock_key, mock_setex):
         mock_key.return_value = "auth:captcha:test-id"
         mock_setex.return_value = True
-        result = run_async(CaptchaService.generate(width=150, height=50))
+        result = _captcha_generate(width=150, height=50)
         self.assertIn("captcha_id", result)
 
     @patch("apps.users.services.redis_delete")
@@ -138,7 +143,7 @@ class TestCaptchaService(TestCase):
         mock_key.return_value = "auth:captcha:test-id"
         mock_get.return_value = "ABCD"
         mock_delete.return_value = 1
-        result = run_async(CaptchaService.verify("test-id", "abcd"))
+        result = _captcha_verify("test-id", "abcd")
         self.assertTrue(result)
         mock_delete.assert_called_once()
 
@@ -148,7 +153,7 @@ class TestCaptchaService(TestCase):
         mock_key.return_value = "auth:captcha:test-id"
         mock_get.return_value = None
         with self.assertRaises(CaptchaInvalidException) as ctx:
-            run_async(CaptchaService.verify("test-id", "ABCD"))
+            _captcha_verify("test-id", "ABCD")
         self.assertIn("已过期", str(ctx.exception.message))
 
     @patch("apps.users.services.redis_get")
@@ -157,7 +162,7 @@ class TestCaptchaService(TestCase):
         mock_key.return_value = "auth:captcha:test-id"
         mock_get.return_value = "ABCD"
         with self.assertRaises(CaptchaInvalidException) as ctx:
-            run_async(CaptchaService.verify("test-id", "WXYZ"))
+            _captcha_verify("test-id", "WXYZ")
         self.assertIn("错误", str(ctx.exception.message))
 
     @patch("apps.users.services.redis_delete")
@@ -167,26 +172,27 @@ class TestCaptchaService(TestCase):
         mock_key.return_value = "auth:captcha:test-id"
         mock_get.return_value = "ABCD"
         mock_delete.return_value = 1
-        result = run_async(CaptchaService.verify("test-id", "abcd"))
+        result = _captcha_verify("test-id", "abcd")
         self.assertTrue(result)
 
 
 # ============ AuthService 测试 ============
 
 
-@pytest.mark.django_db(transaction=True)
-class TestAuthService(TransactionTestCase):
+@pytest.mark.django_db
+class TestAuthService:
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def _setup_user(self):
+        SysUser.objects.filter(username="testuser").delete()
         self.username = "testuser"
         self.password = "Test@123456"
         self.password_hash = sm3_hash(self.password)
         self.user = SysUser.objects.create(
             username=self.username, password_hash=self.password_hash, status=1
         )
-
-    def tearDown(self):
-        SysUser.objects.all().delete()
+        yield
+        SysUser.objects.filter(username="testuser").delete()
 
     @patch("apps.users.services.AuthService._invalidate_old_tokens")
     @patch("apps.users.services.redis_delete")
@@ -198,18 +204,16 @@ class TestAuthService(TransactionTestCase):
         mock_delete.return_value = 1
         mock_sso.return_value = None
 
-        result = run_async(
-            AuthService.login(
-                username=self.username,
-                encrypted_password=sm4_encrypt(self.password),
-                captcha_id="test-captcha-id",
-                captcha_code="ABCD",
-                client_ip="127.0.0.1",
-            )
+        result = _login(
+            username=self.username,
+            encrypted_password=sm4_encrypt(self.password),
+            captcha_id="test-captcha-id",
+            captcha_code="ABCD",
+            client_ip="127.0.0.1",
         )
-        self.assertIsInstance(result, dict)
-        self.assertEqual(result["username"], self.username)
-        self.assertIn("token", result)
+        assert isinstance(result, dict)
+        assert result["username"] == self.username
+        assert "token" in result
         mock_verify.assert_called_once()
         mock_sso.assert_called_once()
 
@@ -218,29 +222,25 @@ class TestAuthService(TransactionTestCase):
         mock_verify.return_value = True
         with patch("apps.users.services.redis_setex") as mock_setex:
             mock_setex.return_value = True
-            with self.assertRaises(AuthFailedException):
-                run_async(
-                    AuthService.login(
-                        username="nonexistent",
-                        encrypted_password=sm4_encrypt("password"),
-                        captcha_id="test-captcha-id",
-                        captcha_code="ABCD",
-                        client_ip="127.0.0.1",
-                    )
+            with pytest.raises(AuthFailedException):
+                _login(
+                    username="nonexistent",
+                    encrypted_password=sm4_encrypt("password"),
+                    captcha_id="test-captcha-id",
+                    captcha_code="ABCD",
+                    client_ip="127.0.0.1",
                 )
 
     @patch("apps.users.services.CaptchaService.verify")
     def test_login_wrong_password(self, mock_verify):
         mock_verify.return_value = True
-        with self.assertRaises(AuthFailedException):
-            run_async(
-                AuthService.login(
-                    username=self.username,
-                    encrypted_password=sm4_encrypt("wrong_password"),
-                    captcha_id="test-captcha-id",
-                    captcha_code="ABCD",
-                    client_ip="127.0.0.1",
-                )
+        with pytest.raises(AuthFailedException):
+            _login(
+                username=self.username,
+                encrypted_password=sm4_encrypt("wrong_password"),
+                captcha_id="test-captcha-id",
+                captcha_code="ABCD",
+                client_ip="127.0.0.1",
             )
 
     @patch("apps.users.services.CaptchaService.verify")
@@ -248,15 +248,13 @@ class TestAuthService(TransactionTestCase):
         mock_verify.return_value = True
         self.user.status = 0
         self.user.save()
-        with self.assertRaises(UserDisabledException):
-            run_async(
-                AuthService.login(
-                    username=self.username,
-                    encrypted_password=sm4_encrypt(self.password),
-                    captcha_id="test-captcha-id",
-                    captcha_code="ABCD",
-                    client_ip="127.0.0.1",
-                )
+        with pytest.raises(UserDisabledException):
+            _login(
+                username=self.username,
+                encrypted_password=sm4_encrypt(self.password),
+                captcha_id="test-captcha-id",
+                captcha_code="ABCD",
+                client_ip="127.0.0.1",
             )
 
     @patch("apps.users.services.CaptchaService.verify")
@@ -264,56 +262,51 @@ class TestAuthService(TransactionTestCase):
         mock_verify.return_value = True
         self.user.lock_until = timezone.now() + timedelta(minutes=10)
         self.user.save()
-        with self.assertRaises(AccountLockedException) as ctx:
-            run_async(
-                AuthService.login(
-                    username=self.username,
-                    encrypted_password=sm4_encrypt(self.password),
-                    captcha_id="test-captcha-id",
-                    captcha_code="ABCD",
-                    client_ip="127.0.0.1",
-                )
+        with pytest.raises(AccountLockedException, match="锁定"):
+            _login(
+                username=self.username,
+                encrypted_password=sm4_encrypt(self.password),
+                captcha_id="test-captcha-id",
+                captcha_code="ABCD",
+                client_ip="127.0.0.1",
             )
-        self.assertIn("锁定", str(ctx.exception.message))
 
     @patch("apps.users.services.CaptchaService.verify")
     def test_login_invalid_password_format(self, mock_verify):
         mock_verify.return_value = True
-        with self.assertRaises(AuthFailedException) as ctx:
-            run_async(
-                AuthService.login(
-                    username=self.username,
-                    encrypted_password="not_encrypted",
-                    captcha_id="test-captcha-id",
-                    captcha_code="ABCD",
-                    client_ip="127.0.0.1",
-                )
+        with pytest.raises(AuthFailedException, match="格式错误"):
+            _login(
+                username=self.username,
+                encrypted_password="not_encrypted",
+                captcha_id="test-captcha-id",
+                captcha_code="ABCD",
+                client_ip="127.0.0.1",
             )
-        self.assertIn("格式错误", str(ctx.exception.message))
 
     @patch("apps.users.services.redis_delete")
     def test_logout(self, mock_delete):
         mock_delete.return_value = 1
-        result = run_async(AuthService.logout(self.user.user_id, "test_token_hash"))
-        self.assertTrue(result)
-        self.assertEqual(mock_delete.call_count, 2)
+        result = _logout(self.user.user_id, "test_token_hash")
+        assert result is True
+        assert mock_delete.call_count == 2
 
 
 # ============ 登录失败锁定测试 ============
 
 
-@pytest.mark.django_db(transaction=True)
-class TestLoginLockout(TransactionTestCase):
+@pytest.mark.django_db
+class TestLoginLockout:
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def _setup_user(self):
+        SysUser.objects.filter(username="locktest").delete()
         self.username = "locktest"
         self.password = "Test@123456"
         self.user = SysUser.objects.create(
             username=self.username, password_hash=sm3_hash(self.password), status=1
         )
-
-    def tearDown(self):
-        SysUser.objects.all().delete()
+        yield
+        SysUser.objects.filter(username="locktest").delete()
 
     @patch("apps.users.services.CaptchaService.verify")
     def test_fail_count_increment(self, mock_verify):
@@ -321,18 +314,16 @@ class TestLoginLockout(TransactionTestCase):
         encrypted = sm4_encrypt("wrong_password")
         for i in range(3):
             try:
-                run_async(
-                    AuthService.login(
-                        username=self.username, encrypted_password=encrypted,
-                        captcha_id=f"test-captcha-{i}", captcha_code="ABCD",
-                        client_ip="127.0.0.1",
-                    )
+                _login(
+                    username=self.username, encrypted_password=encrypted,
+                    captcha_id=f"test-captcha-{i}", captcha_code="ABCD",
+                    client_ip="127.0.0.1",
                 )
             except AuthFailedException:
                 pass
         self.user.refresh_from_db()
-        self.assertEqual(self.user.login_fail_count, 3)
-        self.assertIsNone(self.user.lock_until)
+        assert self.user.login_fail_count == 3
+        assert self.user.lock_until is None
 
     @patch("apps.users.services.CaptchaService.verify")
     def test_account_lock_after_5_failures(self, mock_verify):
@@ -340,33 +331,29 @@ class TestLoginLockout(TransactionTestCase):
         encrypted = sm4_encrypt("wrong_password")
         for i in range(5):
             try:
-                run_async(
-                    AuthService.login(
-                        username=self.username, encrypted_password=encrypted,
-                        captcha_id=f"test-captcha-{i}", captcha_code="ABCD",
-                        client_ip="127.0.0.1",
-                    )
+                _login(
+                    username=self.username, encrypted_password=encrypted,
+                    captcha_id=f"test-captcha-{i}", captcha_code="ABCD",
+                    client_ip="127.0.0.1",
                 )
             except AuthFailedException:
                 pass
         self.user.refresh_from_db()
-        self.assertEqual(self.user.login_fail_count, 0)
-        self.assertIsNotNone(self.user.lock_until)
-        self.assertTrue(self.user.lock_until > timezone.now())
+        assert self.user.login_fail_count == 0
+        assert self.user.lock_until is not None
+        assert self.user.lock_until > timezone.now()
 
     @patch("apps.users.services.CaptchaService.verify")
     def test_locked_account_cannot_login(self, mock_verify):
         mock_verify.return_value = True
         self.user.lock_until = timezone.now() + timedelta(minutes=15)
         self.user.save()
-        with self.assertRaises(AccountLockedException):
-            run_async(
-                AuthService.login(
-                    username=self.username,
-                    encrypted_password=sm4_encrypt(self.password),
-                    captcha_id="test-captcha", captcha_code="ABCD",
-                    client_ip="127.0.0.1",
-                )
+        with pytest.raises(AccountLockedException):
+            _login(
+                username=self.username,
+                encrypted_password=sm4_encrypt(self.password),
+                captcha_id="test-captcha", captcha_code="ABCD",
+                client_ip="127.0.0.1",
             )
 
     @patch("apps.users.services.AuthService._invalidate_old_tokens")
@@ -380,34 +367,29 @@ class TestLoginLockout(TransactionTestCase):
         mock_sso.return_value = None
         self.user.login_fail_count = 3
         self.user.save()
-        run_async(
-            AuthService.login(
-                username=self.username,
-                encrypted_password=sm4_encrypt(self.password),
-                captcha_id="test-captcha", captcha_code="ABCD",
-                client_ip="127.0.0.1",
-            )
+        _login(
+            username=self.username,
+            encrypted_password=sm4_encrypt(self.password),
+            captcha_id="test-captcha", captcha_code="ABCD",
+            client_ip="127.0.0.1",
         )
         self.user.refresh_from_db()
-        self.assertEqual(self.user.login_fail_count, 0)
-        self.assertIsNone(self.user.lock_until)
+        assert self.user.login_fail_count == 0
+        assert self.user.lock_until is None
 
     @patch("apps.users.services.CaptchaService.verify")
     def test_lock_expires_after_15_minutes(self, mock_verify):
         mock_verify.return_value = True
         self.user.lock_until = timezone.now() - timedelta(minutes=1)
         self.user.save()
-        self.assertFalse(self.user.is_locked())
+        assert not self.user.is_locked()
 
 
 # ============ SSO (内联到 AuthService) 测试 ============
 
 
-@pytest.mark.django_db(transaction=True)
-class TestSSOInvalidation(TransactionTestCase):
-
-    def setUp(self):
-        self.user_id = 1
+@pytest.mark.django_db
+class TestSSOInvalidation:
 
     @patch("apps.users.services.EventService.publish_logout_event")
     @patch("apps.users.services.redis_setex")
@@ -418,7 +400,7 @@ class TestSSOInvalidation(TransactionTestCase):
         mock_delete.return_value = 1
         mock_setex.return_value = True
         mock_publish.return_value = True
-        run_async(AuthService._invalidate_old_tokens(self.user_id, "new_token_hash"))
+        _invalidate_old_tokens(1, "new_token_hash")
         mock_delete.assert_called_once()
         mock_publish.assert_called_once()
         mock_setex.assert_called_once()
@@ -428,7 +410,7 @@ class TestSSOInvalidation(TransactionTestCase):
     def test_no_old_token(self, mock_get, mock_setex):
         mock_get.return_value = None
         mock_setex.return_value = True
-        run_async(AuthService._invalidate_old_tokens(self.user_id, "new_token_hash"))
+        _invalidate_old_tokens(1, "new_token_hash")
         mock_setex.assert_called_once()
 
     @patch("apps.users.services.redis_setex")
@@ -437,7 +419,7 @@ class TestSSOInvalidation(TransactionTestCase):
         token_hash = "same_token_hash"
         mock_get.return_value = token_hash
         mock_setex.return_value = True
-        run_async(AuthService._invalidate_old_tokens(self.user_id, token_hash))
+        _invalidate_old_tokens(1, token_hash)
         mock_setex.assert_called_once()
 
 
@@ -468,23 +450,22 @@ class TestTokenExpiration(TestCase):
 # ============ 用户模型测试 ============
 
 
-@pytest.mark.django_db(transaction=True)
-class TestSysUserModel(TransactionTestCase):
+class TestSysUserModel:
 
     def test_is_locked_true(self):
         user = SysUser(username="test", password_hash="h", lock_until=timezone.now() + timedelta(minutes=10))
-        self.assertTrue(user.is_locked())
+        assert user.is_locked()
 
     def test_is_locked_false_expired(self):
         user = SysUser(username="test", password_hash="h", lock_until=timezone.now() - timedelta(minutes=1))
-        self.assertFalse(user.is_locked())
+        assert not user.is_locked()
 
     def test_is_locked_false_no_lock(self):
         user = SysUser(username="test", password_hash="h", lock_until=None)
-        self.assertFalse(user.is_locked())
+        assert not user.is_locked()
 
     def test_is_active_true(self):
-        self.assertTrue(SysUser(username="t", password_hash="h", status=1).is_active())
+        assert SysUser(username="t", password_hash="h", status=1).is_active()
 
     def test_is_active_false(self):
-        self.assertFalse(SysUser(username="t", password_hash="h", status=0).is_active())
+        assert not SysUser(username="t", password_hash="h", status=0).is_active()

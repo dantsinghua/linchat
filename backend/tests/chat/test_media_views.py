@@ -20,8 +20,8 @@ import pytest
 from django.test import Client, RequestFactory
 from PIL import Image
 
-from apps.chat.models import MediaAttachment
-from apps.chat.services.media_service import MediaUploadError
+from apps.media.models import MediaAttachment
+from apps.media.services import MediaUploadError
 
 
 @pytest.fixture
@@ -64,7 +64,7 @@ class TestUploadMediaView:
         client = Client()
         return client
 
-    @patch("apps.chat.views.MediaService.upload_image")
+    @patch("apps.media.views.MediaService.upload")
     @patch("apps.common.middleware.TokenAuthMiddleware.__call__")
     def test_upload_image_success(
         self, mock_middleware, mock_upload, client_with_auth, sample_image_bytes, sample_attachment

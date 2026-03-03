@@ -212,14 +212,14 @@ class TestRecordGatewaySpan:
     @patch("langfuse.Langfuse")
     @patch("apps.common.gateway_utils.settings")
     def test_record_success_span(self, mock_settings, mock_langfuse_cls):
-        """记录成功的 span"""
+        """记录成功的 span（Langfuse 3.x start_span API）"""
         mock_settings.LANGFUSE_PUBLIC_KEY = "pk-test"
         mock_settings.LANGFUSE_SECRET_KEY = "sk-test"
         mock_settings.LANGFUSE_HOST = "http://langfuse:3100"
 
         mock_langfuse = MagicMock()
-        mock_trace = MagicMock()
-        mock_langfuse.trace.return_value = mock_trace
+        mock_span = MagicMock()
+        mock_langfuse.start_span.return_value = mock_span
         mock_langfuse_cls.return_value = mock_langfuse
 
         record_gateway_span(
@@ -230,28 +230,28 @@ class TestRecordGatewaySpan:
             request_id="req-abc",
         )
 
-        mock_langfuse.trace.assert_called_once()
-        mock_trace.span.assert_called_once()
-        span_args = mock_trace.span.call_args
+        mock_langfuse.start_span.assert_called_once()
+        span_args = mock_langfuse.start_span.call_args
         metadata = span_args[1]["metadata"]
         assert metadata["model"] == "minicpm-o"
         assert metadata["request_type"] == "tts"
         assert metadata["duration"] == 1.5
         assert metadata["status_code"] == 200
         assert metadata["request_id"] == "req-abc"
+        mock_span.end.assert_called_once()
         mock_langfuse.flush.assert_called_once()
 
     @patch("langfuse.Langfuse")
     @patch("apps.common.gateway_utils.settings")
     def test_record_error_span(self, mock_settings, mock_langfuse_cls):
-        """记录错误的 span"""
+        """记录错误的 span（Langfuse 3.x start_span API）"""
         mock_settings.LANGFUSE_PUBLIC_KEY = "pk-test"
         mock_settings.LANGFUSE_SECRET_KEY = "sk-test"
         mock_settings.LANGFUSE_HOST = "http://langfuse:3100"
 
         mock_langfuse = MagicMock()
-        mock_trace = MagicMock()
-        mock_langfuse.trace.return_value = mock_trace
+        mock_span = MagicMock()
+        mock_langfuse.start_span.return_value = mock_span
         mock_langfuse_cls.return_value = mock_langfuse
 
         record_gateway_span(
@@ -263,7 +263,7 @@ class TestRecordGatewaySpan:
             error="timeout",
         )
 
-        span_args = mock_trace.span.call_args
+        span_args = mock_langfuse.start_span.call_args
         metadata = span_args[1]["metadata"]
         assert metadata["error"] == "timeout"
         assert span_args[1]["level"] == "ERROR"
@@ -272,14 +272,14 @@ class TestRecordGatewaySpan:
     @patch("langfuse.Langfuse")
     @patch("apps.common.gateway_utils.settings")
     def test_record_document_parse_span(self, mock_settings, mock_langfuse_cls):
-        """记录文档解析 span"""
+        """记录文档解析 span（Langfuse 3.x start_span API）"""
         mock_settings.LANGFUSE_PUBLIC_KEY = "pk-test"
         mock_settings.LANGFUSE_SECRET_KEY = "sk-test"
         mock_settings.LANGFUSE_HOST = "http://langfuse:3100"
 
         mock_langfuse = MagicMock()
-        mock_trace = MagicMock()
-        mock_langfuse.trace.return_value = mock_trace
+        mock_span = MagicMock()
+        mock_langfuse.start_span.return_value = mock_span
         mock_langfuse_cls.return_value = mock_langfuse
 
         record_gateway_span(
@@ -290,7 +290,7 @@ class TestRecordGatewaySpan:
             request_id="req-doc",
         )
 
-        span_args = mock_trace.span.call_args
+        span_args = mock_langfuse.start_span.call_args
         metadata = span_args[1]["metadata"]
         assert metadata["model"] == "minicpm-v"
         assert metadata["request_type"] == "document_parse"

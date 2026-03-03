@@ -7,10 +7,13 @@
 
 from unittest.mock import MagicMock, patch
 
-from django.test import TransactionTestCase
+import pytest
 from rest_framework.test import APIClient
 
 from apps.memory.models import UserMemory
+
+
+pytestmark = pytest.mark.django_db
 
 
 def _authed_client(user_id: int = 1) -> APIClient:
@@ -32,8 +35,13 @@ def _mock_verify(user_id: int = 1):
     )
 
 
-class TestMemoryListCreate(TransactionTestCase):
+class TestMemoryListCreate:
     """GET/POST /api/v1/memories/ 测试"""
+
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        UserMemory.objects.all().delete()
+        yield
 
     @patch("apps.memory.tasks.generate_embedding")
     def test_create_success(self, mock_task: MagicMock) -> None:
@@ -136,8 +144,13 @@ class TestMemoryListCreate(TransactionTestCase):
         assert response.status_code == 401
 
 
-class TestMemoryDetail(TransactionTestCase):
+class TestMemoryDetail:
     """GET/PUT/DELETE /api/v1/memories/<id>/ 测试"""
+
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        UserMemory.objects.all().delete()
+        yield
 
     def test_get_success(self) -> None:
         """GET 获取详情 → 200"""
@@ -249,8 +262,13 @@ class TestMemoryDetail(TransactionTestCase):
         assert response.status_code == 404
 
 
-class TestMemoryResponseFormat(TransactionTestCase):
+class TestMemoryResponseFormat:
     """统一响应格式验证"""
+
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        UserMemory.objects.all().delete()
+        yield
 
     def test_response_has_code_message_data(self) -> None:
         """响应必须包含 code/message/data 字段"""
@@ -281,8 +299,13 @@ class TestMemoryResponseFormat(TransactionTestCase):
         assert "totalPages" in data
 
 
-class TestMemorySearch(TransactionTestCase):
+class TestMemorySearch:
     """POST /api/v1/memories/search/ 测试 [T037]"""
+
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        UserMemory.objects.all().delete()
+        yield
 
     @patch("apps.memory.services.embedding_repo.keyword_search")
     @patch("apps.memory.services.embedding_repo.vector_search")

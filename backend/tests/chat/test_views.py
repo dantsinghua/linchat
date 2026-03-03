@@ -41,7 +41,7 @@ def mock_user_request():
 
 
 @pytest.mark.asyncio
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 class TestChatViewAsync:
     """chat() 视图异步测试"""
 
@@ -93,7 +93,7 @@ class TestChatViewAsync:
 
 
 @pytest.mark.asyncio
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 class TestResumeGenerationViewAsync:
     """resume_generation() 视图异步测试"""
 
@@ -119,7 +119,7 @@ class TestResumeGenerationViewAsync:
 
 
 @pytest.mark.asyncio
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 class TestReconnectStreamViewAsync:
     """reconnect_stream() 视图异步测试"""
 
@@ -141,7 +141,7 @@ class TestReconnectStreamViewAsync:
 
 
 @pytest.mark.asyncio
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db
 class TestInvalidRequestHandling:
     """非法请求处理测试 (T028)"""
 
