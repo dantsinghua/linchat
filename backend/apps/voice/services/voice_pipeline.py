@@ -33,6 +33,35 @@ logger = logging.getLogger(__name__)
 _pipeline_locks: dict[int, asyncio.Lock] = {}
 
 
+def _error_msg(code: str, message: str, recoverable: bool = True) -> dict:
+    return {"type": "error", "data": {"code": code, "message": message, "recoverable": recoverable}}
+
+
+def _response_event(event_type: str, response_id: str, segment_id: str, **extra) -> dict:
+    data = {"response_id": response_id, "segment_id": segment_id}
+    data.update(extra)
+    return {"type": event_type, "data": data}
+
+
+def _delta_msg(content: str, response_id: str) -> dict:
+    return {"type": "response.delta", "data": {"delta": {"content": content}, "response_id": response_id}}
+
+
+def _build_agent_error(chunk: Any) -> dict:
+    """从 Agent StreamChunk 构建错误数据（宪法 4.3: 映射 LLM 异常类型）。"""
+    err: dict[str, Any] = {"code": "AGENT_ERROR", "message": chunk.content or "Agent 推理出错", "recoverable": True}
+    if chunk.data:
+        if chunk.data.get("gateway_error"):
+            err["code"] = chunk.data["gateway_error"]
+        if chunk.data.get("content_control"):
+            err["code"] = "CONTENT_FILTER"
+            err["message"] = chunk.data.get("replacement", err["message"])
+        if chunk.data.get("retry_after"):
+            err["retry_after"] = chunk.data["retry_after"]
+            err["recoverable"] = False
+    return err
+
+
 def _get_lock(user_id: int) -> asyncio.Lock:
     if user_id not in _pipeline_locks:
         _pipeline_locks[user_id] = asyncio.Lock()
@@ -158,14 +187,7 @@ class VoicePipeline:
         rate_ok = await voice_session_service.check_llm_rate_limit(user_id)
         if not rate_ok:
             logger.warning("Pipeline rate limited: user=%s", user_id)
-            await consumer._send_json({
-                "type": "error",
-                "data": {
-                    "code": "RATE_LIMIT",
-                    "message": "语音推理频率超限，请稍后再试",
-                    "recoverable": True,
-                },
-            })
+            await consumer._send_json(_error_msg("RATE_LIMIT", "语音推理频率超限，请稍后再试"))
             return
 
         # 2. 注册推理任务（复用 SSE 聊天的并发控制, FR-008）
@@ -174,27 +196,14 @@ class VoicePipeline:
         )
         if not registered:
             logger.warning("Pipeline task conflict: user=%s", user_id)
-            await consumer._send_json({
-                "type": "error",
-                "data": {
-                    "code": "INFERENCE_BUSY",
-                    "message": "有其他推理任务进行中",
-                    "recoverable": True,
-                },
-            })
+            await consumer._send_json(_error_msg("INFERENCE_BUSY", "有其他推理任务进行中"))
             return
 
         # 3. 连接 TTS WS（如果启用）
         tts_client = await VoicePipeline._connect_tts(consumer)
 
         # 4. 发送 response.start
-        await consumer._send_json({
-            "type": "response.start",
-            "data": {
-                "response_id": response_id,
-                "segment_id": segment_id,
-            },
-        })
+        await consumer._send_json(_response_event("response.start", response_id, segment_id))
 
         # 5. 流式 Agent → 流式 TTS
         error_occurred = False
@@ -207,13 +216,7 @@ class VoicePipeline:
             ):
                 if chunk.type == "content":
                     # 文字 → 前端
-                    await consumer._send_json({
-                        "type": "response.delta",
-                        "data": {
-                            "delta": {"content": chunk.content},
-                            "response_id": response_id,
-                        },
-                    })
+                    await consumer._send_json(_delta_msg(chunk.content, response_id))
                     # 文字 → TTS WS（Gateway 自动分句合成）
                     if tts_client and tts_client.connected:
                         try:
@@ -232,32 +235,9 @@ class VoicePipeline:
 
                 elif chunk.type == "error":
                     error_occurred = True
-                    error_data: dict[str, Any] = {
-                        "code": "AGENT_ERROR",
-                        "message": chunk.content or "Agent 推理出错",
-                        "recoverable": True,
-                    }
-                    # 宪法 4.3: 映射 LLM 异常类型
-                    if chunk.data:
-                        if chunk.data.get("gateway_error"):
-                            error_data["code"] = chunk.data["gateway_error"]
-                        if chunk.data.get("content_control"):
-                            error_data["code"] = "CONTENT_FILTER"
-                            error_data["message"] = chunk.data.get(
-                                "replacement", error_data["message"]
-                            )
-                        if chunk.data.get("retry_after"):
-                            error_data["retry_after"] = chunk.data["retry_after"]
-                            error_data["recoverable"] = False
-                    await consumer._send_json({
-                        "type": "error",
-                        "data": error_data,
-                    })
-                    logger.warning(
-                        "Pipeline agent error: user=%s, err=%s",
-                        user_id,
-                        error_data["code"],
-                    )
+                    err = _build_agent_error(chunk)
+                    await consumer._send_json({"type": "error", "data": err})
+                    logger.warning("Pipeline agent error: user=%s, err=%s", user_id, err["code"])
                     break
 
                 elif chunk.type in ("done", "context_compacting", "context_compacted"):
@@ -271,28 +251,16 @@ class VoicePipeline:
                 e,
                 exc_info=True,
             )
-            await consumer._send_json({
-                "type": "error",
-                "data": {
-                    "code": "PIPELINE_ERROR",
-                    "message": "语音推理管道异常",
-                    "recoverable": True,
-                },
-            })
+            await consumer._send_json(_error_msg("PIPELINE_ERROR", "语音推理管道异常"))
         finally:
             # 6. 通知 TTS 文本结束，等待音频全部合成
             await VoicePipeline._flush_tts(tts_client)
 
         # 7. 发送 response.end
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
-        await consumer._send_json({
-            "type": "response.end",
-            "data": {
-                "response_id": response_id,
-                "segment_id": segment_id,
-                "duration_ms": elapsed_ms,
-            },
-        })
+        await consumer._send_json(
+            _response_event("response.end", response_id, segment_id, duration_ms=elapsed_ms)
+        )
 
         logger.info(
             "Pipeline %s: user=%s, request_id=%s, elapsed=%dms",

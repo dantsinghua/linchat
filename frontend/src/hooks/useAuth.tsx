@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { trigger401Redirect, resetAuthGuard, isAuthRedirecting } from '@/services/authGuard';
+import { useChatStore } from '@/stores/chatStore';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 
@@ -67,8 +68,29 @@ export function useAuth() {
         return;
       }
 
-      // 文档解析进度事件 (T043a) — 分发给 useDocParse Hook
+      // 文档解析进度事件 — 写入 chatStore + 分发给 useDocParse Hook（012-doc-parse-progress）
       if (data.type === 'doc_parse_progress') {
+        const progress = data.progress as { current?: number; total?: number } | undefined;
+        const status = data.status as string;
+        useChatStore.getState().setDocParseProgress({
+          taskId: (data.task_id as string) || '',
+          status: status as 'pending' | 'processing' | 'completed' | 'incomplete' | 'failed',
+          current: progress?.current ?? 0,
+          total: progress?.total ?? 0,
+          fileName: (data.file_name as string) || '',
+          suggestion: data.suggestion as string | undefined,
+          errorMessage: data.error_message as string | undefined,
+        });
+        // 终态延迟清除（completed: 1.5s，其他终态: 3s）
+        if (['completed', 'incomplete', 'failed'].includes(status)) {
+          const taskId = data.task_id as string;
+          const delay = status === 'completed' ? 1500 : 3000;
+          setTimeout(() => {
+            if (useChatStore.getState().docParseProgress?.taskId === taskId) {
+              useChatStore.getState().setDocParseProgress(null);
+            }
+          }, delay);
+        }
         window.dispatchEvent(
           new CustomEvent('doc_parse_progress', { detail: data })
         );

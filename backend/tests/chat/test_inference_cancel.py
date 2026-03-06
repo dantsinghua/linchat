@@ -174,7 +174,7 @@ class TestMonitorCancelSignal(TestCase):
     @patch("core.redis.get_redis")
     def test_pubsub_cancel_signal(self, mock_get_redis: AsyncMock) -> None:
         """Pub/Sub 收到 INFERENCE_CANCEL 事件后设置 stop_event"""
-        from apps.graph.services.agent_service import _monitor_cancel_signal
+        from apps.graph.services.cancel_monitor import monitor_cancel_signal as _monitor_cancel_signal
 
         stop_event = asyncio.Event()
 
@@ -206,7 +206,7 @@ class TestMonitorCancelSignal(TestCase):
     @patch("core.redis.get_redis")
     def test_pubsub_ignores_other_events(self, mock_get_redis: AsyncMock) -> None:
         """Pub/Sub 忽略非 INFERENCE_CANCEL 事件"""
-        from apps.graph.services.agent_service import _monitor_cancel_signal
+        from apps.graph.services.cancel_monitor import monitor_cancel_signal as _monitor_cancel_signal
 
         stop_event = asyncio.Event()
         call_count = 0
@@ -246,7 +246,7 @@ class TestMonitorCancelSignal(TestCase):
     @patch("core.redis.get_redis")
     def test_pubsub_fallback_to_polling(self, mock_get_redis: AsyncMock) -> None:
         """Pub/Sub 失败时降级为轮询"""
-        from apps.graph.services.agent_service import _monitor_cancel_signal
+        from apps.graph.services.cancel_monitor import monitor_cancel_signal as _monitor_cancel_signal
 
         stop_event = asyncio.Event()
 
@@ -275,7 +275,7 @@ class TestMonitorCancelSignal(TestCase):
     @patch("core.redis.get_redis")
     def test_polling_detects_key_deletion(self, mock_get_redis: AsyncMock) -> None:
         """轮询模式：检测到 Redis 键被删除时设置 stop_event"""
-        from apps.graph.services.agent_service import _poll_cancel_signal
+        from apps.graph.services.cancel_monitor import poll_cancel_signal as _poll_cancel_signal
 
         stop_event = asyncio.Event()
 

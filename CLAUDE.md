@@ -636,6 +636,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 | 008-multimodal-minicpm | `specs/008-multimodal-minicpm/spec.md` | ✅ 已完成 |
 | 009-voice-interaction | `specs/009-voice-interaction/spec.md` | ✅ 已完成 |
 | **010-voice-agent-pipeline** | `specs/010-voice-agent-pipeline/spec.md` | ✅ 已完成 |
+| **011-document-subagent-rag** | `specs/011-document-subagent-rag/spec.md` | ✅ 已完成 |
 
 ---
 
@@ -654,6 +655,10 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 ## Active Technologies
 - Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, channels (WebSocket), websockets (Gateway ASR WS 客户端 + TTS 流式 WS 客户端), LangGraph, LangChain, Langfuse (010-voice-agent-pipeline)
 - PostgreSQL 15 (Message, MediaAttachment, LangGraphExecution), Redis (语音会话状态/音频帧缓存/频率限制), MinIO (音频文件) (010-voice-agent-pipeline)
+- Python 3.11+ / Django 4.2+ / DRF 3.14+ + LangGraph, LangChain, pgvector, Celery 5.3+, MinIO, Redis, httpx, Jinja2, websockets (011-document-subagent-rag)
+- PostgreSQL 15 (pgvector extension), Redis (缓存/频率限制), MinIO (对象存储) (011-document-subagent-rag)
+- Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+, LangGraph, httpx (后端) / Next.js 14+, React 18+, Zustand (前端) (012-doc-parse-progress)
+- Redis (SSE Pub/Sub 通道，已有) (012-doc-parse-progress)
 
 ## Recent Changes
 - 010-voice-agent-pipeline: Added Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, channels (WebSocket), websockets (Gateway ASR WS 客户端 + TTS 流式 WS 客户端), LangGraph, LangChain, Langfuse

@@ -97,18 +97,20 @@ class ExternalServiceError(AppException):
     default_message = "外部服务异常"; error_code = "EXTERNAL_SERVICE_ERROR"
 
 
+_LLM_ERROR_MAP: list[tuple[list[str], type[LLMException]]] = [
+    (["connection", "connect", "network", "unreachable"], LLMConnectionError),
+    (["timeout", "timed out"], LLMTimeoutError),
+    (["rate limit", "too many requests", "429"], LLMRateLimitError),
+    (["content filter", "content policy", "moderation"], LLMContentFilterError),
+    (["quota", "insufficient", "billing"], LLMQuotaExceededError),
+]
+
+
 def map_llm_exception(e: Exception) -> LLMException:
     error_str = str(e).lower()
-    if any(kw in error_str for kw in ["connection", "connect", "network", "unreachable"]):
-        return LLMConnectionError()
-    if any(kw in error_str for kw in ["timeout", "timed out"]):
-        return LLMTimeoutError()
-    if any(kw in error_str for kw in ["rate limit", "too many requests", "429"]):
-        return LLMRateLimitError()
-    if any(kw in error_str for kw in ["content filter", "content policy", "moderation"]):
-        return LLMContentFilterError()
-    if any(kw in error_str for kw in ["quota", "insufficient", "billing"]):
-        return LLMQuotaExceededError()
+    for keywords, exc_class in _LLM_ERROR_MAP:
+        if any(kw in error_str for kw in keywords):
+            return exc_class()
     return LLMInvalidResponseError(str(e))
 
 

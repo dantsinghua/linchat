@@ -18,6 +18,21 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
+async def cleanup_ws_connection(ws, recv_task) -> None:
+    """共用的 WebSocket 清理逻辑 — ASR/TTS 客户端复用。"""
+    if recv_task and not recv_task.done():
+        recv_task.cancel()
+        try:
+            await recv_task
+        except asyncio.CancelledError:
+            pass
+    if ws:
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
 class ASRStreamClient:
     """Gateway ASR WebSocket 流式客户端"""
 
@@ -90,18 +105,8 @@ class ASRStreamClient:
     async def disconnect(self) -> None:
         """关闭连接。"""
         self._connected = False
-        if self._recv_task and not self._recv_task.done():
-            self._recv_task.cancel()
-            try:
-                await self._recv_task
-            except asyncio.CancelledError:
-                pass
-        if self._ws:
-            try:
-                await self._ws.close()
-            except Exception:
-                pass
-            self._ws = None
+        await cleanup_ws_connection(self._ws, self._recv_task)
+        self._ws = None
         logger.info("ASR WS disconnected: session_id=%s", self._session_id)
 
     async def _receive_loop(self) -> None:

@@ -8,6 +8,8 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from django.conf import settings
+
 from apps.common.responses import ApiResponse
 from apps.common.sse import first_validation_error
 from apps.media.serializers import DocumentParseRequestSerializer, MediaAttachmentSerializer
@@ -60,7 +62,21 @@ def parse_document(request: Request) -> Response:
     if not sz.is_valid():
         return ApiResponse.validation_error(message=first_validation_error(sz))
     try:
-        result = async_to_sync(DocumentParseService.parse_document)(user_id=user_id, attachment_uuid=sz.validated_data["attachment_uuid"], pages=sz.validated_data.get("pages"))
+        attachment_uuid = sz.validated_data["attachment_uuid"]
+        pages = sz.validated_data.get("pages")
+
+        # T012: 无 pages 参数时检查缓存快速返回
+        if not pages:
+            from apps.media.repositories import media_attachment_repo
+
+            attachment = async_to_sync(media_attachment_repo.get_by_uuid)(attachment_uuid, user_id)
+            if attachment:
+                cached = async_to_sync(DocumentParseService.get_cached_result)(attachment)
+                if cached:
+                    max_len = getattr(settings, "DOC_PARSE_MAX_RESULT_LENGTH", 6000)
+                    return ApiResponse.success(data={"cached": True, "content": cached[:max_len], "format": "markdown"})
+
+        result = async_to_sync(DocumentParseService.parse_document)(user_id=user_id, attachment_uuid=attachment_uuid, pages=pages)
         return ApiResponse.success(data=result, status_code=202)
     except DocumentParseError as e:
         status_map = {"ATTACHMENT_NOT_FOUND": 404, "ATTACHMENT_ACCESS_DENIED": 403, "ATTACHMENT_EXPIRED": 410, "GATEWAY_NOT_CONFIGURED": 503, "GATEWAY_TIMEOUT": 504}

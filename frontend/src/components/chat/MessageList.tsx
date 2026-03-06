@@ -21,6 +21,7 @@ const VoiceMessageBubble = dynamic(
   { ssr: false },
 );
 import { getMediaUrl } from '@/services/mediaApi';
+import { useChatStore } from '@/stores/chatStore';
 import type { Message } from '@/types';
 
 interface MessageListProps {
@@ -56,6 +57,9 @@ export const MessageList = memo(function MessageList({
   const bottomRef = useRef<HTMLDivElement>(null);
   const isUserScrollingRef = useRef(false);
   const prevMessagesLengthRef = useRef(messages.length);
+
+  // 012-doc-parse-progress: 文档解析进度
+  const docParseProgress = useChatStore(state => state.docParseProgress);
 
   // T051a: 视频推理超时提示
   const [showVideoHint, setShowVideoHint] = useState(false);
@@ -235,6 +239,61 @@ export const MessageList = memo(function MessageList({
               />
             </svg>
             <span>AI 正在分析视频，请耐心等待...</span>
+          </div>
+        </div>
+      )}
+
+      {/* 文档解析进度条（012-doc-parse-progress） */}
+      {docParseProgress && (
+        <div className="mx-auto max-w-3xl py-2">
+          <div className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm ${
+            docParseProgress.status === 'completed'
+              ? 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400'
+              : docParseProgress.status === 'failed'
+              ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'
+              : docParseProgress.status === 'incomplete'
+              ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400'
+              : 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400'
+          }`}>
+            {/* Icon */}
+            {docParseProgress.status === 'completed' ? (
+              <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : docParseProgress.status === 'failed' ? (
+              <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : docParseProgress.status === 'incomplete' ? (
+              <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            ) : (
+              <svg className="h-4 w-4 shrink-0 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            )}
+            <div className="min-w-0 flex-1">
+              <span className="truncate">{docParseProgress.fileName}</span>
+              {' — '}
+              {docParseProgress.status === 'pending' && '排队等待解析...'}
+              {docParseProgress.status === 'processing' && `${docParseProgress.current}/${docParseProgress.total} 页`}
+              {docParseProgress.status === 'completed' && '解析完成'}
+              {docParseProgress.status === 'incomplete' && `${docParseProgress.current}/${docParseProgress.total} 页（部分完成）`}
+              {docParseProgress.status === 'failed' && (docParseProgress.errorMessage || '解析失败')}
+              {docParseProgress.status === 'processing' && docParseProgress.total > 0 && (
+                <div className="mt-1 h-1.5 w-full rounded-full bg-indigo-100 dark:bg-indigo-900/40">
+                  <div
+                    className="h-full rounded-full bg-indigo-500 transition-all duration-300"
+                    style={{ width: `${Math.round((docParseProgress.current / docParseProgress.total) * 100)}%` }}
+                  />
+                </div>
+              )}
+              {docParseProgress.suggestion && (
+                <div className="mt-1 text-xs opacity-75">{docParseProgress.suggestion}</div>
+              )}
+            </div>
           </div>
         </div>
       )}

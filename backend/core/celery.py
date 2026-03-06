@@ -42,5 +42,9 @@ app.conf.beat_schedule = {
         "task": "media.clean_expired_media",
         "schedule": crontab(hour=3, minute=0),  # 每日凌晨 3 点
     },
+    "retry-failed-doc-embeddings": {
+        "task": "media.retry_failed_doc_embeddings",
+        "schedule": 300.0,  # 每 5 分钟
+    },
 }
 app.conf.timezone = "Asia/Shanghai"

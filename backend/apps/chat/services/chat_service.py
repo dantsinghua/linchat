@@ -34,7 +34,8 @@ class ChatService:
         if not content: raise EmptyMessageException("消息内容不能为空")
         if len(content) > settings.MAX_MESSAGE_LENGTH:
             raise MessageTooLongException(f"消息长度不能超过{settings.MAX_MESSAGE_LENGTH}字符")
-        request_id = uuid.uuid4().hex; thread_id = get_thread_id(user_id)
+        request_id = uuid.uuid4().hex
+        thread_id = get_thread_id(user_id)
         async for chunk in AgentService.execute(
             user_id=user_id, thread_id=thread_id, request_id=request_id,
             user_message=content, attachment_uuids=attachment_uuids):

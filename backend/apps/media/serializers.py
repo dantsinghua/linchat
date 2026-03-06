@@ -9,6 +9,7 @@ class MediaAttachmentSerializer(serializers.ModelSerializer):
         fields = [
             "attachment_uuid", "media_type", "mime_type", "file_name",
             "file_size", "width", "height", "duration_seconds", "is_expired", "expires_at",
+            "parsed_at", "parsed_content_size", "embedding_status",
         ]
         read_only_fields = fields
 

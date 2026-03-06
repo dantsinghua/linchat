@@ -359,7 +359,7 @@ DOC_PARSE_MAX_PAGES = int(os.getenv("DOC_PARSE_MAX_PAGES", "200"))
 DOC_PARSE_POLL_INTERVAL = int(os.getenv("DOC_PARSE_POLL_INTERVAL", "3"))  # 轮询间隔（秒）
 DOC_PARSE_POLL_MAX_WAIT = int(os.getenv("DOC_PARSE_POLL_MAX_WAIT", "900"))  # 最大等待（秒）
 DOC_PARSE_DEFAULT_MODEL = os.getenv("DOC_PARSE_DEFAULT_MODEL", "minicpm-o")
-DOC_PARSE_MAX_RESULT_LENGTH = int(os.getenv("DOC_PARSE_MAX_RESULT_LENGTH", "8000"))  # FR-034: 结果截断长度
+DOC_PARSE_MAX_RESULT_LENGTH = int(os.getenv("DOC_PARSE_MAX_RESULT_LENGTH", "6000"))  # 011-document-subagent-rag: document_parse 工具返回结果最大字符数
 
 # 视频预处理配置 (MiniCPM-o 限制: 高分辨率+多帧会导致 vLLM 500 错误)
 VIDEO_PREPROCESS_WIDTH = int(os.getenv("VIDEO_PREPROCESS_WIDTH", "320"))  # 视频最大宽度(px)
@@ -425,10 +425,21 @@ VOICE_SPEAKER_THRESHOLD = float(os.getenv("VOICE_SPEAKER_THRESHOLD", "0.5"))  # 
 VOICE_VAD_THRESHOLD = float(os.getenv("VOICE_VAD_THRESHOLD", "0.5"))  # VAD 阈值 (0.0~1.0，越大越不灵敏)
 VOICE_WAKE_WORD_FUZZY_THRESHOLD = float(os.getenv("VOICE_WAKE_WORD_FUZZY_THRESHOLD", "0.8"))  # 唤醒词拼音模糊匹配阈值
 
+# ============ 文档 SubAgent + RAG 配置 (011-document-subagent-rag) ============
+DOCUMENT_SUBAGENT_TIMEOUT = int(os.getenv("DOCUMENT_SUBAGENT_TIMEOUT", "1200"))  # 文档 SubAgent 超时: 20分钟
+DOC_CHUNK_SIZE = int(os.getenv("DOC_CHUNK_SIZE", "800"))  # 分块大小（字符）
+DOC_CHUNK_OVERLAP = int(os.getenv("DOC_CHUNK_OVERLAP", "100"))  # 分块重叠（字符）
+DOC_VECTOR_WEIGHT = float(os.getenv("DOC_VECTOR_WEIGHT", "0.7"))  # 混合搜索向量权重
+DOC_KEYWORD_WEIGHT = float(os.getenv("DOC_KEYWORD_WEIGHT", "0.3"))  # 混合搜索关键词权重
+DOC_SEARCH_TOP_K = int(os.getenv("DOC_SEARCH_TOP_K", "5"))  # 搜索结果上限
+
 # 多模态/文档解析超时配置（GPU 模型切换耗时 35-341 秒）
 MULTIMODAL_SUBAGENT_TIMEOUT = int(os.getenv("MULTIMODAL_SUBAGENT_TIMEOUT", "1200"))  # 多模态 SubAgent 超时: 20分钟
 GPU_LOCK_MAX_WAIT = int(os.getenv("GPU_LOCK_MAX_WAIT", "600"))  # 等待 GPU 锁上限: 10分钟
-AGENT_MULTIMODAL_TIMEOUT = int(os.getenv("AGENT_MULTIMODAL_TIMEOUT", "1500"))  # 含文档附件时 Agent 总超时: 25分钟
+AGENT_MULTIMODAL_TIMEOUT = int(os.getenv("AGENT_MULTIMODAL_TIMEOUT", "2400"))  # 含文档附件时 Agent 总超时: 40分钟
+
+# SSE 心跳配置（防止代理层空闲超时断连）
+SSE_HEARTBEAT_INTERVAL = int(os.getenv("SSE_HEARTBEAT_INTERVAL", "15"))  # 心跳间隔: 15秒
 
 
 # 日志配置

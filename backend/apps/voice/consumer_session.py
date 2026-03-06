@@ -34,6 +34,31 @@ class SessionMixin:
             self._idle_check_task.cancel()
         self._idle_check_task = asyncio.create_task(self._idle_timeout_loop())
 
+    async def _connect_and_configure_asr(self) -> Optional[str]:
+        """连接并配置 ASR。成功返回 None，失败返回错误原因 ('connect'/'configure')。"""
+        if not await self._connect_asr():
+            return "connect"
+        try:
+            await self._asr_client.configure()
+            return None
+        except Exception as e:
+            logger.warning("ASR configure failed: user=%s, err=%s", self.user_id, e)
+            await self._asr_client.disconnect()
+            return "configure"
+
+    def _normalize_mode(self, data: dict[str, Any]) -> str:
+        """标准化语音模式 — voice_chat_enriched 静默映射为 voice_chat (SC-008)。"""
+        mode = data.get("mode", "voice_chat")
+        if mode == "voice_chat_enriched":
+            logger.warning(
+                "Deprecated mode 'voice_chat_enriched' → 'voice_chat': user=%s",
+                self.user_id,
+            )
+            mode = "voice_chat"
+        if mode not in ("voice_chat", "continuous_listen"):
+            mode = "voice_chat"
+        return mode
+
     async def _handle_session_configure(self, data: dict[str, Any]) -> None:
         created = await voice_session_service.create_session(self.user_id)
         if not created:
@@ -44,37 +69,15 @@ class SessionMixin:
             await voice_session_service.close_session(self.user_id)
             await voice_session_service.create_session(self.user_id)
 
-        if not await self._connect_asr():
-            await self._send_error(
-                "GATEWAY_CONNECT_FAILED", "语音服务连接失败，请稍后重试", recoverable=False
-            )
+        asr_err = await self._connect_and_configure_asr()
+        if asr_err:
+            code = "GATEWAY_CONFIGURE_FAILED" if asr_err == "configure" else "GATEWAY_CONNECT_FAILED"
+            msg = "语音服务配置失败" if asr_err == "configure" else "语音服务连接失败，请稍后重试"
+            await self._send_error(code, msg, recoverable=False)
             await voice_session_service.close_session(self.user_id)
             return
 
-        # ASR 配置
-        try:
-            await self._asr_client.configure()
-        except Exception as e:
-            logger.warning("ASR configure failed: user=%s, err=%s", self.user_id, e)
-            await self._send_error(
-                "GATEWAY_CONFIGURE_FAILED", "语音服务配置失败", recoverable=False
-            )
-            await self._asr_client.disconnect()
-            await voice_session_service.close_session(self.user_id)
-            return
-
-        # 模式处理 — voice_chat_enriched 静默映射为 voice_chat (SC-008)
-        mode = data.get("mode", "voice_chat")
-        if mode == "voice_chat_enriched":
-            logger.warning(
-                "Deprecated mode 'voice_chat_enriched' → 'voice_chat': user=%s",
-                self.user_id,
-            )
-            mode = "voice_chat"
-        if mode not in ("voice_chat", "continuous_listen"):
-            mode = "voice_chat"
-        self._mode = mode
-
+        self._mode = self._normalize_mode(data)
         await voice_session_service.update_session(
             self.user_id,
             upstream_connected=True,
@@ -109,36 +112,18 @@ class SessionMixin:
             })
             return
 
-        if not await self._connect_asr():
+        asr_err = await self._connect_and_configure_asr()
+        if asr_err:
             await voice_session_service.close_session(self.user_id)
+            reason = "configure_failed" if asr_err == "configure" else "gateway_failed"
+            msg = "语音服务配置失败，请重新开始" if asr_err == "configure" else "语音服务重连失败，请重新开始"
             await self._send_json({
                 "type": "session.reconnect_failed",
-                "data": {
-                    "reason": "gateway_failed",
-                    "message": "语音服务重连失败，请重新开始",
-                },
+                "data": {"reason": reason, "message": msg},
             })
             return
 
-        try:
-            await self._asr_client.configure()
-        except Exception:
-            await self._asr_client.disconnect()
-            await voice_session_service.close_session(self.user_id)
-            await self._send_json({
-                "type": "session.reconnect_failed",
-                "data": {
-                    "reason": "configure_failed",
-                    "message": "语音服务配置失败，请重新开始",
-                },
-            })
-            return
-
-        mode = data.get("mode", "voice_chat")
-        if mode not in ("voice_chat", "continuous_listen"):
-            mode = "voice_chat"
-        self._mode = mode
-
+        self._mode = self._normalize_mode(data)
         self._configured = True
         self._start_idle_check()
         await self._send_json({
