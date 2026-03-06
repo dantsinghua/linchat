@@ -30,6 +30,16 @@ interface ChatState {
   isCompacting: boolean;
   // Gateway 模型切换倒计时（秒），0 表示无需等待
   gatewayRetryAfter: number;
+  // 文档解析进度状态（012-doc-parse-progress）
+  docParseProgress: {
+    taskId: string;
+    status: 'pending' | 'processing' | 'completed' | 'incomplete' | 'failed';
+    current: number;
+    total: number;
+    fileName: string;
+    suggestion?: string;
+    errorMessage?: string;
+  } | null;
 
   // Actions
   setMessages: (messages: Message[]) => void;
@@ -46,6 +56,7 @@ interface ChatState {
   setFailedAttachments: (attachments: MediaAttachment[] | null) => void;
   setIsCompacting: (compacting: boolean) => void;
   setGatewayRetryAfter: (seconds: number) => void;
+  setDocParseProgress: (progress: ChatState['docParseProgress']) => void;
   clearMessages: () => void;
   reset: () => void;
 }
@@ -61,6 +72,7 @@ const initialState = {
   failedAttachments: null,
   isCompacting: false,
   gatewayRetryAfter: 0,
+  docParseProgress: null,
 };
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -111,6 +123,8 @@ export const useChatStore = create<ChatState>((set) => ({
   setIsCompacting: (isCompacting) => set({ isCompacting }),
 
   setGatewayRetryAfter: (gatewayRetryAfter) => set({ gatewayRetryAfter }),
+
+  setDocParseProgress: (docParseProgress) => set({ docParseProgress }),
 
   clearMessages: () => set({ messages: [] }),
 

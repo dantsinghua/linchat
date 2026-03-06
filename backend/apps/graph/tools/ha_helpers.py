@@ -1,10 +1,19 @@
-import fnmatch, logging
+import fnmatch
+import logging
 from typing import Any
+
 import redis.asyncio as aioredis
 from django.conf import settings
+
 from apps.graph.tools.ha_client import HAClient, HANotFoundError
 
 logger = logging.getLogger(__name__)
+_MAX_DISPLAY_ITEMS = 20
+
+
+def _cap(text: str, tool_name: str) -> str:
+    from apps.graph.tools import cap_tool_result
+    return cap_tool_result(text, tool_name)
 RATE_LIMITS = {"control": 10, "query": 30, "diagnose": 5}
 ACTION_DESC: dict[str, str] = {
     "turn_on": "开启", "turn_off": "关闭", "toggle": "切换", "set_brightness": "调节亮度",
@@ -19,8 +28,6 @@ _ATTR_FMT = [("brightness", lambda v: f"亮度: {v}/255 ({round(v/255*100)}%)"),
     ("current_temperature", lambda v: f"当前温度: {v}°C"), ("hvac_mode", lambda v: f"模式: {v}"),
     ("volume_level", lambda v: f"音量: {int(v*100)}%")]
 
-def _cap(t: str, n: str) -> str:
-    from apps.graph.tools import cap_tool_result; return cap_tool_result(t, n)
 def _get_user_id(config: Any) -> int:
     if config is None: raise ValueError("config is required for HA tools")
     uid = config.get("configurable", {}).get("user_id")
@@ -59,11 +66,11 @@ def _format_device_list(states: list[dict], domain: str | None) -> str:
     lines = ["# 设备列表" + (f" (域: {domain})" if domain else "")]
     for d, devs in sorted(grouped.items()):
         lines.append(f"\n## {d} ({len(devs)} 个)")
-        for i, dev in enumerate(devs[:20], 1):
+        for i, dev in enumerate(devs[:_MAX_DISPLAY_ITEMS], 1):
             eid, a, st = dev["entity_id"], dev.get("attributes", {}), dev.get("state", "unknown")
             si = f"{st} ({round(a['brightness']/255*100)}%)" if "brightness" in a else st
             lines.append(f"{i}. {eid} — {a.get('friendly_name', eid)} — {si}")
-        if len(devs) > 20: lines.append(f"... 及其他 {len(devs) - 20} 个")
+        if len(devs) > _MAX_DISPLAY_ITEMS: lines.append(f"... 及其他 {len(devs) - _MAX_DISPLAY_ITEMS} 个")
     on_n = sum(1 for s in states if s.get("state") in ("on", "playing", "open"))
     lines.append(f"\n共 {len(states)} 个设备，{on_n} 个开启/活跃")
     return _cap("\n".join(lines), "ha_query")
@@ -71,10 +78,10 @@ def _format_history(history: list[list[dict]], entity_id: str, hours: int) -> st
     if not history or not history[0]: return f"设备 {entity_id} 在过去 {hours} 小时内无状态变化记录"
     changes = history[0]
     lines = [f"# 历史记录: {entity_id} (过去 {hours} 小时)"]
-    for i, c in enumerate(changes[-20:], 1):
+    for i, c in enumerate(changes[-_MAX_DISPLAY_ITEMS:], 1):
         lc = c.get("last_changed", "")
         lines.append(f"{i}. {lc[:19].replace('T', ' ') if lc else ''} → {c.get('state', 'unknown')}")
-    if len(changes) > 20: lines.append(f"... 共 {len(changes)} 条记录")
+    if len(changes) > _MAX_DISPLAY_ITEMS: lines.append(f"... 共 {len(changes)} 条记录")
     return _cap("\n".join(lines), "ha_query")
 
 def _format_control_result(action: str, entity_id: str, result: list | None) -> str:
@@ -115,10 +122,10 @@ async def _diagnose_offline_scan(client: HAClient) -> str:
     offline = [s for s in states if s.get("state") in ("unavailable", "unknown")]
     if not offline: return "# 离线设备扫描\n\n✅ 所有设备在线，无异常"
     lines = [f"# 离线设备扫描\n\n发现 {len(offline)} 个离线/异常设备：\n"]
-    for i, d in enumerate(offline[:20], 1):
+    for i, d in enumerate(offline[:_MAX_DISPLAY_ITEMS], 1):
         eid = d["entity_id"]
         lines.append(f"{i}. {eid} ({d.get('attributes', {}).get('friendly_name', eid)}) — {d.get('state', 'unknown')}")
-    if len(offline) > 20: lines.append(f"\n... 及其他 {len(offline) - 20} 个")
+    if len(offline) > _MAX_DISPLAY_ITEMS: lines.append(f"\n... 及其他 {len(offline) - _MAX_DISPLAY_ITEMS} 个")
     return _cap("\n".join(lines), "ha_diagnose")
 
 def _fmt_rules(rules: list[dict], n: int, trigger: bool = False) -> list[str]:

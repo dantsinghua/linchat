@@ -16,6 +16,8 @@ import websockets
 import websockets.exceptions
 from django.conf import settings
 
+from apps.voice.services.asr_stream_client import cleanup_ws_connection
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,18 +109,8 @@ class TTSStreamClient:
     async def disconnect(self) -> None:
         """关闭连接。"""
         self._connected = False
-        if self._recv_task and not self._recv_task.done():
-            self._recv_task.cancel()
-            try:
-                await self._recv_task
-            except asyncio.CancelledError:
-                pass
-        if self._ws:
-            try:
-                await self._ws.close()
-            except Exception:
-                pass
-            self._ws = None
+        await cleanup_ws_connection(self._ws, self._recv_task)
+        self._ws = None
         logger.info("TTS WS disconnected: session_id=%s", self._session_id)
 
     async def _receive_loop(self) -> None:

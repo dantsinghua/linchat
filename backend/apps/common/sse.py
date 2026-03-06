@@ -42,8 +42,28 @@ def parse_sse_request(
 
 def make_sse_response(stream: AsyncGenerator[StreamChunk, None], user_id: int, context_name: str) -> StreamingHttpResponse:
     async def event_generator():
+        from django.conf import settings
+
+        heartbeat_interval = getattr(settings, "SSE_HEARTBEAT_INTERVAL", 15)
         try:
-            async for chunk in stream:
+            aiter = stream.__aiter__()
+            # 用 shield 保护 __anext__() 不被 wait_for 超时取消，
+            # 否则 async generator 状态会被破坏导致流提前终止
+            pending_next = None
+            while True:
+                try:
+                    if pending_next is None:
+                        pending_next = asyncio.ensure_future(aiter.__anext__())
+                    chunk = await asyncio.wait_for(
+                        asyncio.shield(pending_next), timeout=heartbeat_interval
+                    )
+                    pending_next = None  # 已消费，下轮重新获取
+                except asyncio.TimeoutError:
+                    # SSE 注释行：保持连接活跃，防止代理层空闲超时断连
+                    yield ": keepalive\n\n"
+                    continue  # 重用同一个 pending_next
+                except StopAsyncIteration:
+                    break
                 data = {"type": chunk.type, "content": chunk.content}
                 if chunk.message_id:
                     data["message_id"] = chunk.message_id

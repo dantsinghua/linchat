@@ -43,6 +43,11 @@ def get_subagent_tools() -> list[BaseTool]:
 
     tools.append(multimodal_subagent)
 
+    # 文档 SubAgent：始终启用 (011-document-subagent-rag)
+    from .document_agent import document_subagent
+
+    tools.append(document_subagent)
+
     # 历史搜索工具：始终启用
     from apps.graph.tools.history import history_search
 

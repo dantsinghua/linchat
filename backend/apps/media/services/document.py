@@ -75,12 +75,32 @@ class DocumentParseService:
 
     @staticmethod
     async def poll_task_status(task_id: str) -> dict:
+        """轮询任务状态 — GATEWAY_ERROR 自动重试（012-doc-parse-progress）"""
         gateway_url = DocumentParseService._get_gateway_url()
         headers = build_gateway_headers()
         timeout = getattr(settings, "LLM_GATEWAY_POLL_TIMEOUT", 30)
-        response = await DocumentParseService._gateway_request(method="get", url=f"{gateway_url}/v1/documents/tasks/{task_id}", headers=headers,
-            timeout=float(timeout), success_status=200, request_type="document_parse_poll")
-        return response.json()
+        max_retries = 3
+        retry_interval = 2
+        for attempt in range(max_retries + 1):
+            try:
+                response = await DocumentParseService._gateway_request(
+                    method="get",
+                    url=f"{gateway_url}/v1/documents/tasks/{task_id}",
+                    headers=headers,
+                    timeout=float(timeout),
+                    success_status=200,
+                    request_type="document_parse_poll",
+                )
+                return response.json()
+            except DocumentParseError as e:
+                if e.code == "GATEWAY_ERROR" and attempt < max_retries:
+                    logger.warning(
+                        "Gateway 轮询网络重试: task_id=%s, attempt=%d/%d, err=%s",
+                        task_id, attempt + 1, max_retries, e.message,
+                    )
+                    await asyncio.sleep(retry_interval)
+                    continue
+                raise
 
     @staticmethod
     async def get_task_result(task_id: str, format: str = "markdown") -> Any:
@@ -144,6 +164,275 @@ class DocumentParseService:
             logger.error(f"文档解析轮询异常: task_id={task_id}, error={e}")
             await EventService.publish_event(user_id=user_id, event_type=evt,
                 data={"type": evt, "task_id": task_id, "status": "failed", "progress": {}, "error_message": f"轮询异常: {e}"})
+
+
+    # --- 011-document-subagent-rag: 缓存读写方法 ---
+
+    @staticmethod
+    async def get_cached_result(attachment: "MediaAttachment") -> str | None:
+        """获取缓存的解析结果 — DB parsed_content 优先，MinIO 降级"""
+        if attachment.parsed_content:
+            return attachment.parsed_content
+        if attachment.parsed_content_path:
+            try:
+                from apps.common.storage.minio_service import minio_service
+                data = minio_service.download_file(
+                    bucket=settings.MINIO_BUCKET_MEDIA,
+                    object_name=attachment.parsed_content_path,
+                )
+                content = data.decode("utf-8")
+                logger.info("Doc cache fallback MinIO: attachment=%d, path=%s", attachment.attachment_id, attachment.parsed_content_path)
+                return content
+            except Exception as e:
+                logger.warning("Doc cache MinIO fallback failed: attachment=%d, err=%s", attachment.attachment_id, e)
+        return None
+
+    @staticmethod
+    async def save_parsed_result(attachment: "MediaAttachment", content: str) -> bool:
+        """双写持久化 — MinIO 先写 → DB 原子更新 → 失败补偿"""
+        from datetime import date as _date
+
+        from apps.common.storage.minio_service import minio_service
+        from apps.media.repositories import media_attachment_repo
+
+        minio_path = f"parsed/{attachment.user_id}/{_date.today().isoformat()}/{attachment.attachment_uuid}.md"
+        content_bytes = content.encode("utf-8")
+
+        # Step 1: MinIO 上传
+        try:
+            minio_service.upload_bytes(
+                bucket=settings.MINIO_BUCKET_MEDIA,
+                object_name=minio_path,
+                data=content_bytes,
+                content_type="text/markdown; charset=utf-8",
+            )
+        except Exception as e:
+            logger.error("Doc cache MinIO upload failed: attachment=%d, err=%s", attachment.attachment_id, e)
+            return False
+
+        # Step 2: DB 原子更新
+        from django.utils import timezone as tz
+
+        try:
+            updated = await media_attachment_repo.update_parsed_cache(
+                attachment_id=attachment.attachment_id,
+                parsed_content=content,
+                parsed_content_path=minio_path,
+                parsed_at=tz.now(),
+                parsed_content_size=len(content_bytes),
+            )
+            if updated == 0:
+                logger.warning("Doc cache DB update returned 0 rows: attachment=%d", attachment.attachment_id)
+        except Exception as e:
+            # 补偿: DB 失败 → 删除 MinIO 文件
+            logger.error("Doc cache DB update failed, compensating MinIO delete: attachment=%d, err=%s", attachment.attachment_id, e)
+            minio_service.delete_file(bucket=settings.MINIO_BUCKET_MEDIA, object_name=minio_path)
+            return False
+
+        # Step 3: 异步分发 Embedding 生成任务
+        try:
+            from apps.media.tasks import generate_document_embeddings
+            generate_document_embeddings.delay(attachment.attachment_id)
+            logger.info("Doc cache saved + embedding dispatched: attachment=%d, size=%d", attachment.attachment_id, len(content_bytes))
+        except Exception as e:
+            logger.warning("Doc embedding dispatch failed (non-blocking): attachment=%d, err=%s", attachment.attachment_id, e)
+
+        return True
+
+    @staticmethod
+    async def clear_parsed_cache(attachment: "MediaAttachment") -> None:
+        """清除解析缓存 — MinIO 文件 + chunk embeddings + DB 字段"""
+        from apps.common.storage.minio_service import minio_service
+        from apps.media.repositories import doc_chunk_repo, media_attachment_repo
+
+        # 删除 MinIO 备份（忽略 NotFound）
+        if attachment.parsed_content_path:
+            minio_service.delete_file(bucket=settings.MINIO_BUCKET_MEDIA, object_name=attachment.parsed_content_path)
+
+        # 删除 chunk embeddings
+        deleted = await doc_chunk_repo.delete_by_attachment_id(attachment.attachment_id)
+        if deleted:
+            logger.info("Doc cache clear chunks: attachment=%d, deleted=%d", attachment.attachment_id, deleted)
+
+        # 清除 DB 字段
+        await media_attachment_repo.clear_parsed_cache(attachment.attachment_id)
+        logger.info("Doc cache cleared: attachment=%d", attachment.attachment_id)
+
+
+    # --- 011-document-subagent-rag: 分块 + RAG 搜索 ---
+
+    @staticmethod
+    def chunk_document(
+        content: str,
+        chunk_size: int = 800,
+        overlap: int = 100,
+    ) -> list[str]:
+        """按 Markdown 标题分段 → 段落拆分 → 合并小段 → 切分长段"""
+        import re
+
+        if not content or not content.strip():
+            return []
+
+        # Step 1: 按 Markdown 标题拆分
+        sections = re.split(r"\n(?=#{1,6} )", content)
+        sections = [s.strip() for s in sections if s.strip()]
+
+        # Step 2: 段落拆分
+        paragraphs: list[str] = []
+        for section in sections:
+            parts = section.split("\n\n")
+            for p in parts:
+                p = p.strip()
+                if p:
+                    paragraphs.append(p)
+
+        if not paragraphs:
+            return []
+
+        # Step 3: 合并小段 (< chunk_size)
+        merged: list[str] = []
+        buf = ""
+        for p in paragraphs:
+            if buf and len(buf) + len(p) + 2 > chunk_size:
+                merged.append(buf)
+                buf = p
+            else:
+                buf = f"{buf}\n\n{p}" if buf else p
+        if buf:
+            merged.append(buf)
+
+        # Step 4: 切分长段 (> chunk_size, with overlap)
+        chunks: list[str] = []
+        for segment in merged:
+            if len(segment) <= chunk_size:
+                chunks.append(segment)
+            else:
+                start = 0
+                while start < len(segment):
+                    end = start + chunk_size
+                    chunks.append(segment[start:end])
+                    start = end - overlap
+                    if start < 0:
+                        break
+
+        return chunks
+
+    @staticmethod
+    async def search_documents_rag(
+        user_id: int,
+        query: str,
+        mode: str = "hybrid",
+        limit: int = 5,
+    ) -> list[dict]:
+        """文档 RAG 搜索 — keyword / semantic / hybrid 模式"""
+        from apps.media.repositories import doc_chunk_repo, media_attachment_repo
+
+        vector_results: list[tuple] = []
+        keyword_results: list[tuple] = []
+
+        # Keyword search
+        if mode in ("keyword", "hybrid"):
+            try:
+                keyword_results = await doc_chunk_repo.keyword_search(user_id, query, limit=limit * 3)
+            except Exception as e:
+                logger.warning("Doc RAG keyword search failed: user=%d, err=%s", user_id, e)
+
+        # Semantic search
+        if mode in ("semantic", "hybrid"):
+            try:
+                from apps.memory.services import EmbeddingClient
+
+                query_embedding = await EmbeddingClient.generate_embedding(query)
+                vector_results = await doc_chunk_repo.vector_search(user_id, query_embedding, limit=limit * 3)
+            except Exception as e:
+                logger.warning("Doc RAG vector search failed, degrading to keyword: user=%d, err=%s", user_id, e)
+                if mode == "semantic":
+                    # 纯语义模式向量失败 → 降级为关键词
+                    try:
+                        keyword_results = await doc_chunk_repo.keyword_search(user_id, query, limit=limit * 3)
+                    except Exception as e2:
+                        logger.warning("Doc RAG keyword fallback also failed: user=%d, err=%s", user_id, e2)
+
+        # Rerank (hybrid mode)
+        if mode == "hybrid" and (vector_results or keyword_results):
+            vector_weight = getattr(settings, "DOC_VECTOR_WEIGHT", 0.7)
+            keyword_weight = getattr(settings, "DOC_KEYWORD_WEIGHT", 0.3)
+
+            score_map: dict[tuple, dict] = {}  # (attachment_id, chunk_index) → {score, text}
+
+            for att_id, chunk_idx, chunk_text, score in vector_results:
+                key = (att_id, chunk_idx)
+                if key not in score_map:
+                    score_map[key] = {"text": chunk_text, "vector": score, "keyword": 0.0, "attachment_id": att_id}
+                else:
+                    score_map[key]["vector"] = max(score_map[key].get("vector", 0.0), score)
+
+            for att_id, chunk_idx, chunk_text, score in keyword_results:
+                key = (att_id, chunk_idx)
+                if key not in score_map:
+                    score_map[key] = {"text": chunk_text, "vector": 0.0, "keyword": score, "attachment_id": att_id}
+                else:
+                    score_map[key]["keyword"] = max(score_map[key].get("keyword", 0.0), score)
+
+            ranked = sorted(
+                score_map.values(),
+                key=lambda x: x.get("vector", 0.0) * vector_weight + x.get("keyword", 0.0) * keyword_weight,
+                reverse=True,
+            )[:limit]
+        elif vector_results:
+            ranked = [{"text": t, "attachment_id": a, "vector": s, "keyword": 0.0} for a, _, t, s in vector_results[:limit]]
+        elif keyword_results:
+            ranked = [{"text": t, "attachment_id": a, "vector": 0.0, "keyword": s} for a, _, t, s in keyword_results[:limit]]
+        else:
+            ranked = []
+
+        # Fallback: chunk 搜索无结果 → 降级到 parsed_content GIN 全文索引
+        if not ranked:
+            try:
+                ft_results = await media_attachment_repo.fulltext_search_parsed_content(user_id, query, limit=limit)
+                if ft_results:
+                    from apps.media.models import MediaAttachment
+
+                    for att_id, att_uuid, file_name, score in ft_results:
+                        ranked.append({"text": f"[全文匹配] {file_name}", "attachment_id": att_id, "vector": 0.0, "keyword": score, "match_type": "fulltext"})
+            except Exception as e:
+                logger.warning("Doc RAG fulltext fallback failed: user=%d, err=%s", user_id, e)
+
+        if not ranked:
+            return []
+
+        # Enrich with attachment metadata
+        att_ids = list({r["attachment_id"] for r in ranked})
+        from apps.media.models import MediaAttachment
+
+        att_map: dict[int, MediaAttachment] = {}
+        try:
+            from asgiref.sync import sync_to_async
+
+            @sync_to_async
+            def _load_atts():
+                return {a.attachment_id: a for a in MediaAttachment.objects.filter(attachment_id__in=att_ids)}
+
+            att_map = await _load_atts()
+        except Exception:
+            pass
+
+        results = []
+        vector_weight = getattr(settings, "DOC_VECTOR_WEIGHT", 0.7)
+        keyword_weight = getattr(settings, "DOC_KEYWORD_WEIGHT", 0.3)
+        for r in ranked:
+            att = att_map.get(r["attachment_id"])
+            combined = r.get("vector", 0.0) * vector_weight + r.get("keyword", 0.0) * keyword_weight
+            results.append({
+                "file_name": att.file_name if att else "未知文档",
+                "attachment_uuid": att.attachment_uuid if att else "",
+                "created_at": att.created_at.isoformat() if att and att.created_at else "",
+                "chunk_text": r["text"],
+                "score": round(combined, 4),
+                "match_type": r.get("match_type", mode),
+            })
+
+        return results
 
 
 document_parse_service = DocumentParseService()
