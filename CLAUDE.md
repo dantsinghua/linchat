@@ -637,6 +637,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 | 009-voice-interaction | `specs/009-voice-interaction/spec.md` | ✅ 已完成 |
 | **010-voice-agent-pipeline** | `specs/010-voice-agent-pipeline/spec.md` | ✅ 已完成 |
 | **011-document-subagent-rag** | `specs/011-document-subagent-rag/spec.md` | ✅ 已完成 |
+| **012-doc-parse-progress** | `specs/012-doc-parse-progress/spec.md` | ✅ 已完成 |
 
 ---
 
@@ -645,7 +646,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 - 宪法文件: [.specify/memory/constitution.md](.specify/memory/constitution.md)
 - 代码示例: [docs/constitution-examples.md](docs/constitution-examples.md)
 - Gateway 集成指南: [docs/linchat-integration-guide.md](docs/linchat-integration-guide.md)
-- 当前特性规范: [specs/010-voice-agent-pipeline/spec.md](specs/010-voice-agent-pipeline/spec.md)
+- 当前特性规范: [specs/012-doc-parse-progress/spec.md](specs/012-doc-parse-progress/spec.md)
 
 ---
 
