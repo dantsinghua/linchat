@@ -4,6 +4,7 @@ Django settings for LinChat project.
 基于 data-model.md 和 constitution.md 配置
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -407,6 +408,11 @@ VOICE_TTS_URL = os.getenv("VOICE_TTS_URL", "ws://127.0.0.1:8100/v1/audio/speech/
 VOICE_TTS_ENABLED = os.getenv("VOICE_TTS_ENABLED", "true").lower() == "true"
 VOICE_TTS_VOICE = os.getenv("VOICE_TTS_VOICE", "zf_xiaobei")
 VOICE_TTS_TIMEOUT = int(os.getenv("VOICE_TTS_TIMEOUT", "30"))  # wait_for_done 超时秒数
+# TTS 播报队列 (013-tts-comfort-queue)
+VOICE_TTS_COMFORT_DELAY = float(os.getenv("VOICE_TTS_COMFORT_DELAY", "3.0"))  # 安慰语音触发延迟（秒）
+VOICE_TTS_SEGMENT_GAP = float(os.getenv("VOICE_TTS_SEGMENT_GAP", "1.0"))  # 播报段间静默（秒）
+VOICE_TTS_COMFORT_TEXTS = json.loads(os.getenv("VOICE_TTS_COMFORT_TEXTS", '["正在思考，请稍后。", "这次可能会久点，我正在做一些复杂操作。", "实在抱歉，我目前的能力有限，还在努力尝试，稍安勿躁。"]'))
+VOICE_TTS_ERROR_TEXT = os.getenv("VOICE_TTS_ERROR_TEXT", "大模型调用失败了，请结合日志分析错误原因。")
 VOICE_ASR_SPEECH_PAD_MS = int(os.getenv("VOICE_ASR_SPEECH_PAD_MS", "2000"))
 VOICE_ASR_LANGUAGE = os.getenv("VOICE_ASR_LANGUAGE", "auto")
 VOICE_MAX_SEGMENT_DURATION = int(os.getenv("VOICE_MAX_SEGMENT_DURATION", "60"))  # 单段语音最大时长（秒）

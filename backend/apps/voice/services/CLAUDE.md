@@ -11,8 +11,9 @@
 | 文件 | 职责 | 全局实例 |
 |------|------|---------|
 | `asr_stream_client.py` | Gateway ASR WebSocket 流式客户端（连接/配置/音频转发/事件接收循环） | 无（每个 Consumer 创建） |
-| `tts_stream_client.py` | Gateway TTS 流式 WebSocket 客户端（text.delta 输入 / PCM 音频输出 / sentence 事件 / audio.done） | 无（每次 pipeline 创建） |
-| `voice_pipeline.py` | 语音推理管道编排（ASR→Agent→TTS + 持久化 + 持续监听 + barge-in 打断） | 无（静态方法 + 类方法） |
+| `tts_stream_client.py` | Gateway TTS 流式 WebSocket 客户端（text.delta 输入 / PCM 音频输出 / sentence 事件 / audio.done） | 无（每次 TTSPipelineManager._play_text 创建） |
+| `tts_pipeline_manager.py` | TTS 播报队列管理器（安慰语音 → Agent 回复 → 错误播报，3 级递进安慰 + segment gap + cancel） | 无（每次 pipeline 创建） |
+| `voice_pipeline.py` | 语音推理管道编排（ASR→Agent→TTSPipelineManager + 持久化 + 持续监听 + barge-in 打断） | 无（静态方法 + 类方法） |
 | `voice_session_service.py` | 语音会话生命周期 + Redis 状态 + 音频缓存（base64 编码 PCM）+ LLM 频率限制 | `voice_session_service` |
 | `voice_persist_service.py` | PCM→WAV 转换 + MinIO 上传/删除（事务补偿） | `voice_persist_service` |
 | `speaker_service.py` | 声纹注册/删除/识别（对接 Gateway HTTP /v1/voice/speakers） | `speaker_service` |
@@ -31,7 +32,8 @@ VoiceConsumer
   ├── VoicePipeline          — Agent + TTS 编排 + 持久化
   │     ├── AgentService（apps.graph）— LangGraph 流式执行
   │     ├── InferenceService（apps.graph）— 任务注册/取消
-  │     ├── TTSStreamClient  — Gateway TTS 流式合成
+  │     ├── TTSPipelineManager — 安慰/回复/错误播报队列 + cancel
+  │     │     └── TTSStreamClient — Gateway TTS 流式合成（每个 QueueItem 创建/销毁）
   │     ├── voice_persist_service — PCM→WAV + MinIO 上传
   │     ├── voice_session_service — 音频缓存读取/清理
   │     └── message_repo（apps.chat）— Message 创建/更新
@@ -54,11 +56,12 @@ ASR transcription.completed
       → barge-in 检查: 旧 pipeline 正在运行 → cancel + 等待锁释放
       → asyncio.Lock 互斥（同一用户同时只有 1 个 pipeline）
       → rate limit check（60次/分）→ InferenceService.register_task()
-      → TTSStreamClient.connect() + configure(voice)
+      → TTSPipelineManager.start()（启动 worker + 安慰计时器）
       → response.start → AgentService.execute() 流式
-        → response.delta + TTS text.delta（Gateway 自动分句合成）
-        → 异常/中断处理
-      → TTS text.done → wait audio.done → TTS disconnect
+        → response.delta 仅文字推送前端 + 累积 full_response
+        → 异常/中断: stop_comfort_timer + enqueue(error_text, "error")
+      → Agent 完成: stop_comfort_timer + enqueue(full_response, "response")
+      → wait_idle() → shutdown()
       → response.end
       → _persist_audio_attachment()（事务: 标记 is_voice + 创建 MediaAttachment）
 ```
@@ -88,7 +91,26 @@ ASR transcription.completed
 | `wait_for_done(timeout)` | 等待 audio.done 信号 |
 | `disconnect()` | 关闭连接 |
 
-回调: `on_audio(bytes)` → Consumer._send_binary() 转发前端; `on_sentence_start(idx, text)` / `on_done()`
+回调: `on_audio(bytes)` → TTSPipelineManager → Consumer._send_binary() 转发前端
+
+---
+
+## TTSPipelineManager（tts_pipeline_manager.py）
+
+asyncio 队列管理器，编排安慰语音 → Agent 回复 → 错误播报。
+
+| 方法 | 说明 |
+|------|------|
+| `start()` | 启动 worker 异步任务 + 安慰计时器 |
+| `enqueue(text, item_type)` | 入队播报项（comfort/response/error） |
+| `stop_comfort_timer()` | 停止安慰递进 + 清除队列中 comfort 项 |
+| `wait_idle()` | 等待队列清空（所有播报完成） |
+| `cancel()` | 取消全部：清空队列 + 断开 TTS + 取消 worker |
+| `shutdown()` | 正常关闭：发送 sentinel + 等待 worker 结束 |
+
+**安慰语音 3 级递进**: `VOICE_TTS_COMFORT_TEXTS` 配置 3 条安慰文本，每隔 `VOICE_TTS_COMFORT_DELAY` 秒自动入队下一级，播完自动重启计时器。Agent 完成或出错后 `stop_comfort_timer()` 停止并清除待播安慰。
+
+**QueueItem 类型**: `comfort`（安慰） | `response`（Agent 回复） | `error`（错误播报） | `sentinel`（关闭信号）
 
 ---
 
@@ -103,3 +125,8 @@ ASR transcription.completed
 | 5 | 多 speaker 活跃（voice:recent_speakers SCARD >= 2） | RECORD_ONLY |
 | 6 | 单 speaker + 问句特征（？/问句词/语气词） | RESPOND |
 | 7 | 默认 | RECORD_ONLY |
+
+
+<claude-mem-context>
+
+</claude-mem-context>
