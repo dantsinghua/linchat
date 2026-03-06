@@ -106,3 +106,8 @@ source /home/dantsinghua/work/linchat/linchat/bin/activate
 cd /home/dantsinghua/work/linchat/backend
 pytest tests/voice/ -v
 ```
+
+
+<claude-mem-context>
+
+</claude-mem-context>

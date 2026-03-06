@@ -15,7 +15,8 @@
 | `test_response_decision.py` | ResponseDecisionService 7 条决策链（唤醒词/模糊匹配/紧急停止/活跃对话） |
 | `test_asr_stream_client.py` | ASR WebSocket 客户端（连接/配置/音频转发/事件回调/断开） |
 | `test_tts_stream_client.py` | TTS WebSocket 客户端（连接/text.delta/audio.done/超时） |
-| `test_voice_pipeline.py` | VoicePipeline（Agent+TTS 编排/持久化/持续监听/barge-in/取消） |
+| `test_tts_pipeline_manager.py` | TTSPipelineManager（安慰递进/错误播报/cancel/shutdown/段间 gap） |
+| `test_voice_pipeline.py` | VoicePipeline（Agent+TTSPipelineManager 编排/持久化/持续监听/barge-in/取消） |
 | `test_voice_session.py` | 会话管理 / Redis 状态 / 音频缓存 / 频率限制 |
 | `test_consumers.py` | WebSocket Consumer（认证/配置/音频转发/ASR 事件翻译） |
 | `test_views.py` | REST API 视图（声纹/设备/设置 CRUD + 认证 + 响应格式） |
@@ -48,6 +49,12 @@ cd /home/dantsinghua/work/linchat/backend && source ../linchat/bin/activate && p
 
 1. ASR/TTS 测试通过 mock `websockets.connect` 实现，无需真实 Gateway
 2. `test_repositories.py` 需要真实 PostgreSQL（`--reuse-db`）
-3. `test_voice_pipeline.py` mock 了 AgentService + TTSStreamClient + 持久化服务
+3. `test_voice_pipeline.py` mock 了 AgentService + TTSPipelineManager + 持久化服务
+4a. `test_tts_pipeline_manager.py` mock 了 TTSStreamClient + settings（极短 delay 加速测试）
 4. `test_response_decision.py` mock 了 Redis（活跃对话/说话人集合）和 pypinyin
 5. 异步测试使用 `tests.helpers.run_async()` 或 `pytest-asyncio`
+
+
+<claude-mem-context>
+
+</claude-mem-context>

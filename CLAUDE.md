@@ -638,6 +638,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 | **010-voice-agent-pipeline** | `specs/010-voice-agent-pipeline/spec.md` | ✅ 已完成 |
 | **011-document-subagent-rag** | `specs/011-document-subagent-rag/spec.md` | ✅ 已完成 |
 | **012-doc-parse-progress** | `specs/012-doc-parse-progress/spec.md` | ✅ 已完成 |
+| **013-tts-comfort-queue** | `specs/013-tts-comfort-queue/spec.md` | ✅ 已完成 |
 
 ---
 
@@ -646,7 +647,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 - 宪法文件: [.specify/memory/constitution.md](.specify/memory/constitution.md)
 - 代码示例: [docs/constitution-examples.md](docs/constitution-examples.md)
 - Gateway 集成指南: [docs/linchat-integration-guide.md](docs/linchat-integration-guide.md)
-- 当前特性规范: [specs/012-doc-parse-progress/spec.md](specs/012-doc-parse-progress/spec.md)
+- 当前特性规范: [specs/013-tts-comfort-queue/spec.md](specs/013-tts-comfort-queue/spec.md)
 
 ---
 
@@ -660,6 +661,8 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 - PostgreSQL 15 (pgvector extension), Redis (缓存/频率限制), MinIO (对象存储) (011-document-subagent-rag)
 - Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+, LangGraph, httpx (后端) / Next.js 14+, React 18+, Zustand (前端) (012-doc-parse-progress)
 - Redis (SSE Pub/Sub 通道，已有) (012-doc-parse-progress)
+- Python 3.11+ + Django 4.2+, asyncio, websockets 12.0+ (Gateway TTS WS) (013-tts-comfort-queue)
+- N/A（无新数据模型，运行时管道变更） (013-tts-comfort-queue)
 
 ## Recent Changes
 - 010-voice-agent-pipeline: Added Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, channels (WebSocket), websockets (Gateway ASR WS 客户端 + TTS 流式 WS 客户端), LangGraph, LangChain, Langfuse

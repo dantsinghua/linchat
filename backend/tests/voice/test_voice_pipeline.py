@@ -3,14 +3,14 @@
 覆盖:
 - run_pipeline 正常流程（Agent content+done）
 - Agent 错误处理
-- TTS 流式集成（send_text_delta + binary PCM 转发）
-- TTS WS 连接失败降级纯文字
-- TTS 禁用（VOICE_TTS_ENABLED=False）
+- TTS 管理器集成（TTSPipelineManager enqueue/stop_comfort_timer/wait_idle/shutdown）
+- TTS 管理器内部错误降级
+- TTS 禁用（VOICE_TTS_ENABLED=False → 不创建 TTSPipelineManager）
 - response 事件序列验证（start→delta→end）
 - StreamChunk 全类型处理（content/done/error/interrupted/context_compacting）
 - 管道互斥：barge-in 打断
-- 取消机制：cancel() → InferenceService.cancel_task()
-- TTS audio.done 超时处理
+- 取消机制：cancel() → InferenceService.cancel_task() + TTSPipelineManager.cancel()
+- TTS 管理器 shutdown 超时处理
 - T019: 音频持久化 (persist_audio_attachment)
 - T022: 持续监听模式 (continuous_listen)
 """
@@ -111,17 +111,17 @@ def mock_agent():
 
 @pytest.fixture
 def mock_tts():
-    with patch(f"{_VP}.TTSStreamClient") as cls:
-        tts = AsyncMock()
-        tts.connect = AsyncMock(return_value="tts-session-1")
-        tts.configure = AsyncMock()
-        tts.send_text_delta = AsyncMock()
-        tts.send_text_done = AsyncMock()
-        tts.wait_for_done = AsyncMock()
-        tts.disconnect = AsyncMock()
-        tts.connected = True
-        cls.return_value = tts
-        yield cls, tts
+    """Mock TTSPipelineManager — 013-tts-comfort-queue 改造后的 TTS 管理器。"""
+    with patch(f"{_VP}.TTSPipelineManager") as cls:
+        mgr = MagicMock()
+        mgr.start = MagicMock()
+        mgr.enqueue = MagicMock()
+        mgr.stop_comfort_timer = MagicMock()
+        mgr.wait_idle = AsyncMock()
+        mgr.shutdown = AsyncMock()
+        mgr.cancel = AsyncMock()
+        cls.return_value = mgr
+        yield cls, mgr
 
 
 # ──────────────────────────────────────────────
@@ -161,11 +161,12 @@ class TestRunPipelineNormal:
         assert calls[1].args[0]["data"]["delta"]["content"] == "你好"
         assert calls[2].args[0]["data"]["delta"]["content"] == "，世界。"
 
-        # 验证 TTS 调用
-        assert tts.send_text_delta.call_count == 2
-        tts.send_text_done.assert_called_once()
-        tts.wait_for_done.assert_called_once()
-        tts.disconnect.assert_called_once()
+        # 验证 TTS 管理器生命周期（013-tts-comfort-queue）
+        tts.start.assert_called_once()
+        tts.stop_comfort_timer.assert_called()
+        tts.enqueue.assert_called_once_with("你好，世界。", "response")
+        tts.wait_idle.assert_called_once()
+        tts.shutdown.assert_called_once()
 
     async def test_inference_task_registered(
         self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
@@ -242,11 +243,11 @@ class TestAgentError:
 @pytest.mark.asyncio(loop_scope="function")
 class TestTTSIntegration:
 
-    async def test_tts_send_text_delta_per_content_chunk(
+    async def test_tts_enqueue_full_response(
         self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
     ):
-        """每个 content chunk 调用一次 send_text_delta。"""
-        _, tts = mock_tts
+        """Agent 完成后，完整回复 enqueue 到 TTS 管理器。"""
+        _, mgr = mock_tts
         consumer = _make_consumer()
 
         from apps.voice.services.voice_pipeline import VoicePipeline
@@ -255,15 +256,14 @@ class TestTTSIntegration:
             user_id=1, text="test", segment_id="seg", consumer=consumer
         )
 
-        assert tts.send_text_delta.call_count == 2
-        tts.send_text_delta.assert_any_call("你好")
-        tts.send_text_delta.assert_any_call("，世界。")
+        # 完整文本一次性 enqueue（非逐 chunk）
+        mgr.enqueue.assert_called_once_with("你好，世界。", "response")
 
-    async def test_tts_send_text_done_after_agent_finishes(
+    async def test_tts_manager_lifecycle(
         self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
     ):
-        """Agent 完成后调用 send_text_done + wait_for_done。"""
-        _, tts = mock_tts
+        """Agent 完成后 stop_comfort_timer + wait_idle + shutdown。"""
+        _, mgr = mock_tts
         consumer = _make_consumer()
 
         from apps.voice.services.voice_pipeline import VoicePipeline
@@ -272,8 +272,9 @@ class TestTTSIntegration:
             user_id=1, text="test", segment_id="seg", consumer=consumer
         )
 
-        tts.send_text_done.assert_called_once()
-        tts.wait_for_done.assert_called_once()
+        mgr.stop_comfort_timer.assert_called()
+        mgr.wait_idle.assert_called_once()
+        mgr.shutdown.assert_called_once()
 
 
 # ──────────────────────────────────────────────
@@ -283,21 +284,20 @@ class TestTTSIntegration:
 @pytest.mark.asyncio(loop_scope="function")
 class TestTTSFallback:
 
-    async def test_tts_connect_failure_degrades_to_text(
-        self, mock_inference_svc, mock_rate_limit, mock_agent
+    async def test_tts_manager_error_degrades_gracefully(
+        self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
     ):
-        """TTS WS 连接失败 → 纯文字回复，无 binary 帧。"""
-        with patch(f"{_VP}.TTSStreamClient") as MockTTS:
-            tts = AsyncMock()
-            tts.connect = AsyncMock(side_effect=ConnectionError("TTS WS down"))
-            MockTTS.return_value = tts
-            consumer = _make_consumer()
+        """TTS 管理器内部错误 → 文字仍正常发送 + response.end。"""
+        _, mgr = mock_tts
+        # wait_idle 抛异常模拟 TTS 内部故障
+        mgr.wait_idle = AsyncMock(side_effect=Exception("TTS internal error"))
+        consumer = _make_consumer()
 
-            from apps.voice.services.voice_pipeline import VoicePipeline
+        from apps.voice.services.voice_pipeline import VoicePipeline
 
-            await VoicePipeline.run_pipeline(
-                user_id=1, text="test", segment_id="seg", consumer=consumer
-            )
+        await VoicePipeline.run_pipeline(
+            user_id=1, text="test", segment_id="seg", consumer=consumer
+        )
 
         # 文字仍正常发送
         calls = consumer._send_json.call_args_list
@@ -305,9 +305,6 @@ class TestTTSFallback:
         assert "response.start" in types
         assert "response.delta" in types
         assert "response.end" in types
-
-        # 无 binary 帧
-        consumer._send_binary.assert_not_called()
 
 
 # ──────────────────────────────────────────────
@@ -318,22 +315,23 @@ class TestTTSFallback:
 class TestTTSDisabled:
 
     @patch(f"{_VP}.settings")
-    async def test_tts_disabled_no_tts_client(
+    async def test_tts_disabled_no_tts_manager(
         self, mock_settings, mock_inference_svc, mock_rate_limit, mock_agent
     ):
-        """VOICE_TTS_ENABLED=False → 不创建 TTSStreamClient。"""
+        """VOICE_TTS_ENABLED=False → 不创建 TTSPipelineManager。"""
         mock_settings.VOICE_TTS_ENABLED = False
         mock_settings.VOICE_TTS_TIMEOUT = 30
         mock_settings.VOICE_TTS_VOICE = "zf_xiaobei"
+        mock_settings.VOICE_TTS_ERROR_TEXT = "错误"
         consumer = _make_consumer()
 
         from apps.voice.services.voice_pipeline import VoicePipeline
 
-        with patch(f"{_VP}.TTSStreamClient") as MockTTS:
+        with patch(f"{_VP}.TTSPipelineManager") as MockMgr:
             await VoicePipeline.run_pipeline(
                 user_id=1, text="test", segment_id="seg", consumer=consumer
             )
-            MockTTS.assert_not_called()
+            MockMgr.assert_not_called()
 
         # 文字仍正常发送
         calls = consumer._send_json.call_args_list
@@ -517,37 +515,26 @@ class TestCancelMechanism:
 @pytest.mark.asyncio(loop_scope="function")
 class TestTTSTimeout:
 
-    async def test_tts_wait_for_done_timeout_handled(
-        self, mock_inference_svc, mock_rate_limit, mock_agent
+    async def test_tts_manager_shutdown_timeout_handled(
+        self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
     ):
-        """TTS audio.done 超时 → 不影响 response.end 发送。"""
-        with patch(f"{_VP}.TTSStreamClient") as MockTTS:
-            tts = AsyncMock()
-            tts.connect = AsyncMock(return_value="tts-1")
-            tts.configure = AsyncMock()
-            tts.send_text_delta = AsyncMock()
-            tts.send_text_done = AsyncMock()
-            tts.wait_for_done = AsyncMock(
-                side_effect=asyncio.TimeoutError("audio.done timeout")
-            )
-            tts.disconnect = AsyncMock()
-            tts.connected = True
-            MockTTS.return_value = tts
+        """TTS 管理器 shutdown 超时 → 不影响 response.end 发送。"""
+        _, mgr = mock_tts
+        mgr.shutdown = AsyncMock(
+            side_effect=asyncio.TimeoutError("shutdown timeout")
+        )
+        consumer = _make_consumer()
 
-            consumer = _make_consumer()
+        from apps.voice.services.voice_pipeline import VoicePipeline
 
-            from apps.voice.services.voice_pipeline import VoicePipeline
+        await VoicePipeline.run_pipeline(
+            user_id=1, text="test", segment_id="seg", consumer=consumer
+        )
 
-            await VoicePipeline.run_pipeline(
-                user_id=1, text="test", segment_id="seg", consumer=consumer
-            )
-
-        # 即使 TTS 超时，仍发送 response.end
+        # 即使 TTS 管理器 shutdown 超时，仍发送 response.end
         calls = consumer._send_json.call_args_list
         types = [c.args[0]["type"] for c in calls]
         assert types[-1] == "response.end"
-        # disconnect 被调用
-        tts.disconnect.assert_called_once()
 
 
 # ──────────────────────────────────────────────

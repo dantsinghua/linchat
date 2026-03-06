@@ -12,7 +12,7 @@ import logging
 import time
 import uuid
 from datetime import timedelta
-from typing import Any, Optional, Protocol
+from typing import Any, ClassVar, Optional, Protocol
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
@@ -23,7 +23,7 @@ from apps.chat.models import Message
 from apps.chat.repositories import message_repo
 from apps.graph.services.agent_service import AgentService
 from apps.graph.services.inference_service import InferenceService
-from apps.voice.services.tts_stream_client import TTSStreamClient
+from apps.voice.services.tts_pipeline_manager import TTSPipelineManager
 from apps.voice.services.voice_persist_service import voice_persist_service
 from apps.voice.services.voice_session_service import voice_session_service
 
@@ -82,17 +82,26 @@ class VoicePipeline:
     互斥: 同一用户同时只能运行一个 pipeline（asyncio.Lock）。
     """
 
+    # 活跃 TTS 管理器注册表 — 供 cancel() 直接取消 TTS（013-tts-comfort-queue）
+    _active_managers: ClassVar[dict[int, TTSPipelineManager]] = {}
+
     @classmethod
     async def cancel(cls, user_id: int) -> bool:
         """取消指定用户正在运行的 Pipeline。
 
-        复用 SSE 聊天的 InferenceService 取消链路（FR-008, SC-009）。
+        双通路取消（013-tts-comfort-queue）:
+        1. InferenceService.cancel_task() → Agent 推理取消
+        2. _active_managers.pop() → TTSPipelineManager.cancel() → TTS 播报取消
         """
         success, request_id = await InferenceService.cancel_task(user_id)
         if success:
             logger.info(
                 "Pipeline cancelled: user=%s, request_id=%s", user_id, request_id
             )
+        mgr = cls._active_managers.pop(user_id, None)
+        if mgr:
+            await mgr.cancel()
+            return True
         return success
 
     @staticmethod
@@ -199,14 +208,22 @@ class VoicePipeline:
             await consumer._send_json(_error_msg("INFERENCE_BUSY", "有其他推理任务进行中"))
             return
 
-        # 3. 连接 TTS WS（如果启用）
-        tts_client = await VoicePipeline._connect_tts(consumer)
+        # 3. 创建 TTS 播报队列管理器（如果启用）
+        tts_manager: TTSPipelineManager | None = None
+        if settings.VOICE_TTS_ENABLED:
+            tts_manager = TTSPipelineManager(
+                on_audio=consumer._send_binary,
+                voice=settings.VOICE_TTS_VOICE,
+            )
+            tts_manager.start()
+            VoicePipeline._active_managers[user_id] = tts_manager
 
         # 4. 发送 response.start
         await consumer._send_json(_response_event("response.start", response_id, segment_id))
 
-        # 5. 流式 Agent → 流式 TTS
+        # 5. 流式 Agent → 文字推送前端 + 累积完整回复
         error_occurred = False
+        full_response = ""
         try:
             async for chunk in AgentService.execute(
                 user_id=user_id,
@@ -215,15 +232,10 @@ class VoicePipeline:
                 user_message=text,
             ):
                 if chunk.type == "content":
-                    # 文字 → 前端
+                    # 文字 → 前端（流式 delta）
                     await consumer._send_json(_delta_msg(chunk.content, response_id))
-                    # 文字 → TTS WS（Gateway 自动分句合成）
-                    if tts_client and tts_client.connected:
-                        try:
-                            await tts_client.send_text_delta(chunk.content)
-                        except Exception:
-                            logger.warning("TTS send_text_delta failed, degrading")
-                            tts_client = None
+                    # 累积完整回复（TTS 在 Agent 完成后一次性播报）
+                    full_response += chunk.content
 
                 elif chunk.type == "interrupted":
                     logger.info(
@@ -238,10 +250,21 @@ class VoicePipeline:
                     err = _build_agent_error(chunk)
                     await consumer._send_json({"type": "error", "data": err})
                     logger.warning("Pipeline agent error: user=%s, err=%s", user_id, err["code"])
+                    # T015: 错误语音播报
+                    if tts_manager:
+                        tts_manager.stop_comfort_timer()
+                        tts_manager.enqueue(settings.VOICE_TTS_ERROR_TEXT, "error")
                     break
 
                 elif chunk.type in ("done", "context_compacting", "context_compacted"):
                     pass  # done 循环结束后处理; context 事件忽略
+
+            # Agent 正常完成 → 停止安慰 + 入队完整回复
+            if not error_occurred:
+                if tts_manager:
+                    tts_manager.stop_comfort_timer()
+                if tts_manager and full_response.strip():
+                    tts_manager.enqueue(full_response, "response")
 
         except Exception as e:
             error_occurred = True
@@ -252,9 +275,19 @@ class VoicePipeline:
                 exc_info=True,
             )
             await consumer._send_json(_error_msg("PIPELINE_ERROR", "语音推理管道异常"))
+            # T016: 异常语音播报
+            if tts_manager:
+                tts_manager.stop_comfort_timer()
+                tts_manager.enqueue(settings.VOICE_TTS_ERROR_TEXT, "error")
         finally:
-            # 6. 通知 TTS 文本结束，等待音频全部合成
-            await VoicePipeline._flush_tts(tts_client)
+            # 6. 等待 TTS 播报队列完成
+            if tts_manager:
+                try:
+                    await tts_manager.wait_idle()
+                    await tts_manager.shutdown()
+                except Exception:
+                    logger.exception("TTS manager cleanup error: user=%s", user_id)
+            VoicePipeline._active_managers.pop(user_id, None)
 
         # 7. 发送 response.end
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
@@ -415,38 +448,3 @@ class VoicePipeline:
                 asst_msg.is_voice = True
                 asst_msg.save(update_fields=["is_voice"])
 
-    @staticmethod
-    async def _connect_tts(
-        consumer: ConsumerProtocol,
-    ) -> Optional[TTSStreamClient]:
-        """连接 TTS WS（US4-AC2: 禁用时返回 None）。"""
-        if not settings.VOICE_TTS_ENABLED:
-            return None
-
-        try:
-            tts = TTSStreamClient(on_audio=consumer._send_binary)
-            await tts.connect()
-            await tts.configure(voice=settings.VOICE_TTS_VOICE)
-            return tts
-        except Exception as e:
-            # US4-AC3: TTS WS 连接失败 → 降级为纯文字回复
-            logger.warning("TTS connect failed, degrading to text-only: %s", e)
-            return None
-
-    @staticmethod
-    async def _flush_tts(tts_client: Optional[TTSStreamClient]) -> None:
-        """通知 TTS 文本结束并等待 audio.done。"""
-        if not tts_client or not tts_client.connected:
-            return
-        try:
-            await tts_client.send_text_done()
-            await tts_client.wait_for_done(timeout=settings.VOICE_TTS_TIMEOUT)
-        except asyncio.TimeoutError:
-            logger.warning("TTS audio.done timeout after %ds", settings.VOICE_TTS_TIMEOUT)
-        except Exception as e:
-            logger.warning("TTS flush error: %s", e)
-        finally:
-            try:
-                await tts_client.disconnect()
-            except Exception:
-                pass

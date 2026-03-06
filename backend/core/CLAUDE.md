@@ -67,7 +67,7 @@
 | MinIO | 端点、媒体/缩略图桶名 |
 | 媒体限制 | 图片 10MB、视频 50MB、时长 60s、7 天过期 |
 | 多模态 | max_tokens 1024、限流 60s、SubAgent 超时 20min |
-| 语音 Gateway | ASR WS `VOICE_ASR_WS_URL`、TTS WS `VOICE_TTS_URL`、TTS 音色/超时/启用开关 |
+| 语音 Gateway | ASR WS `VOICE_ASR_WS_URL`、TTS WS `VOICE_TTS_URL`、TTS 音色/超时/启用开关、安慰延迟/段间 gap/安慰文本/错误文本 |
 | 语音 ASR | speech_pad 2000ms、语言 auto、单段最大 60s |
 | 语音会话 | 会话 120s、活跃对话 30s、音频缓存 300s、录音 30s、空闲超时 60s、STT 超时 30s |
 | 语音唤醒/VAD | 唤醒词"小鱼"、声纹阈值 0.5、VAD 阈值 0.5、模糊匹配阈值 0.8 |
