@@ -97,6 +97,10 @@ VoiceWaveform (独立, 通过 props 接收音频数据)
 
 ---
 
+## 014-jarvis-ambient-voice 前端侧变更
+
+前端类型层已就位（VoiceMode 新增 `'ambient'`、5 种新下行事件、4 个新接口），`useVoiceWebSocket` 新增 `onDecisionResult` 回调和 `sendReconnect()` 方法。当前 VoiceModePanel/useVoiceMode 仍基于 voice_chat 模式运行（ambient 模式主要由后端 ESP 设备驱动，前端仅接收 TTS 广播和控制消息）。
+
 ## 测试要点
 
 - VoiceModePanel: 验证面板弹出/收起、录音按钮状态切换、状态文案显示

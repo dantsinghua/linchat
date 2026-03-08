@@ -71,6 +71,7 @@
 | 语音 ASR | speech_pad 2000ms、语言 auto、单段最大 60s |
 | 语音会话 | 会话 120s、活跃对话 30s、音频缓存 300s、录音 30s、空闲超时 60s、STT 超时 30s |
 | 语音唤醒/VAD | 唤醒词"小鱼"、声纹阈值 0.5、VAD 阈值 0.5、模糊匹配阈值 0.8 |
+| **语音 ambient（014）** | 聚合超时 3s（`VOICE_AMBIENT_AGGREGATE_TIMEOUT`）、最大缓冲 10 段（`VOICE_AMBIENT_MAX_BUFFER_SIZE`）、会话 TTL 3600s（`VOICE_AMBIENT_SESSION_TTL`）、RECORD_ONLY 保留上限 20（`VOICE_AMBIENT_RECORD_ONLY_LIMIT`）、LLM 意图分类默认关闭（`VOICE_DECISION_USE_LLM=False`）、置信度阈值 0.7（`VOICE_DECISION_LLM_THRESHOLD`）、分类超时 1s（`VOICE_DECISION_LLM_TIMEOUT`） |
 | 认证 | Token 空闲 1h/绝对 24h、验证码 2min、锁定 15min |
 | Memory | Embedding 1024 维、搜索 top5、向量权重 0.7 |
 | 安全 | httpOnly Cookie、SM4 密钥、DRF 限流 100/h(匿名) 1000/h(认证) |
@@ -85,4 +86,10 @@
 |----|------|---|-------|------|
 | #1003 | 4:26 PM | 🔵 | Complete LLM Gateway Configuration Settings | ~415 |
 | #1002 | " | 🔵 | Django Settings LLM Gateway Configuration | ~271 |
+
+### Mar 7, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1587 | 12:49 AM | 🔵 | LinChat Voice System Configuration Parameters | ~772 |
 </claude-mem-context>

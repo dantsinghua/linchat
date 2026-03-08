@@ -431,6 +431,15 @@ VOICE_SPEAKER_THRESHOLD = float(os.getenv("VOICE_SPEAKER_THRESHOLD", "0.5"))  # 
 VOICE_VAD_THRESHOLD = float(os.getenv("VOICE_VAD_THRESHOLD", "0.5"))  # VAD 阈值 (0.0~1.0，越大越不灵敏)
 VOICE_WAKE_WORD_FUZZY_THRESHOLD = float(os.getenv("VOICE_WAKE_WORD_FUZZY_THRESHOLD", "0.8"))  # 唤醒词拼音模糊匹配阈值
 
+# 环境语音模式 (014-jarvis-ambient-voice)
+VOICE_AMBIENT_AGGREGATE_TIMEOUT = float(os.getenv("VOICE_AMBIENT_AGGREGATE_TIMEOUT", "3.0"))  # 话语聚合静默超时（秒）
+VOICE_AMBIENT_MAX_BUFFER_SIZE = int(os.getenv("VOICE_AMBIENT_MAX_BUFFER_SIZE", "10"))  # 聚合缓冲区最大话语数
+VOICE_AMBIENT_SESSION_TTL = int(os.getenv("VOICE_AMBIENT_SESSION_TTL", "3600"))  # ambient 会话 TTL: 3600s (1h)
+VOICE_AMBIENT_RECORD_ONLY_LIMIT = int(os.getenv("VOICE_AMBIENT_RECORD_ONLY_LIMIT", "20"))  # RECORD_ONLY 消息保留上限
+VOICE_DECISION_USE_LLM = os.getenv("VOICE_DECISION_USE_LLM", "false").lower() == "true"  # 是否启用 LLM 意图分类
+VOICE_DECISION_LLM_THRESHOLD = float(os.getenv("VOICE_DECISION_LLM_THRESHOLD", "0.7"))  # LLM 分类置信度阈值
+VOICE_DECISION_LLM_TIMEOUT = float(os.getenv("VOICE_DECISION_LLM_TIMEOUT", "1.0"))  # LLM 分类超时（秒）
+
 # ============ 文档 SubAgent + RAG 配置 (011-document-subagent-rag) ============
 DOCUMENT_SUBAGENT_TIMEOUT = int(os.getenv("DOCUMENT_SUBAGENT_TIMEOUT", "1200"))  # 文档 SubAgent 超时: 20分钟
 DOC_CHUNK_SIZE = int(os.getenv("DOC_CHUNK_SIZE", "800"))  # 分块大小（字符）

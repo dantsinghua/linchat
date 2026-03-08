@@ -49,7 +49,7 @@ interface UseVoiceWebSocketOptions {
   onSessionReconnected?: VoiceEventHandler;
   /** T052: 会话重连失败 */
   onSessionReconnectFailed?: VoiceEventHandler;
-  /** T052: 响应决策结果（continuous_listen 模式） */
+  /** T052: 响应决策结果（ambient 模式） */
   onDecisionResult?: VoiceEventHandler;
 }
 

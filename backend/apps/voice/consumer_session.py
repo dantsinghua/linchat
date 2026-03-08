@@ -55,19 +55,20 @@ class SessionMixin:
                 self.user_id,
             )
             mode = "voice_chat"
-        if mode not in ("voice_chat", "continuous_listen"):
+        if mode not in ("voice_chat", "ambient"):
             mode = "voice_chat"
         return mode
 
     async def _handle_session_configure(self, data: dict[str, Any]) -> None:
-        created = await voice_session_service.create_session(self.user_id)
+        mode = self._normalize_mode(data)
+        created = await voice_session_service.create_session(self.user_id, mode=mode)
         if not created:
             await self._send_json({
                 "type": "session.conflict",
                 "data": {"message": "检测到其他标签页的活跃语音会话，已自动接管"},
             })
             await voice_session_service.close_session(self.user_id)
-            await voice_session_service.create_session(self.user_id)
+            await voice_session_service.create_session(self.user_id, mode=mode)
 
         asr_err = await self._connect_and_configure_asr()
         if asr_err:
@@ -77,7 +78,7 @@ class SessionMixin:
             await voice_session_service.close_session(self.user_id)
             return
 
-        self._mode = self._normalize_mode(data)
+        self._mode = mode
         await voice_session_service.update_session(
             self.user_id,
             upstream_connected=True,
@@ -86,13 +87,28 @@ class SessionMixin:
         self._configured = True
         self._start_idle_check()
 
+        # ambient 模式：初始化话语聚合器
+        if self._mode == "ambient":
+            from apps.voice.services.utterance_aggregator import UtteranceAggregator
+
+            self._aggregator = UtteranceAggregator(
+                on_aggregated=self._on_utterance_aggregated,
+            )
+
+        configured_data: dict[str, Any] = {
+            "status": "active",
+            "session_id": self._asr_client.session_id,
+            "mode": self._mode,
+        }
+        if self._mode == "ambient":
+            configured_data["features"] = {
+                "utterance_aggregation": True,
+                "llm_decision": settings.VOICE_DECISION_USE_LLM,
+                "cross_device_tts": True,
+            }
         await self._send_json({
             "type": "session.configured",
-            "data": {
-                "status": "active",
-                "session_id": self._asr_client.session_id,
-                "mode": self._mode,
-            },
+            "data": configured_data,
         })
         logger.info(
             "Voice configured: user=%s, mode=%s, asr=%s",
@@ -100,6 +116,58 @@ class SessionMixin:
             self._mode,
             self._asr_client.session_id,
         )
+
+    async def _on_utterance_aggregated(self, aggregated_msg) -> None:
+        """聚合器回调 — 聚合完成后触发决策 + Pipeline。"""
+        from apps.voice.services.response_decision_service import response_decision_service
+
+        logger.info(
+            "Aggregated: user=%s, count=%d, text=%s",
+            self.user_id,
+            aggregated_msg.utterance_count,
+            aggregated_msg.text[:50],
+        )
+
+        # 发送 aggregation.completed 事件
+        await self._send_json({
+            "type": "aggregation.completed",
+            "data": {
+                "aggregated_text": aggregated_msg.text,
+                "utterance_count": aggregated_msg.utterance_count,
+                "first_ts": aggregated_msg.first_ts,
+                "last_ts": aggregated_msg.last_ts,
+            },
+        })
+
+        # 决策
+        decision, reason = await response_decision_service.decide(
+            aggregated_msg.text,
+            speaker_id=None,
+            user_id=self.user_id,
+            mode="ambient",
+        )
+
+        # 发送 decision.result 事件
+        await self._send_json({
+            "type": "decision.result",
+            "data": {"decision": decision.value, "reason": reason},
+        })
+
+        # 执行决策
+        if decision.value == "RESPOND":
+            segment_id = self._current_segment_id or "agg"
+            await self._start_voice_pipeline(
+                segment_id, aggregated_msg.text, speaker_id=None
+            )
+        elif decision.value == "RECORD_ONLY":
+            # 静默保存 — 通过 VoicePipeline._record_only 路径
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline.record_only_ambient(
+                user_id=self.user_id,
+                text=aggregated_msg.text,
+                consumer=self,
+            )
 
     async def _handle_session_reconnect(self, data: dict[str, Any]) -> None:
         if not await voice_session_service.get_session(self.user_id):
@@ -173,6 +241,40 @@ class SessionMixin:
                 self.user_id, self._current_segment_id, pcm_data
             )
         await voice_session_service.refresh_session(self.user_id)
+
+    # ---- ASR 重连逻辑 (ambient 模式) ----
+
+    async def _reconnect_asr(self) -> None:
+        """ambient 模式下 ASR 断连自动重连（最多 3 次）。"""
+        if getattr(self, "_mode", None) != "ambient":
+            return
+
+        for attempt in range(1, 4):
+            logger.info(
+                "ASR reconnect attempt %d/3: user=%s", attempt, self.user_id
+            )
+            await asyncio.sleep(2)
+
+            asr_err = await self._connect_and_configure_asr()
+            if not asr_err:
+                await voice_session_service.update_session(
+                    self.user_id,
+                    upstream_connected=True,
+                    asr_session_id=self._asr_client.session_id,
+                )
+                logger.info(
+                    "ASR reconnected: user=%s, asr=%s",
+                    self.user_id,
+                    self._asr_client.session_id,
+                )
+                return
+
+        logger.error("ASR reconnect failed after 3 attempts: user=%s", self.user_id)
+        await self._send_error(
+            "ASR_RECONNECT_FAILED",
+            "语音服务重连失败，请重新连接",
+            recoverable=False,
+        )
 
     # ---- 最大语音段时长保护 ----
 

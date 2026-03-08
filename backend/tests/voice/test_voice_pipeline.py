@@ -12,7 +12,6 @@
 - 取消机制：cancel() → InferenceService.cancel_task() + TTSPipelineManager.cancel()
 - TTS 管理器 shutdown 超时处理
 - T019: 音频持久化 (persist_audio_attachment)
-- T022: 持续监听模式 (continuous_listen)
 """
 
 import asyncio
@@ -709,126 +708,267 @@ class TestPersistAudioAttachment:
 
 
 # ──────────────────────────────────────────────
-# T022: 持续监听模式
+# T016: ambient 模式 voice pipeline 测试
 # ──────────────────────────────────────────────
 
 @pytest.mark.asyncio(loop_scope="function")
-class TestContinuousListenMode:
+class TestAmbientRespondPipeline:
 
-    async def test_respond_decision_triggers_full_pipeline(
+    async def test_ambient_respond_sends_agent_result_via_tts_router(
         self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
     ):
-        """RESPOND 决策 → 完整 Agent + TTS pipeline。"""
+        """ambient RESPOND → Agent + TTSRouter 路由 TTS 音频。"""
         consumer = _make_consumer()
+        _, tts = mock_tts
 
         with (
             patch(f"{_VP}.voice_session_service") as mock_sess,
             patch(f"{_VP}.voice_persist_service") as mock_persist,
-            patch("apps.voice.services.response_decision_service.response_decision_service") as mock_rds,
+            patch("apps.voice.services.tts_router.TTSRouter") as MockRouter,
         ):
-            from apps.voice.services.response_decision_service import DecisionResult
-            mock_rds.decide = AsyncMock(return_value=(DecisionResult.RESPOND, "exact_wake_word"))
             mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
             mock_sess.set_active_conversation = AsyncMock()
             mock_sess.get_audio_chunks = AsyncMock(return_value=[])
 
+            router_inst = MagicMock()
+            on_audio_cb = AsyncMock()
+            router_inst.get_on_audio_callback.return_value = on_audio_cb
+            router_inst.send_control = AsyncMock()
+            MockRouter.return_value = router_inst
+
             from apps.voice.services.voice_pipeline import VoicePipeline
 
             await VoicePipeline.run_pipeline(
-                user_id=1, text="安琳 今天天气", segment_id="seg",
-                consumer=consumer, mode="continuous_listen"
+                user_id=1, text="帮我开灯", segment_id="seg",
+                consumer=consumer, mode="ambient"
             )
 
+        # 验证活跃对话标记
+        mock_sess.set_active_conversation.assert_called_once_with(1)
+
+        # 验证 tts.started 控制消息
+        router_inst.send_control.assert_any_call(1, "tts.started")
+
+        # 验证 response 事件序列
         calls = consumer._send_json.call_args_list
         types = [c.args[0]["type"] for c in calls]
         assert "response.start" in types
         assert "response.delta" in types
         assert "response.end" in types
-        mock_sess.set_active_conversation.assert_called_once_with(1)
 
-    async def test_record_only_saves_user_message_only(self):
-        """RECORD_ONLY 决策 → 仅保存 user Message，不调用 Agent。"""
-        consumer = _make_consumer()
-
-        with (
-            patch(f"{_VP}.voice_session_service") as mock_sess,
-            patch(f"{_VP}.voice_persist_service") as mock_persist,
-            patch(f"{_VP}.message_repo") as mock_repo,
-            patch("apps.voice.services.response_decision_service.response_decision_service") as mock_rds,
-            patch(f"{_VP}.AgentService") as MockAgent,
-            patch(f"{_VP}.VoicePipeline._persist_audio_attachment", new_callable=AsyncMock) as mock_pa,
-        ):
-            from apps.voice.services.response_decision_service import DecisionResult
-            mock_rds.decide = AsyncMock(return_value=(DecisionResult.RECORD_ONLY, "default"))
-            mock_repo.get_next_sequence = AsyncMock(return_value=10)
-            mock_repo.create = AsyncMock()
-            mock_sess.get_audio_chunks = AsyncMock(return_value=[])
-
-            from apps.voice.services.voice_pipeline import VoicePipeline
-
-            await VoicePipeline.run_pipeline(
-                user_id=1, text="闲聊内容", segment_id="seg",
-                consumer=consumer, mode="continuous_listen"
-            )
-
-            # message_repo.create 被调用（user Message）
-            mock_repo.create.assert_called_once()
-            created_msg = mock_repo.create.call_args[0][0]
-            assert created_msg.role == "user"
-            assert created_msg.is_voice is True
-            assert created_msg.content == "闲聊内容"
-
-            # Agent 不被调用
-            MockAgent.execute.assert_not_called()
-
-            # 不发送 response 事件
-            calls = consumer._send_json.call_args_list
-            types = [c.args[0]["type"] for c in calls] if calls else []
-            assert "response.start" not in types
-
-    async def test_stop_decision_cancels_pipeline(self):
-        """STOP 决策 → 取消正在进行的推理。"""
-        consumer = _make_consumer()
-
-        with (
-            patch(f"{_VP}.InferenceService") as MockIS,
-            patch("apps.voice.services.response_decision_service.response_decision_service") as mock_rds,
-            patch(f"{_VP}.AgentService") as MockAgent,
-        ):
-            from apps.voice.services.response_decision_service import DecisionResult
-            mock_rds.decide = AsyncMock(return_value=(DecisionResult.STOP, "emergency_stop"))
-            MockIS.cancel_task = AsyncMock(return_value=(True, "req-1"))
-
-            from apps.voice.services.voice_pipeline import VoicePipeline
-
-            await VoicePipeline.run_pipeline(
-                user_id=1, text="停", segment_id="seg",
-                consumer=consumer, mode="continuous_listen"
-            )
-
-            # cancel 被调用
-            MockIS.cancel_task.assert_called_once_with(1)
-            # Agent 不被调用
-            MockAgent.execute.assert_not_called()
-
-    async def test_voice_chat_mode_skips_decision(
+    async def test_ambient_skips_response_decision(
         self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
     ):
-        """voice_chat 模式不经过决策直接进入 pipeline。"""
+        """ambient 模式直接进入 pipeline，不调用 ResponseDecisionService。"""
         consumer = _make_consumer()
 
         with (
             patch(f"{_VP}.voice_session_service") as mock_sess,
             patch(f"{_VP}.voice_persist_service") as mock_persist,
+            patch("apps.voice.services.tts_router.TTSRouter") as MockRouter,
         ):
             mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
+            mock_sess.set_active_conversation = AsyncMock()
             mock_sess.get_audio_chunks = AsyncMock(return_value=[])
+            router_inst = MagicMock()
+            router_inst.get_on_audio_callback.return_value = AsyncMock()
+            router_inst.send_control = AsyncMock()
+            MockRouter.return_value = router_inst
 
             from apps.voice.services.voice_pipeline import VoicePipeline
 
-            with patch("apps.voice.services.response_decision_service.response_decision_service") as mock_rds:
+            with patch(
+                "apps.voice.services.response_decision_service.response_decision_service"
+            ) as mock_rds:
                 await VoicePipeline.run_pipeline(
                     user_id=1, text="test", segment_id="seg",
-                    consumer=consumer, mode="voice_chat"
+                    consumer=consumer, mode="ambient"
                 )
                 mock_rds.decide.assert_not_called()
+
+    async def test_ambient_tts_completed_sent_after_shutdown(
+        self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
+    ):
+        """ambient 模式 TTS 完成后发送 tts.completed 控制消息。"""
+        consumer = _make_consumer()
+
+        with (
+            patch(f"{_VP}.voice_session_service") as mock_sess,
+            patch(f"{_VP}.voice_persist_service") as mock_persist,
+            patch("apps.voice.services.tts_router.TTSRouter") as MockRouter,
+        ):
+            mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
+            mock_sess.set_active_conversation = AsyncMock()
+            mock_sess.get_audio_chunks = AsyncMock(return_value=[])
+
+            router_inst = MagicMock()
+            router_inst.get_on_audio_callback.return_value = AsyncMock()
+            router_inst.send_control = AsyncMock()
+            MockRouter.return_value = router_inst
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline.run_pipeline(
+                user_id=1, text="test", segment_id="seg",
+                consumer=consumer, mode="ambient"
+            )
+
+        # tts.completed 由 finally 块中的 TTSRouter 发送
+        control_calls = router_inst.send_control.call_args_list
+        control_types = [c.args[1] for c in control_calls]
+        assert "tts.completed" in control_types
+
+
+@pytest.mark.asyncio(loop_scope="function")
+class TestAmbientRecordOnly:
+
+    async def test_record_only_ambient_saves_message(self):
+        """ambient RECORD_ONLY → 保存 user Message（is_voice=True）。"""
+        consumer = _make_consumer()
+
+        with (
+            patch(f"{_VP}.message_repo") as mock_repo,
+            patch(f"{_VP}.VoicePipeline._cleanup_record_only_messages", new_callable=AsyncMock) as mock_cleanup,
+        ):
+            mock_repo.get_next_sequence = AsyncMock(return_value=5)
+            mock_repo.create = AsyncMock()
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline.record_only_ambient(
+                user_id=1, text="今天好热啊", consumer=consumer
+            )
+
+        mock_repo.create.assert_called_once()
+        created_msg = mock_repo.create.call_args[0][0]
+        assert created_msg.role == "user"
+        assert created_msg.content == "今天好热啊"
+        assert created_msg.is_voice is True
+        assert created_msg.user_id == 1
+
+    async def test_record_only_ambient_triggers_cleanup(self):
+        """ambient RECORD_ONLY 保存后触发清理检查。"""
+        consumer = _make_consumer()
+
+        with (
+            patch(f"{_VP}.message_repo") as mock_repo,
+            patch(f"{_VP}.VoicePipeline._cleanup_record_only_messages", new_callable=AsyncMock) as mock_cleanup,
+        ):
+            mock_repo.get_next_sequence = AsyncMock(return_value=1)
+            mock_repo.create = AsyncMock()
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline.record_only_ambient(
+                user_id=42, text="闲聊", consumer=consumer
+            )
+
+        mock_cleanup.assert_called_once_with(42)
+
+    async def test_record_only_ambient_no_agent_call(self):
+        """ambient RECORD_ONLY 不调用 Agent。"""
+        consumer = _make_consumer()
+
+        with (
+            patch(f"{_VP}.message_repo") as mock_repo,
+            patch(f"{_VP}.VoicePipeline._cleanup_record_only_messages", new_callable=AsyncMock),
+            patch(f"{_VP}.AgentService") as MockAgent,
+        ):
+            mock_repo.get_next_sequence = AsyncMock(return_value=1)
+            mock_repo.create = AsyncMock()
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline.record_only_ambient(
+                user_id=1, text="日常聊天", consumer=consumer
+            )
+
+        MockAgent.execute.assert_not_called()
+
+    async def test_record_only_ambient_error_handled(self):
+        """ambient RECORD_ONLY 失败时不抛异常。"""
+        consumer = _make_consumer()
+
+        with (
+            patch(f"{_VP}.message_repo") as mock_repo,
+        ):
+            mock_repo.get_next_sequence = AsyncMock(
+                side_effect=Exception("DB error")
+            )
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            # 不应抛异常
+            await VoicePipeline.record_only_ambient(
+                user_id=1, text="test", consumer=consumer
+            )
+
+
+# ──────────────────────────────────────────────
+# T018: RECORD_ONLY 持久化 + 清理上限
+# ──────────────────────────────────────────────
+
+@pytest.mark.asyncio(loop_scope="function")
+class TestRecordOnlyCleanup:
+
+    async def test_cleanup_removes_excess_messages(self):
+        """超过限额时删除最早的超出消息。"""
+        with (
+            patch(f"{_VP}.settings") as mock_settings,
+            patch(f"{_VP}.VoicePipeline._count_record_only", new_callable=AsyncMock) as mock_count,
+            patch(f"{_VP}.VoicePipeline._delete_oldest_record_only", new_callable=AsyncMock) as mock_delete,
+        ):
+            mock_settings.VOICE_AMBIENT_RECORD_ONLY_LIMIT = 20
+            mock_count.return_value = 25  # 超出 5 条
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline._cleanup_record_only_messages(user_id=1)
+
+        mock_delete.assert_called_once_with(1, 5)
+
+    async def test_cleanup_no_action_below_limit(self):
+        """未超限时不删除。"""
+        with (
+            patch(f"{_VP}.settings") as mock_settings,
+            patch(f"{_VP}.VoicePipeline._count_record_only", new_callable=AsyncMock) as mock_count,
+            patch(f"{_VP}.VoicePipeline._delete_oldest_record_only", new_callable=AsyncMock) as mock_delete,
+        ):
+            mock_settings.VOICE_AMBIENT_RECORD_ONLY_LIMIT = 20
+            mock_count.return_value = 15
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline._cleanup_record_only_messages(user_id=1)
+
+        mock_delete.assert_not_called()
+
+    async def test_cleanup_at_exact_limit(self):
+        """恰好达到上限时不删除。"""
+        with (
+            patch(f"{_VP}.settings") as mock_settings,
+            patch(f"{_VP}.VoicePipeline._count_record_only", new_callable=AsyncMock) as mock_count,
+            patch(f"{_VP}.VoicePipeline._delete_oldest_record_only", new_callable=AsyncMock) as mock_delete,
+        ):
+            mock_settings.VOICE_AMBIENT_RECORD_ONLY_LIMIT = 20
+            mock_count.return_value = 20
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline._cleanup_record_only_messages(user_id=1)
+
+        mock_delete.assert_not_called()
+
+    async def test_cleanup_error_does_not_propagate(self):
+        """清理异常不传播。"""
+        with (
+            patch(f"{_VP}.settings") as mock_settings,
+            patch(f"{_VP}.VoicePipeline._count_record_only", new_callable=AsyncMock) as mock_count,
+        ):
+            mock_settings.VOICE_AMBIENT_RECORD_ONLY_LIMIT = 20
+            mock_count.side_effect = Exception("DB error")
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            # 不应抛异常
+            await VoicePipeline._cleanup_record_only_messages(user_id=1)

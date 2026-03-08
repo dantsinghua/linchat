@@ -92,16 +92,29 @@
 
 ### voice.ts
 
-**关键类型:**
+**基础类型:**
 
 - `VoiceSessionState`: 8 态枚举（idle/configuring/listening/recording/processing/responding/interrupted/error）
 - `RecordingMode`: 'hold' | 'toggle'
+- `VoiceMode`: 'voice_chat' | **'ambient'**（014 新增）
+- `VoiceWSEventType`: **16 种** WebSocket 下行事件（含 014 新增 5 种：`aggregation.utterance_added`、`aggregation.completed`、`decision.result`、`tts.started`、`tts.completed`）
+- `VoiceWSCommandType`: 3 种上行命令（session.configure、session.close、response.cancel）
+
+**接口类型:**
+
 - `SpeakerProfile`: 声纹档案（id, gatewaySpeakerId, name, qualityScore, enrolledAt）
 - `RegisteredDevice`: 注册设备（deviceUuid, name, isActive, createdAt, lastActiveAt）
 - `VoiceSettings`: 语音设置（wakeWords, recordingMode, vadSensitivity）
-- `VoiceWSEventType`: 14 种 WebSocket 事件类型
-- `VoiceResponseDelta`: 流式回复增量
-- `VoiceMessageSaved`: 消息持久化确认
+- `VoiceResponseDelta`: 流式回复增量（content + audio）
+- `VoiceMessageSaved`: 消息持久化确认（含 interrupted 标记）
+- `VoiceTranscription`: STT 转写完成数据
+
+**014-jarvis-ambient-voice 新增接口:**
+
+- `VoiceAggregationUtteranceAdded`: 话语聚合中间通知（text, buffer_count, timeout_remaining）
+- `VoiceAggregationCompleted`: 话语聚合完成（aggregated_text, utterance_count, first_ts, last_ts）
+- `VoiceDecisionResult`: LLM 响应决策结果（decision: RESPOND/RECORD_ONLY/STOP, reason, confidence?）
+- `VoiceAmbientFeatures`: ambient 模式 features 标志（utterance_aggregation, llm_decision, cross_device_tts）
 
 ## 依赖关系
 
@@ -116,3 +129,27 @@
 - 类型文件本身不需要运行时测试
 - 通过 TypeScript 编译器（`tsc --noEmit`）验证类型正确性
 - 工具函数（getMediaTypeFromMime、formatFileSize 等）可通过单元测试验证
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 13, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1049 | 11:01 AM | 🔵 | Frontend failedContent Recovery Only Restores Text Not Attachments | ~608 |
+| #1047 | " | 🔵 | Frontend Media Type Definitions Document Complete Feature Scope | ~614 |
+
+### Feb 24, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1290 | 5:16 PM | 🔵 | Voice Frontend Architecture Comprehensive Documentation | ~846 |
+
+### Mar 7, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1586 | 12:49 AM | 🔵 | LinChat Frontend Voice Type Definitions and WebSocket Protocol | ~723 |
+</claude-mem-context>

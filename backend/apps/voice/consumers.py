@@ -99,13 +99,38 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
         self._mode: str = "voice_chat"
         self._closed: bool = False
         self._segment_timer_task: Optional[asyncio.Task] = None
+        self._aggregator = None  # UtteranceAggregator — T006 中初始化
         logger.info("Voice WS connected: user=%s", user_id)
         await self.accept()
+
+        # 加入 TTS 分组（跨设备 TTS 路由）
+        from apps.voice.services.tts_router import TTSRouter
+
+        await self.channel_layer.group_add(
+            TTSRouter.group_name(self.user_id), self.channel_name
+        )
 
     async def disconnect(self, close_code: int) -> None:
         self._closed = True
         user_id = getattr(self, "user_id", None)
         logger.info("Voice WS disconnecting: user=%s, code=%s", user_id, close_code)
+
+        # 离开 TTS 分组
+        if user_id:
+            from apps.voice.services.tts_router import TTSRouter
+
+            try:
+                await self.channel_layer.group_discard(
+                    TTSRouter.group_name(user_id), self.channel_name
+                )
+            except Exception:
+                pass
+
+        # 销毁聚合器
+        aggregator = getattr(self, "_aggregator", None)
+        if aggregator:
+            aggregator.destroy()
+            self._aggregator = None
 
         if self._idle_check_task and not self._idle_check_task.done():
             self._idle_check_task.cancel()
@@ -186,3 +211,17 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
             "type": "error",
             "data": {"code": code, "message": message, "recoverable": recoverable},
         })
+
+    # ---- Channels group handlers (TTSRouter 路由) ----
+
+    async def tts_audio_frame(self, event: dict[str, Any]) -> None:
+        """TTS 音频帧 handler — 设备连接不播放。"""
+        if self._is_device_connection:
+            return
+        await self._send_binary(event["data"])
+
+    async def tts_control(self, event: dict[str, Any]) -> None:
+        """TTS 控制消息 handler — 设备连接不播放。"""
+        if self._is_device_connection:
+            return
+        await self._send_json(event["payload"])

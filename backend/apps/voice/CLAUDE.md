@@ -10,10 +10,10 @@
 
 | 文件 | 职责 |
 |------|------|
-| `consumers.py` | VoiceConsumer 骨架（Mixin 组装 + connect/disconnect/receive + 设备 Token 认证 + WS 连接频率限制） |
-| `consumer_events.py` | EventMixin — ASR 事件分发：vad.speech_start/end、transcription.completed/failed、error → 前端协议翻译 |
-| `consumer_inference.py` | InferenceMixin — VoicePipeline 后台启动（voice_chat/continuous_listen）、空闲超时循环 |
-| `consumer_session.py` | SessionMixin — ASRStreamClient 连接/配置/断开、cancel（VoicePipeline.cancel）、音频帧转发、语音段超时定时器 |
+| `consumers.py` | VoiceConsumer 骨架（Mixin 组装 + connect/disconnect/receive + 设备 Token 认证 + WS 连接频率限制 + TTS Channels 分组管理 + `tts_audio_frame`/`tts_control` group handler） |
+| `consumer_events.py` | EventMixin — ASR 事件分发：vad.speech_start/end、transcription.completed/failed、error → 前端协议翻译；**ambient 分支**: `_handle_ambient_transcription()` 停止词预检 + 聚合器路由 + `aggregation.utterance_added` 事件 |
+| `consumer_inference.py` | InferenceMixin — VoicePipeline 后台启动（voice_chat/ambient）、空闲超时循环（**ambient 模式跳过**） |
+| `consumer_session.py` | SessionMixin — ASRStreamClient 连接/配置/断开、cancel、音频帧转发、语音段超时定时器；**ambient**: UtteranceAggregator 初始化 + `_on_utterance_aggregated()` 聚合回调 + `_reconnect_asr()` ASR 自动重连（最多 3 次） |
 | `models.py` | SpeakerProfile / RegisteredDevice / VoiceSettings |
 | `repositories.py` | 3 个 Repo（SpeakerProfile/RegisteredDevice/VoiceSettings） |
 | `serializers.py` | 6 个序列化器（SpeakerProfile/Device/Settings/SettingsUpdate/CreateDevice/CreateSpeaker） |
@@ -29,9 +29,9 @@
 VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketConsumer)
 ```
 
-- **SessionMixin** (`consumer_session.py`): ASRStreamClient 连接/配置/断开、response.cancel → VoicePipeline.cancel()、音频帧转发 + PCM 缓存、语音段超时保护（VOICE_MAX_SEGMENT_DURATION → ASR commit）
-- **EventMixin** (`consumer_events.py`): Gateway ASR 事件 → 前端协议翻译（vad.speech_start/end、transcription.complete/failed、error），transcription.completed 触发 InferenceMixin._start_voice_pipeline()
-- **InferenceMixin** (`consumer_inference.py`): VoicePipeline.run_pipeline() 后台 asyncio.Task 启动，15 秒周期空闲超时检查（VOICE_IDLE_TIMEOUT）
+- **SessionMixin** (`consumer_session.py`): ASRStreamClient 连接/配置/断开、response.cancel → VoicePipeline.cancel()、音频帧转发 + PCM 缓存、语音段超时保护（VOICE_MAX_SEGMENT_DURATION → ASR commit）；**ambient 模式**: UtteranceAggregator 初始化 + `_on_utterance_aggregated()` 聚合回调（aggregation.completed → decision.result → RESPOND/RECORD_ONLY 路由）+ `_reconnect_asr()` ASR 断连自动重连（最多 3 次，间隔 2s）
+- **EventMixin** (`consumer_events.py`): Gateway ASR 事件 → 前端协议翻译（vad.speech_start/end、transcription.complete/failed、error），transcription.completed 触发：voice_chat → InferenceMixin._start_voice_pipeline()；**ambient → `_handle_ambient_transcription()`（停止词预检 + aggregator.add + aggregation.utterance_added 事件）**
+- **InferenceMixin** (`consumer_inference.py`): VoicePipeline.run_pipeline() 后台 asyncio.Task 启动，15 秒周期空闲超时检查（VOICE_IDLE_TIMEOUT）；**ambient 模式直接跳过空闲超时**
 
 ---
 
@@ -40,7 +40,7 @@ VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketConsumer)
 | 模式 | 说明 | 决策 |
 |------|------|------|
 | `voice_chat` | 标准语音对话 | 直接进入 Agent + TTS |
-| `continuous_listen` | 持续监听 | ResponseDecisionService 决策（RESPOND/RECORD_ONLY/STOP） |
+| `ambient` | 环境监听（014-jarvis） | UtteranceAggregator 聚合 → ResponseDecisionService 决策 → TTSRouter 路由 TTS |
 
 > `voice_chat_enriched` 已废弃，前端发送时静默映射为 `voice_chat` (SC-008)
 
@@ -75,8 +75,8 @@ VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketConsumer)
 
 | 键模式 | TTL | 用途 |
 |--------|-----|------|
-| `voice:session:{uid}` | VOICE_SESSION_TTL | 会话状态 JSON（state, started_at, upstream_connected, asr_session_id） |
-| `voice:active_conv:{uid}` | VOICE_ACTIVE_CONV_TTL | 活跃对话标记（continuous_listen 模式自动 RESPOND） |
+| `voice:session:{uid}` | VOICE_SESSION_TTL（ambient: VOICE_AMBIENT_SESSION_TTL=3600s） | 会话状态 JSON（state, started_at, upstream_connected, asr_session_id, mode） |
+| `voice:active_conv:{uid}` | VOICE_ACTIVE_CONV_TTL | 活跃对话标记（ambient 模式自动 RESPOND） |
 | `voice:audio_chunks:{uid}:{seg}` | VOICE_AUDIO_CACHE_TTL | PCM 帧列表（base64 编码，RPUSH） |
 | `voice:llm_rate:{uid}` | 60s | LLM 频率限制（每分钟 60 次） |
 | `voice:recent_speakers:{uid}` | 60s | 说话人集合（SCARD >= 2 → RECORD_ONLY） |
@@ -93,11 +93,31 @@ VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketConsumer)
 | `apps.graph` | AgentService（LangGraph 推理）、InferenceService（任务注册/取消） |
 | `apps.common.storage` | MinIO 音频文件上传/删除 |
 | `apps.users` | SysUser + SM4 加密（设备 Token） |
-| Django Channels | WebSocket（Redis DB3） |
+| `apps.models` | model_service.get_active_model("tool")（LLM 意图分类获取模型配置） |
+| Django Channels | WebSocket（Redis DB3）+ group_send（TTSRouter 跨设备 TTS 广播） |
 | websockets | Gateway ASR WS 客户端 + TTS 流式 WS 客户端 |
+| httpx | LLM 意图分类 HTTP 请求（ResponseDecisionService → DeepSeek API） |
 | pypinyin | 唤醒词模糊匹配（拼音相似度） |
 
 ---
+
+## 014-jarvis-ambient-voice 数据流
+
+```
+ESP 设备 (PCM 音频) → WebSocket (设备 Token) → VoiceConsumer (mode=ambient)
+  → Gateway ASR (长期存活，心跳 30s/60s)
+  → transcription.completed
+  → EventMixin._handle_ambient_transcription()
+    → 停止词预检 → 匹配: aggregator.reset() + pipeline.cancel()
+    → 不匹配: aggregator.add(text) + aggregation.utterance_added 事件
+  → 3 秒静默超时 → _on_utterance_aggregated()
+    → aggregation.completed 事件
+    → ResponseDecisionService.decide(text, mode="ambient")
+      → STOP: pipeline.cancel()
+      → RECORD_ONLY: record_only_ambient() (保存消息 + 清理超限)
+      → RESPOND: run_pipeline() (Agent + TTSRouter 跨设备路由)
+        → TTSRouter.group_send → 浏览器 WS 连接播放 TTS
+```
 
 ## 测试
 
@@ -109,5 +129,12 @@ pytest tests/voice/ -v
 
 
 <claude-mem-context>
+# Recent Activity
 
+### Mar 7, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1590 | 12:51 AM | 🔵 | LinChat Voice Consumer Session Management | ~719 |
+| #1579 | 12:45 AM | 🔵 | LinChat Existing Voice Consumer Architecture | ~608 |
 </claude-mem-context>
