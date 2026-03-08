@@ -62,6 +62,9 @@ export interface VoiceWSMessage {
   [key: string]: unknown;
 }
 
+/** 语音模式 */
+export type VoiceMode = 'voice_chat' | 'ambient';
+
 /** WebSocket 下行事件类型（Server → Client） */
 export type VoiceWSEventType =
   | 'session.configured'
@@ -75,6 +78,11 @@ export type VoiceWSEventType =
   | 'transcription.complete'
   | 'transcription.failed'
   | 'message.saved'
+  | 'aggregation.utterance_added'
+  | 'aggregation.completed'
+  | 'decision.result'
+  | 'tts.started'
+  | 'tts.completed'
   | 'error';
 
 /** WebSocket 上行消息类型（Client → Server） */
@@ -132,6 +140,35 @@ export interface DeviceRegisterResponse {
   deviceUuid: string;
   name: string;
   apiToken: string;
+}
+
+/** aggregation.utterance_added 数据 */
+export interface VoiceAggregationUtteranceAdded {
+  text: string;
+  buffer_count: number;
+  timeout_remaining: number;
+}
+
+/** aggregation.completed 数据 */
+export interface VoiceAggregationCompleted {
+  aggregated_text: string;
+  utterance_count: number;
+  first_ts: number;
+  last_ts: number;
+}
+
+/** decision.result 数据 */
+export interface VoiceDecisionResult {
+  decision: 'RESPOND' | 'RECORD_ONLY' | 'STOP';
+  reason: string;
+  confidence?: number;
+}
+
+/** session.configured 扩展 — ambient 模式 features 信息 */
+export interface VoiceAmbientFeatures {
+  utterance_aggregation: boolean;
+  llm_decision: boolean;
+  cross_device_tts: boolean;
 }
 
 /** 声纹注册请求 */

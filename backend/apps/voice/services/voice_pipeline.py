@@ -117,34 +117,11 @@ class VoicePipeline:
 
         mode:
           - voice_chat: 标准语音 — 直接进入 Agent + TTS
-          - continuous_listen: 持续监听 — 先经 ResponseDecisionService 决策
+          - ambient: 环境监听 — 由聚合器回调触发，跳过决策（已在回调中完成）
         """
-        # continuous_listen 模式先做决策
-        if mode == "continuous_listen":
-            from apps.voice.services.response_decision_service import (
-                DecisionResult,
-                response_decision_service,
-            )
-
-            decision, reason = await response_decision_service.decide(
-                text, speaker_id, user_id
-            )
-
-            if decision == DecisionResult.STOP:
-                await VoicePipeline.cancel(user_id)
-                logger.info(
-                    "Continuous STOP: user=%s, reason=%s", user_id, reason
-                )
-                return
-
-            if decision == DecisionResult.RECORD_ONLY:
-                await VoicePipeline._record_only(
-                    user_id, text, segment_id
-                )
-                return
-
-            # RESPOND → 继续完整 pipeline
-            # 标记活跃对话（后续转录在活跃期内自动 RESPOND）
+        # ambient 模式由聚合器回调直接触发，跳过决策逻辑
+        if mode == "ambient":
+            # 标记活跃对话
             await voice_session_service.set_active_conversation(user_id)
 
         lock = _get_lock(user_id)
@@ -168,7 +145,7 @@ class VoicePipeline:
 
         async with lock:
             await VoicePipeline._run_pipeline_inner(
-                user_id, text, segment_id, consumer
+                user_id, text, segment_id, consumer, mode=mode
             )
 
     @staticmethod
@@ -177,6 +154,7 @@ class VoicePipeline:
         text: str,
         segment_id: str,
         consumer: ConsumerProtocol,
+        mode: str = "voice_chat",
     ) -> None:
         """管道内部逻辑 — 已持有互斥锁。"""
         request_id = uuid.uuid4().hex
@@ -211,8 +189,18 @@ class VoicePipeline:
         # 3. 创建 TTS 播报队列管理器（如果启用）
         tts_manager: TTSPipelineManager | None = None
         if settings.VOICE_TTS_ENABLED:
+            # ambient 模式通过 TTSRouter 路由到浏览器连接
+            if mode == "ambient":
+                from apps.voice.services.tts_router import TTSRouter
+
+                tts_router = TTSRouter()
+                on_audio = tts_router.get_on_audio_callback(user_id)
+                await tts_router.send_control(user_id, "tts.started")
+            else:
+                on_audio = consumer._send_binary
+
             tts_manager = TTSPipelineManager(
-                on_audio=consumer._send_binary,
+                on_audio=on_audio,
                 voice=settings.VOICE_TTS_VOICE,
             )
             tts_manager.start()
@@ -289,6 +277,15 @@ class VoicePipeline:
                     logger.exception("TTS manager cleanup error: user=%s", user_id)
             VoicePipeline._active_managers.pop(user_id, None)
 
+            # ambient 模式发送 tts.completed
+            if mode == "ambient" and settings.VOICE_TTS_ENABLED:
+                try:
+                    from apps.voice.services.tts_router import TTSRouter
+
+                    await TTSRouter().send_control(user_id, "tts.completed")
+                except Exception:
+                    pass
+
         # 7. 发送 response.end
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         await consumer._send_json(
@@ -310,10 +307,12 @@ class VoicePipeline:
             )
 
     @staticmethod
-    async def _record_only(
-        user_id: int, text: str, segment_id: str
+    async def record_only_ambient(
+        user_id: int,
+        text: str,
+        consumer: "ConsumerProtocol",
     ) -> None:
-        """RECORD_ONLY 决策 — 仅保存 user Message，不触发 Agent。"""
+        """ambient 模式 RECORD_ONLY — 保存消息 + 清理超限。"""
         request_id = uuid.uuid4().hex
         try:
             next_seq = await message_repo.get_next_sequence(user_id)
@@ -329,19 +328,68 @@ class VoicePipeline:
             )
             await message_repo.create(user_msg)
             logger.info(
-                "Record-only saved: user=%s, seg=%s, msg_id=%s",
+                "Ambient record-only saved: user=%s, msg_id=%s",
                 user_id,
-                segment_id,
                 user_msg.message_id,
             )
-            # 持久化音频附件（无 assistant Message）
-            await VoicePipeline._persist_audio_attachment(
-                user_id, segment_id, request_id
-            )
+            # 清理超限
+            await VoicePipeline._cleanup_record_only_messages(user_id)
         except Exception:
             logger.exception(
-                "Record-only failed: user=%s, seg=%s", user_id, segment_id
+                "Ambient record-only failed: user=%s", user_id
             )
+
+    @staticmethod
+    async def _cleanup_record_only_messages(user_id: int) -> None:
+        """清理超过上限的 RECORD_ONLY 消息。"""
+        limit = settings.VOICE_AMBIENT_RECORD_ONLY_LIMIT
+        try:
+            count = await VoicePipeline._count_record_only(user_id)
+            if count > limit:
+                excess = count - limit
+                await VoicePipeline._delete_oldest_record_only(user_id, excess)
+                logger.info(
+                    "Cleaned %d record-only messages: user=%s", excess, user_id
+                )
+        except Exception:
+            logger.exception(
+                "Record-only cleanup failed: user=%s", user_id
+            )
+
+    @staticmethod
+    @sync_to_async
+    def _count_record_only(user_id: int) -> int:
+        """统计用户的 RECORD_ONLY 消息数（无对应 assistant 消息的 voice user 消息）。"""
+        from django.db.models import Subquery
+
+        # 有 assistant 回复的 request_id 集合
+        replied_ids = Message.objects.filter(
+            user_id=user_id, role="assistant", is_voice=True
+        ).values("request_id")
+        return Message.objects.filter(
+            user_id=user_id, role="user", is_voice=True
+        ).exclude(
+            request_id__in=Subquery(replied_ids)
+        ).count()
+
+    @staticmethod
+    @sync_to_async
+    def _delete_oldest_record_only(user_id: int, count: int) -> None:
+        """删除最早的 N 条 RECORD_ONLY 消息。"""
+        from django.db.models import Subquery
+
+        replied_ids = Message.objects.filter(
+            user_id=user_id, role="assistant", is_voice=True
+        ).values("request_id")
+        oldest_ids = list(
+            Message.objects.filter(
+                user_id=user_id, role="user", is_voice=True
+            ).exclude(
+                request_id__in=Subquery(replied_ids)
+            ).order_by("created_at").values_list("message_id", flat=True)[:count]
+        )
+        if oldest_ids:
+            Message.objects.filter(message_id__in=oldest_ids).delete()
 
     @staticmethod
     async def _persist_audio_attachment(
@@ -438,7 +486,7 @@ class VoicePipeline:
                     expires_at=expires_at,
                 )
 
-            # 标记 assistant Message（continuous_listen RECORD_ONLY 可能无 assistant）
+            # 标记 assistant Message（RECORD_ONLY 路径可能无 assistant）
             asst_msg = (
                 Message.objects.filter(
                     request_id=request_id, user_id=user_id, role="assistant"

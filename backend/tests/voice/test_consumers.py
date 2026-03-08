@@ -6,7 +6,7 @@ Voice WebSocket Consumer 测试
 覆盖:
 1. Cookie 认证成功/失败
 2. API Token 认证成功/失败（query 参数）
-3. session.configure 处理（voice_chat / continuous_listen / enriched 映射）
+3. session.configure 处理（voice_chat / ambient / enriched 映射）
 4. Binary 帧透传到 ASRStreamClient
 5. ASR 事件翻译（vad.speech_start → segment_id / transcription.completed）
 6. session.close 清理
@@ -233,35 +233,6 @@ class TestSessionConfigure:
 
         asr.connect.assert_called_once()
         asr.configure.assert_called_once()
-
-        await communicator.disconnect()
-
-    @patch(f"{_S}.ASRStreamClient")
-    async def test_configure_continuous_listen_mode(
-        self, MockASR, mock_session_svc, mock_get_redis
-    ):
-        """continuous_listen 模式配置"""
-        mock_get_redis.return_value = _mock_redis_no_rate_limit()
-        mock_session_svc.create_session = AsyncMock(return_value=True)
-        mock_session_svc.update_session = AsyncMock()
-        mock_session_svc.close_session = AsyncMock()
-
-        asr = _mock_asr_client()
-        MockASR.return_value = asr
-
-        communicator = _make_communicator(user_id=42)
-        await communicator.connect()
-
-        await communicator.send_to(
-            text_data=json.dumps({
-                "type": "session.configure",
-                "data": {"mode": "continuous_listen"},
-            })
-        )
-
-        resp = await _receive_json(communicator)
-        assert resp["type"] == "session.configured"
-        assert resp["data"]["mode"] == "continuous_listen"
 
         await communicator.disconnect()
 

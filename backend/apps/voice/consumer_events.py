@@ -106,8 +106,56 @@ class EventMixin:
             text[:30],
         )
 
+        # ambient 模式 — 聚合器路由
+        if getattr(self, "_mode", None) == "ambient":
+            await self._handle_ambient_transcription(text, segment_id)
+            return
+
         # 触发 VoicePipeline（在 InferenceMixin 中实现）
         await self._start_voice_pipeline(segment_id, text)
+
+    async def _handle_ambient_transcription(self, text: str, segment_id: str) -> None:
+        """ambient 模式转录处理 — 停止词预检 + 聚合器路由。"""
+        from apps.voice.services.response_decision_service import (
+            EMERGENCY_STOP_WORDS,
+            ResponseDecisionService,
+        )
+        from apps.voice.services.voice_pipeline import VoicePipeline
+
+        # 停止词预检
+        if ResponseDecisionService._check_emergency_stop(text):
+            logger.info(
+                "Ambient STOP (emergency): user=%s, text=%s",
+                self.user_id, text[:20],
+            )
+            aggregator = getattr(self, "_aggregator", None)
+            if aggregator:
+                aggregator.reset()
+            await VoicePipeline.cancel(self.user_id)
+            await self._send_json({
+                "type": "decision.result",
+                "data": {"decision": "STOP", "reason": "emergency_stop"},
+            })
+            return
+
+        # 加入聚合器
+        aggregator = getattr(self, "_aggregator", None)
+        if aggregator:
+            await aggregator.add(text)
+            await self._send_json({
+                "type": "aggregation.utterance_added",
+                "data": {
+                    "text": text,
+                    "buffer_count": aggregator.buffer_count,
+                    "timeout_remaining": aggregator.timeout_remaining,
+                },
+            })
+        else:
+            logger.warning(
+                "Ambient no aggregator: user=%s, fallback to pipeline",
+                self.user_id,
+            )
+            await self._start_voice_pipeline(segment_id, text)
 
     async def _on_transcription_failed(self, event: dict[str, Any]) -> None:
         """处理 ASR 转录失败事件。"""

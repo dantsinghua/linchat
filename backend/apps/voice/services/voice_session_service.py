@@ -19,17 +19,27 @@ _LR = LLM_RATE_KEY = "voice:llm_rate:{user_id}"
 
 class VoiceSessionService:
 
-    async def create_session(self, user_id: int) -> bool:
+    async def create_session(self, user_id: int, mode: str = "voice_chat") -> bool:
         key = _S.format(user_id=user_id)
         if await redis_get(key):
             logger.warning("Voice session exists: user_id=%s", user_id)
             return False
+        ttl = (
+            settings.VOICE_AMBIENT_SESSION_TTL
+            if mode == "ambient"
+            else settings.VOICE_SESSION_TTL
+        )
         await redis_setex(
             key,
-            settings.VOICE_SESSION_TTL,
-            json.dumps({"state": "active", "started_at": time.time(), "upstream_connected": False}),
+            ttl,
+            json.dumps({
+                "state": "active",
+                "started_at": time.time(),
+                "upstream_connected": False,
+                "mode": mode,
+            }),
         )
-        logger.info("Voice session created: user_id=%s", user_id)
+        logger.info("Voice session created: user_id=%s, mode=%s, ttl=%d", user_id, mode, ttl)
         return True
 
     async def get_session(self, user_id: int) -> Optional[dict[str, Any]]:
@@ -38,7 +48,13 @@ class VoiceSessionService:
 
     async def refresh_session(self, user_id: int) -> None:
         from core.redis import redis_expire
-        await redis_expire(_S.format(user_id=user_id), settings.VOICE_SESSION_TTL)
+
+        # 根据会话模式选择 TTL
+        session = await self.get_session(user_id)
+        ttl = settings.VOICE_SESSION_TTL
+        if session and session.get("mode") == "ambient":
+            ttl = settings.VOICE_AMBIENT_SESSION_TTL
+        await redis_expire(_S.format(user_id=user_id), ttl)
 
     async def update_session(self, user_id: int, **updates: Any) -> None:
         key = _S.format(user_id=user_id)

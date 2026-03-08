@@ -114,9 +114,9 @@ WebSocket 连接管理 Hook，负责与后端 VoiceConsumer 通信。
 
 **返回值:** `isConnected`, `error`, `connect()`, `disconnect()`, `configure()`, `sendAudio()`, `cancelResponse()`, `closeSession()`, `sendReconnect()`
 
-**事件回调:** onSessionConfigured, onSessionClosed, onVadSpeechStart, onVadSpeechEnd, onSpeakerIdentified, onResponseStart, onResponseDelta, onResponseEnd, onTranscriptionComplete, onTranscriptionFailed, onMessageSaved, onError, onSessionConflict, onSessionReconnected, onDecisionResult
+**事件回调（16 种下行事件映射）:** onSessionConfigured, onSessionClosed, onVadSpeechStart, onVadSpeechEnd, onSpeakerIdentified, onResponseStart, onResponseDelta, onResponseEnd, onTranscriptionComplete, onTranscriptionFailed, onMessageSaved, onError, onSessionConflict, onSessionReconnected, onSessionReconnectFailed, **onDecisionResult**（014 新增：LLM 响应决策结果）
 
-**特性:** WS URL `wss://{host}/linchat/ws/voice/`，心跳 30s，自动重连一次（2s 延迟），JSON + Binary 帧混合传输
+**特性:** WS URL `wss://{host}/linchat/ws/voice/`，心跳 30s，自动重连一次（2s 延迟），JSON + Binary 帧混合传输，`sendReconnect(config)` 方法（014 新增）
 
 ### usePCMAudioCapture (307 行)
 

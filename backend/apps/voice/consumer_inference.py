@@ -20,7 +20,7 @@ class InferenceMixin:
     ) -> None:
         """启动 VoicePipeline — 由 EventMixin._on_transcription_completed 调用。
 
-        根据 session mode 选择 voice_chat 或 continuous_listen 路径。
+        根据 session mode 选择 voice_chat 或 ambient 路径。
         Pipeline 在后台 task 中运行，不阻塞 Consumer 消息循环。
         """
         from apps.voice.services.voice_pipeline import VoicePipeline  # noqa: F811
@@ -77,6 +77,9 @@ class InferenceMixin:
 
     async def _idle_timeout_loop(self) -> None:
         try:
+            # ambient 模式不启用空闲超时
+            if getattr(self, "_mode", None) == "ambient":
+                return
             while True:
                 await asyncio.sleep(15)
                 elapsed = time.time() - self._last_activity

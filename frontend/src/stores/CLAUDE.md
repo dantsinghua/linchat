@@ -81,6 +81,7 @@
 | `error` | `string \| null` | 错误信息 |
 | `isConnected` | `boolean` | WebSocket 连接状态 |
 | `currentSpeakerId` | `string \| null` | 当前识别说话人 |
+| `hasSpeakerProfile` | `boolean` | 用户是否已注册声纹 |
 
 **核心 Actions:**
 

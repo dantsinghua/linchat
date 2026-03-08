@@ -1,7 +1,11 @@
+import json as json_module
 import logging
 from enum import Enum
 from typing import Optional
+
+import httpx
 from pypinyin import lazy_pinyin
+
 from apps.voice.repositories import voice_settings_repo
 from apps.voice.services.voice_session_service import voice_session_service
 from core.redis import get_redis
@@ -20,31 +24,126 @@ class DecisionResult(str, Enum):
 
 class ResponseDecisionService:
 
-    async def decide(self, transcription_text: str, speaker_id: Optional[str], user_id: int) -> tuple[DecisionResult, str]:
+    async def decide(
+        self,
+        transcription_text: str,
+        speaker_id: Optional[str],
+        user_id: int,
+        mode: str = "ambient",
+    ) -> tuple[DecisionResult, str]:
         text = transcription_text.strip()
-        if not text: return DecisionResult.RECORD_ONLY, "empty_text"
+        if not text:
+            return DecisionResult.RECORD_ONLY, "empty_text"
+        # 1. 紧急停止词
         if self._check_emergency_stop(text):
             logger.info("Decision STOP (emergency): user=%s, text=%s", user_id, text[:20])
             return DecisionResult.STOP, "emergency_stop"
+        # 2. 唤醒词精确匹配
         wake_words = await self._load_wake_words(user_id)
         if self._check_exact_wake_word(text, wake_words):
             logger.info("Decision RESPOND (exact_wake): user=%s", user_id)
             return DecisionResult.RESPOND, "exact_wake_word"
+        # 3. 唤醒词模糊匹配
         if self._check_fuzzy_wake_word(text, wake_words):
             logger.info("Decision RESPOND (fuzzy_wake): user=%s", user_id)
             return DecisionResult.RESPOND, "fuzzy_wake_word"
+        # 4. LLM 意图分类（仅 ambient 模式 + 启用时）
+        if mode == "ambient":
+            from django.conf import settings as django_settings
+
+            if django_settings.VOICE_DECISION_USE_LLM:
+                llm_result = await self._classify_intent_llm(text)
+                if llm_result is not None:
+                    decision, reason, confidence = llm_result
+                    if confidence >= django_settings.VOICE_DECISION_LLM_THRESHOLD:
+                        logger.info(
+                            "Decision %s (llm): user=%s, conf=%.2f, reason=%s",
+                            decision.value, user_id, confidence, reason,
+                        )
+                        return decision, f"llm_{reason}"
+                    logger.debug(
+                        "LLM low confidence (%.2f < %.2f), fallthrough: user=%s",
+                        confidence, django_settings.VOICE_DECISION_LLM_THRESHOLD, user_id,
+                    )
+        # 5. 活跃对话
         if await voice_session_service.is_active_conversation(user_id):
             logger.info("Decision RESPOND (active_conv): user=%s", user_id)
             return DecisionResult.RESPOND, "active_conversation"
+        # 6. 多 speaker
         recent = await self._get_recent_speaker_count(user_id)
         if recent >= 2:
             logger.info("Decision RECORD_ONLY (multi_speaker): user=%s, n=%d", user_id, recent)
             return DecisionResult.RECORD_ONLY, "multi_speaker"
+        # 7. 问句特征
         if self._check_question_features(text):
             logger.info("Decision RESPOND (question): user=%s", user_id)
             return DecisionResult.RESPOND, "question_detected"
+        # 8. 默认
         logger.info("Decision RECORD_ONLY (default): user=%s", user_id)
         return DecisionResult.RECORD_ONLY, "default"
+
+    async def _classify_intent_llm(
+        self, text: str
+    ) -> Optional[tuple[DecisionResult, str, float]]:
+        """通过 LLM 判断话语是否需要 AI 回复。
+
+        Returns:
+            (DecisionResult, reason, confidence) 或 None（超时/异常时）。
+        """
+        from django.conf import settings as django_settings
+
+        try:
+            from apps.models.services import model_service
+
+            model_config = await model_service.get_active_model("tool")
+            if not model_config:
+                logger.warning("LLM decision: no active tool model")
+                return None
+
+            prompt = (
+                "你是一个智能家居环境中的语音助手判断器。\n"
+                "判断以下用户话语是否需要 AI 助手回复。\n\n"
+                "需要回复的情况：明确的指令、请求、提问、需要帮助。\n"
+                "不需要回复的情况：自言自语、与他人交谈、感叹、无意义的声音。\n\n"
+                f"用户话语：{text}\n\n"
+                "返回 JSON：{\"decision\": \"RESPOND\" 或 \"RECORD_ONLY\", "
+                "\"confidence\": 0.0-1.0, \"reason\": \"简短原因\"}"
+            )
+
+            async with httpx.AsyncClient(
+                timeout=django_settings.VOICE_DECISION_LLM_TIMEOUT
+            ) as client:
+                resp = await client.post(
+                    f"{model_config.api_base}/chat/completions",
+                    headers={"Authorization": f"Bearer {model_config.decrypted_api_key}"},
+                    json={
+                        "model": model_config.model_name,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "response_format": {"type": "json_object"},
+                        "temperature": 0.1,
+                        "max_tokens": 100,
+                    },
+                )
+                resp.raise_for_status()
+
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            result = json_module.loads(content)
+
+            decision_str = result.get("decision", "RECORD_ONLY").upper()
+            confidence = float(result.get("confidence", 0.0))
+            reason = result.get("reason", "unknown")
+
+            if decision_str == "RESPOND":
+                return DecisionResult.RESPOND, reason, confidence
+            return DecisionResult.RECORD_ONLY, reason, confidence
+
+        except httpx.TimeoutException:
+            logger.warning("LLM decision timeout: text=%s", text[:30])
+            return None
+        except Exception:
+            logger.warning("LLM decision error: text=%s", text[:30], exc_info=True)
+            return None
 
     @staticmethod
     def _check_emergency_stop(text: str) -> bool:
