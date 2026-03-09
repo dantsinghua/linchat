@@ -87,17 +87,31 @@ def gateway_retry(max_retries: int = 3, retry_on: tuple = (LLMConnectionError, L
     return decorator
 
 
+_langfuse_client = None
+
+
+def _get_langfuse():
+    global _langfuse_client
+    if _langfuse_client is not None:
+        return _langfuse_client
+    from langfuse import Langfuse
+    public_key = getattr(settings, "LANGFUSE_PUBLIC_KEY", "")
+    secret_key = getattr(settings, "LANGFUSE_SECRET_KEY", "")
+    host = getattr(settings, "LANGFUSE_HOST", "")
+    if not (public_key and secret_key):
+        return None
+    _langfuse_client = Langfuse(public_key=public_key, secret_key=secret_key, host=host)
+    return _langfuse_client
+
+
 def record_gateway_span(
     request_type: str, model: str, duration: float, status_code: int,
     request_id: Optional[str] = None, error: Optional[str] = None,
 ) -> None:
     try:
-        from langfuse import Langfuse
-        public_key = getattr(settings, "LANGFUSE_PUBLIC_KEY", "")
-        secret_key = getattr(settings, "LANGFUSE_SECRET_KEY", "")
-        host = getattr(settings, "LANGFUSE_HOST", "")
-        if not (public_key and secret_key): return
-        langfuse = Langfuse(public_key=public_key, secret_key=secret_key, host=host)
+        langfuse = _get_langfuse()
+        if not langfuse:
+            return
         metadata: dict[str, Any] = {
             "model": model, "request_type": request_type,
             "duration": round(duration, 3), "status_code": status_code,
@@ -108,6 +122,7 @@ def record_gateway_span(
             name=f"gateway_{request_type}", metadata=metadata,
             level="ERROR" if error else "DEFAULT",
         )
-        span.end(); langfuse.flush()
+        span.end()
+        # 不再同步 flush，由 BatchSpanProcessor 定时批量导出
     except Exception as e:
-        logger.debug(f"Langfuse span 记录失败: {e}")
+        logger.warning("Langfuse span 记录失败 (%s): %s", request_type, e)

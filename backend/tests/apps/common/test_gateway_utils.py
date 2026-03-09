@@ -194,6 +194,16 @@ class TestGatewayRetry:
 class TestRecordGatewaySpan:
     """Langfuse span 记录测试"""
 
+    def setup_method(self):
+        """每个测试前重置 Langfuse 单例"""
+        import apps.common.gateway_utils as gw
+        gw._langfuse_client = None
+
+    def teardown_method(self):
+        """每个测试后清理 Langfuse 单例"""
+        import apps.common.gateway_utils as gw
+        gw._langfuse_client = None
+
     @patch("apps.common.gateway_utils.settings")
     def test_skip_when_not_configured(self, mock_settings):
         """未配置 Langfuse 时静默跳过"""
@@ -212,7 +222,7 @@ class TestRecordGatewaySpan:
     @patch("langfuse.Langfuse")
     @patch("apps.common.gateway_utils.settings")
     def test_record_success_span(self, mock_settings, mock_langfuse_cls):
-        """记录成功的 span（Langfuse 3.x start_span API）"""
+        """记录成功的 span（Langfuse 3.x start_span API，不同步 flush）"""
         mock_settings.LANGFUSE_PUBLIC_KEY = "pk-test"
         mock_settings.LANGFUSE_SECRET_KEY = "sk-test"
         mock_settings.LANGFUSE_HOST = "http://langfuse:3100"
@@ -239,7 +249,7 @@ class TestRecordGatewaySpan:
         assert metadata["status_code"] == 200
         assert metadata["request_id"] == "req-abc"
         mock_span.end.assert_called_once()
-        mock_langfuse.flush.assert_called_once()
+        mock_langfuse.flush.assert_not_called()
 
     @patch("langfuse.Langfuse")
     @patch("apps.common.gateway_utils.settings")
@@ -268,6 +278,7 @@ class TestRecordGatewaySpan:
         assert metadata["error"] == "timeout"
         assert span_args[1]["level"] == "ERROR"
         assert metadata["request_type"] == "inference_cancel"
+        mock_langfuse.flush.assert_not_called()
 
     @patch("langfuse.Langfuse")
     @patch("apps.common.gateway_utils.settings")
@@ -295,3 +306,4 @@ class TestRecordGatewaySpan:
         assert metadata["model"] == "minicpm-v"
         assert metadata["request_type"] == "document_parse"
         assert metadata["status_code"] == 202
+        mock_langfuse.flush.assert_not_called()

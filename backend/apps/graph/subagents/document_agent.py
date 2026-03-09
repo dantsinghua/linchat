@@ -194,12 +194,17 @@ async def document_parse(task: str, config: RunnableConfig, force: bool = False)
                     if not task_id:
                         results.append(f"📄 {doc.file_name}: 解析任务创建失败")
                         continue
+                    logger.info(
+                        "Doc parse task started: attachment=%d, task_id=%s, file=%s",
+                        doc.attachment_id, task_id, doc.file_name,
+                    )
 
                     # 轮询直到完成（012-doc-parse-progress: SSE 进度推送）
                     poll_interval = getattr(settings, "DOC_PARSE_POLL_INTERVAL", 3)
                     max_wait = getattr(settings, "DOC_PARSE_POLL_MAX_WAIT", 900)
                     elapsed = 0
                     final_status = ""
+                    _prev_status = ""
                     evt = EventType.DOC_PARSE_PROGRESS.value
 
                     # SSE: pending
@@ -213,6 +218,17 @@ async def document_parse(task: str, config: RunnableConfig, force: bool = False)
                         elapsed += poll_interval
                         status_data = await DocumentParseService.poll_task_status(task_id)
                         final_status = status_data.get("status", "")
+                        progress = status_data.get("progress", {})
+
+                        # 里程碑日志：状态变化 或 每 30s
+                        if final_status != _prev_status or elapsed % 30 < poll_interval:
+                            logger.info(
+                                "Doc parse poll: task=%s, status=%s, progress=%s/%s, elapsed=%ds",
+                                task_id, final_status,
+                                progress.get("current", "?"), progress.get("total", "?"),
+                                elapsed,
+                            )
+                        _prev_status = final_status
 
                         # SSE: push current status
                         await EventService.publish_event(user_id=user_id, event_type=evt,
@@ -226,11 +242,19 @@ async def document_parse(task: str, config: RunnableConfig, force: bool = False)
                             break
                         if final_status == "failed":
                             err_msg = status_data.get("error_message", "未知错误")
+                            logger.warning(
+                                "Doc parse failed: task=%s, err=%s, elapsed=%ds",
+                                task_id, err_msg, elapsed,
+                            )
                             results.append(f"📄 {doc.file_name}: 解析失败 — {err_msg}")
                             break
                         if final_status == "incomplete":
                             break
                     else:
+                        logger.warning(
+                            "Doc parse timeout: task=%s, last_status=%s, elapsed=%ds/%ds",
+                            task_id, final_status, elapsed, max_wait,
+                        )
                         # SSE: timeout as failed（012-doc-parse-progress T004）
                         await EventService.publish_event(user_id=user_id, event_type=evt,
                             data={"type": evt, "task_id": task_id, "status": "failed",
@@ -262,6 +286,10 @@ async def document_parse(task: str, config: RunnableConfig, force: bool = False)
 
                     # 获取解析结果
                     md_content = await DocumentParseService.get_task_result(task_id, format="markdown")
+                    logger.info(
+                        "Doc parse result fetched: task=%s, size=%d, elapsed=%ds",
+                        task_id, len(md_content) if md_content else 0, elapsed,
+                    )
                     if not md_content:
                         results.append(f"📄 {doc.file_name}: 解析结果为空")
                         continue

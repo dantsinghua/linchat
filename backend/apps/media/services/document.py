@@ -44,8 +44,16 @@ class DocumentParseService:
                 response = await getattr(client, method)(url, headers=headers, **kwargs)
             duration = time.monotonic() - start_time
             if response.status_code == success_status:
+                logger.info(
+                    "Gateway %s %s -> %d (%.1fs) req=%s",
+                    method.upper(), url.split("/v1/")[-1], success_status, duration, request_id,
+                )
                 record_gateway_span(request_type=request_type, model=model, duration=duration, status_code=success_status, request_id=request_id)
                 return response
+            logger.warning(
+                "Gateway %s %s -> %d (%.1fs) req=%s",
+                method.upper(), url.split("/v1/")[-1], response.status_code, duration, request_id,
+            )
             record_gateway_span(request_type=request_type, model=model, duration=duration, status_code=response.status_code, request_id=request_id, error=f"Gateway HTTP {response.status_code}")
             gw_err = parse_gateway_error(response)
             raise DocumentParseError(code=gw_err.code, message=gw_err.message, details=gw_err.details or None)
@@ -53,6 +61,10 @@ class DocumentParseService:
             raise
         except httpx.TimeoutException:
             duration = time.monotonic() - start_time
+            logger.warning(
+                "Gateway %s %s -> TIMEOUT (%.1fs) req=%s",
+                method.upper(), url.split("/v1/")[-1], duration, request_id,
+            )
             record_gateway_span(request_type=request_type, model=model, duration=duration, status_code=504, request_id=request_id, error="timeout")
             raise DocumentParseError(code="GATEWAY_TIMEOUT", message="文档解析请求超时")
         except Exception as e:
@@ -71,7 +83,12 @@ class DocumentParseService:
         if pages: data["pages"] = pages
         response = await DocumentParseService._gateway_request(method="post", url=f"{gateway_url}/v1/documents/parse", headers=headers,
             timeout=float(timeout), success_status=202, request_type="document_parse", model=model, files=files, data=data)
-        return response.json()
+        result = response.json()
+        logger.info(
+            "Doc parse task created: task_id=%s, file=%s, size=%d",
+            result.get("task_id", ""), file_name, len(file_data),
+        )
+        return result
 
     @staticmethod
     async def poll_task_status(task_id: str) -> dict:
@@ -125,6 +142,10 @@ class DocumentParseService:
                                      details={"supported_types": ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]})
         if attachment.is_expired: raise DocumentParseError(code="ATTACHMENT_EXPIRED", message="文件已过期")
         file_data = minio_service.download_file(bucket=settings.MINIO_BUCKET_MEDIA, object_name=attachment.storage_path)
+        logger.info(
+            "Doc parse start: user=%d, attachment=%s, file=%s, size=%d",
+            user_id, attachment_uuid, attachment.file_name, len(file_data),
+        )
         model = getattr(settings, "DOC_PARSE_DEFAULT_MODEL", "minicpm-o")
         result = await DocumentParseService.create_parse_task(file_data=file_data, file_name=attachment.file_name, model=model, pages=pages)
         task_id = result.get("task_id", "")

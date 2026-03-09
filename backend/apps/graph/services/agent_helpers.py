@@ -144,8 +144,8 @@ def finalize_execution(
         ex.total_prompt_tokens = total_prompt_tokens
     if total_completion_tokens:
         ex.total_completion_tokens = total_completion_tokens
-    if langfuse_handler and hasattr(langfuse_handler, "trace_id"):
-        ex.langfuse_trace_id = langfuse_handler.trace_id
+    if langfuse_handler and hasattr(langfuse_handler, "last_trace_id"):
+        ex.langfuse_trace_id = langfuse_handler.last_trace_id
     if error_type:
         ex.error_type = error_type
     if error_message:
