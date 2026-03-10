@@ -10,12 +10,13 @@ SubAgent 子代理模块，主 Agent 通过工具调用委派任务给专属 Sub
 
 ```
 主 Agent (create_chat_agent)
-  ├── search_subagent     → web_search + mem_search
-  ├── memory_subagent     → mem_search/cache/update/delete + web_search
-  ├── code_subagent       → python_exec + mem_search + web_search
-  ├── ha_subagent         → ha_query/control/diagnose + mem_search + web_search
-  ├── multimodal_subagent → multimodal_analyze + document_parse + mem_search + web_search
-  └── history_search      → 直接工具（非 SubAgent）
+  ├── search_subagent      → web_search + mem_search
+  ├── memory_subagent      → mem_search/cache/update/delete + web_search
+  ├── code_subagent        → python_exec + mem_search + web_search
+  ├── ha_subagent          → ha_query/control/diagnose + mem_search + web_search
+  ├── multimodal_subagent  → multimodal_analyze + mem_search + web_search
+  ├── document_subagent    → document_parse + doc_rag_search + mem_search + web_search (011 新增)
+  └── history_search       → 直接工具（非 SubAgent）
 ```
 
 ---
@@ -30,7 +31,8 @@ SubAgent 子代理模块，主 Agent 通过工具调用委派任务给专属 Sub
 | `memory_agent.py` | `memory_subagent` -- 记忆 CRUD | 始终启用 |
 | `code_agent.py` | `code_subagent` -- Python 代码执行 | 始终启用 |
 | `ha_agent.py` | `ha_subagent` -- Home Assistant 智能家居 | `HA_ENABLED=True` |
-| `multimodal_agent.py` | `multimodal_subagent` + `multimodal_analyze` + `document_parse` -- 图片/视频/音频/文档分析 | 始终启用 |
+| `multimodal_agent.py` | `multimodal_subagent` + `multimodal_analyze` -- 图片/视频/音频分析 | 始终启用 |
+| `document_agent.py` | `document_subagent` + `document_parse` + `doc_rag_search` -- 文档解析+RAG 检索（011 新增） | 始终启用 |
 
 ---
 
@@ -72,18 +74,28 @@ SubAgent 子代理模块，主 Agent 通过工具调用委派任务给专属 Sub
 
 ### multimodal_subagent -- 多媒体分析
 
-专属工具：`multimodal_analyze` + `document_parse`（定义在 multimodal_agent.py 内）。超时 1200s（`MULTIMODAL_SUBAGENT_TIMEOUT`）。
+专属工具：`multimodal_analyze`（定义在 multimodal_agent.py 内）。超时 1200s（`MULTIMODAL_SUBAGENT_TIMEOUT`）。
 入口函数在 task 中注入附件数量提示（`[系统：用户已上传 N 个附件...]`），确保内部 LLM 知道附件存在并调用工具。
 
-MULTIMODAL_PROMPT 核心规则：收到分析请求必须直接调用工具，不质疑附件是否存在；根据类型选择 multimodal_analyze（图/视/音）或 document_parse（PDF/DOCX）。
+MULTIMODAL_PROMPT 核心规则：收到分析请求必须直接调用工具，不质疑附件是否存在；multimodal_analyze 处理图/视/音，文档类型由 document_subagent 处理。
 
 #### multimodal_analyze
 
 从 `config.configurable` 获取 `attachment_uuids` + `stop_event` + `request_id` -> 加载附件（排除 document 类型）-> `build_multimodal_messages` -> 获取多模态模型配置 -> 获取 GPU 锁 -> `stream_multimodal_httpx` 直连推理。
 
+### document_subagent -- 文档解析+RAG（011 新增）
+
+**文件**: `document_agent.py`（333 行，从 multimodal_agent.py 分离独立）
+
+专属工具：`document_parse` + `doc_rag_search`。超时 1200s。
+
 #### document_parse
 
-从 `config.configurable` 获取 `attachment_uuids` + `request_id` -> 加载文档附件（仅 document 类型）-> 获取 GPU 锁 -> `DocumentParseService.parse_document` 创建任务 -> 轮询状态（`DOC_PARSE_POLL_INTERVAL` 3s 间隔，`DOC_PARSE_POLL_MAX_WAIT` 最长 900s）-> 获取 Markdown 结果（`DOC_PARSE_MAX_RESULT_LENGTH` 截断 8000 字符）。轮询期间续期推理任务 TTL。
+从 `config.configurable` 获取 `attachment_uuids` + `request_id` -> 加载文档附件（仅 document 类型）-> 缓存检查（MediaAttachment.parsed_content）-> 获取 GPU 锁 -> `DocumentParseService.create_parse_task` -> 轮询状态（`DOC_PARSE_POLL_INTERVAL` 3s 间隔，`DOC_PARSE_POLL_MAX_WAIT` 最长 900s）-> SSE 进度推送（DOC_PARSE_PROGRESS）-> 获取 Markdown 结果（`DOC_PARSE_MAX_RESULT_LENGTH` 截断 8000 字符）-> 缓存到 MediaAttachment.parsed_content。轮询期间续期推理任务 TTL + 里程碑日志记录。
+
+#### doc_rag_search
+
+从 DocumentChunkEmbedding 表中通过 pgvector 向量搜索匹配文档分块，返回相关内容片段。用于已解析文档的精准检索。
 
 ---
 
@@ -103,4 +115,5 @@ from apps.graph.subagents.multimodal_agent import multimodal_subagent, multimoda
 2. `run_subagent` 转发父 config 全部 configurable 键，确保附件/取消信号/request_id 传递
 3. 多模态 SubAgent 超时远大于其他（1200s vs 60s），因 GPU 推理和文档解析耗时长
 4. GPU 锁（`acquire_gpu_lock`）确保同一时间只有一个 GPU 推理任务运行
-5. `multimodal_analyze` 和 `document_parse` 的 GPU 锁引用路径是 `apps.chat.services.gpu_lock`（兼容）
+5. `multimodal_analyze` 和 `document_parse` 的 GPU 锁引用路径是 `apps.graph.services.gpu_lock`
+6. `document_agent.py` 内 `document_parse` 含全链路日志（启动/轮询里程碑/失败/超时/结果获取）

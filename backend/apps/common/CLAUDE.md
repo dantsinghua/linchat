@@ -42,7 +42,8 @@
 | `parse_gateway_error(response)` | 解析 httpx.Response 中的 Gateway 错误 |
 | `map_httpx_exception(e)` | httpx 异常映射到 LLM 异常类（Timeout/Connect/429/400） |
 | `gateway_retry(max_retries, retry_on)` | tenacity 重试装饰器（指数退避，默认重试 LLMConnectionError/LLMTimeoutError） |
-| `record_gateway_span(...)` | Langfuse span 记录（使用 `langfuse.start_span()`，兼容 Langfuse 3.x） |
+| `_get_langfuse()` | Langfuse 客户端单例（模块级缓存，避免每次 span 重建连接） |
+| `record_gateway_span(...)` | Langfuse span 记录（使用 `start_span()`，不同步 flush，由 BatchSpanProcessor 批量导出） |
 
 ---
 
@@ -92,7 +93,7 @@ WebSocket 连接 → 提取 Cookie 中的 linchat_token
 
 ## 注意事项
 
-1. `record_gateway_span()` 使用 Langfuse 3.x `start_span()` API（非已废弃的 `trace()`）
+1. `record_gateway_span()` 使用 Langfuse 3.x `start_span()` API（非已废弃的 `trace()`），Langfuse 客户端为模块级单例（`_langfuse_client`），不同步 flush
 2. `check_rate_limit()` 内部做异常兜底，Redis 故障时默认放行（返回 True）
 3. `make_sse_response()` 依赖 `apps.chat.services.types.StreamChunk` 数据类
 4. 新代码应直接 import `apps.common.storage`/`apps.common.sse`，避免经过 chat 旧兼容层

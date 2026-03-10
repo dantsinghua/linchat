@@ -19,7 +19,7 @@
 | `tasks.py` | Celery 定时任务：`clean_expired_media`（MinIO 文件清理，连续 10 次失败中止） | 从 chat 分离 |
 | `services/__init__.py` | 导出：MediaService、MediaUploadError、DocumentParseService、DocumentParseError | |
 | `services/upload.py` | 上传服务：文件校验 + MinIO 存储 + 元数据持久化（补偿删除机制） | 从 chat 分离 |
-| `services/document.py` | 文档解析服务：Gateway 调用、轮询、SSE 进度通知、任务所有权验证 | 从 chat 分离 |
+| `services/document.py` | 文档解析服务：Gateway 调用（结构化日志）、轮询、SSE 进度通知、任务所有权验证 | 从 chat 分离 |
 | `services/image.py` | 图片工具：Pillow 获取宽高 | 从 chat 分离 |
 | `services/video.py` | 视频/音频工具：ffprobe 时长检测、ffmpeg 视频预处理 | 从 chat 分离 |
 | `services/audio.py` | 音频工具：PCM 合并 WAV（merge_pcm_to_wav）、时长计算（calculate_duration）、重导出 get_audio_duration | 从 chat 分离 |
@@ -28,7 +28,9 @@
 
 ---
 
-## 核心模型 MediaAttachment（表 `media_attachment`）
+## 核心模型
+
+### MediaAttachment（表 `media_attachment`）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -44,8 +46,26 @@
 | `duration_seconds` | FloatField (可选) | 时长（音频/视频） |
 | `is_expired` | BooleanField | 是否已过期 |
 | `created_at` / `expires_at` | DateTimeField | 上传/过期时间 |
+| `embedding_status` | CharField(20) | 011 新增 — pending/processing/done/failed |
+| `parsed_content` | TextField (nullable) | 011 新增 — 文档解析结果缓存 |
+| `parsed_content_path` | CharField(500, nullable) | 011 新增 — MinIO 存储的完整解析结果路径 |
+| `parsed_at` | DateTimeField (nullable) | 011 新增 — 解析完成时间 |
 
 索引: idx_attachment_user (user_id), idx_attachment_message (message_id), idx_attachment_expires (expires_at, is_expired)
+
+### DocumentChunkEmbedding（表 `document_chunk_embedding`，011 新增）
+
+文档分块向量表，用于 RAG 检索。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | BigAutoField (PK) | 主键 |
+| `attachment` | FK -> MediaAttachment (CASCADE) | 关联附件 |
+| `chunk_index` | IntegerField | 分块序号 |
+| `chunk_text` | TextField | 分块原文 |
+| `embedding` | VectorField(1024) | pgvector 向量（1024 维） |
+
+索引: pgvector HNSW 索引 (cosine distance)
 
 ---
 
@@ -107,7 +127,7 @@
 |------|------|
 | `apps.voice` | VoicePipeline 创建音频附件（MediaAttachment TYPE_AUDIO） |
 | `apps.chat` | 消息关联附件（associate_attachments_to_message） |
-| `apps.graph` | multimodal_subagent 文档解析工具 |
+| `apps.graph` | document_subagent 文档解析 + RAG 向量检索工具 |
 
 ---
 

@@ -53,7 +53,7 @@ Agent 执行服务包，封装 LangGraph Agent 的完整执行生命周期。gra
 | `handle_tool_end_event()` | 记录工具调用 token 到 breakdown，检测 memory_subagent 调用返回 True |
 | `create_first_token_messages()` | 创建 user+assistant Message（多模态时关联附件到 user 消息） |
 | `finalize_message()` | 更新消息 content/status/response_time_ms/tokens |
-| `finalize_execution()` | 更新执行记录最终状态（含 langfuse_trace_id） |
+| `finalize_execution()` | 更新执行记录最终状态（含 langfuse_trace_id，使用 `last_trace_id` 属性） |
 | `finalize_success()` | 成功收尾：更新 Message + Execution + 用户统计 |
 | `finalize_interrupted()` | 中断收尾：追加 `[已中断]` 标记 |
 | `handle_execution_failure()` | 失败收尾：更新 Execution 和可选的 assistant 消息 |

@@ -9,10 +9,10 @@
 | App | 关键模型 | 说明 |
 |-----|----------|------|
 | `chat` | Message, LangGraphExecution | 消息收发、SSE 流式响应、推理取消 |
-| `common` | 无 | Token 中间件、异常体系、响应格式、SSE 事件、Gateway 调用、Rate Limiter、MinIO 存储封装（storage/） |
+| `common` | 无 | Token 中间件、异常体系、响应格式、SSE 事件、Gateway 调用（Langfuse 单例）、Rate Limiter、MinIO 存储封装（storage/） |
 | `context` | 无 | Prompt 构建（PromptBuilder + builder_helpers）、上下文裁剪（Trimmer）、Token 预算管理、监控 API（ContextMonitor）、16 个 Jinja2 模板 |
-| `graph` | 无 | LangGraph Agent 创建/执行（AgentService）、SubAgent（搜索/HA/多模态/文档解析）、推理取消（InferenceService）、GPU 锁互斥、REST 视图（cancel） |
-| `media` | MediaAttachment | **010 新增 — 从 chat 分离**。媒体上传/下载、文档解析（Gateway）、过期清理任务、音频工具（PCM→WAV） |
+| `graph` | 无 | LangGraph Agent 创建/执行（AgentService）、6 个 SubAgent（搜索/记忆/代码/HA/多模态/文档）、推理取消（InferenceService）、GPU 锁互斥 |
+| `media` | MediaAttachment, DocumentChunkEmbedding | **010 新增 — 从 chat 分离**。媒体上传/下载、文档解析（Gateway）+ RAG 向量分块（011 新增）、过期清理任务、音频工具（PCM→WAV） |
 | `memory` | UserMemory, UserMemoryEmbedding | 用户记忆 CRUD、pgvector 向量搜索、Embedding 生成、每日/每月总结、task_helpers GPU 互斥 |
 | `models` | ModelConfig | LLM 模型配置（tool/multimodal/embedding）CRUD、SM4 加密密钥、活跃模型查询 |
 | `users` | SysUser | 验证码、登录/登出、Token 鉴权（httpOnly Cookie）、SSO 冲突、SM3/SM4 加密 |
