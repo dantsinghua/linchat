@@ -41,6 +41,10 @@ async function streamSSE(
   { onChunk, onDone, onError, onInterrupted, onContextCompacting, onContextCompacted }: StreamCallbacks,
   errorLabel: string
 ): Promise<void> {
+  // 心跳超时：后端每 15s 发一次 heartbeat，45s 无数据则判定流断开
+  const HEARTBEAT_TIMEOUT_MS = 45_000;
+  const HEARTBEAT_CHECK_MS = 10_000;
+
   try {
     const response = await fetch(`${API_BASE}${url}`, {
       credentials: 'include',
@@ -64,29 +68,43 @@ async function streamSSE(
     const decoder = new TextDecoder();
     let buffer = '';
     let receivedTerminal = false;
+    let lastDataTime = Date.now();
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        try {
-          const data: ChatStreamEvent = JSON.parse(line.slice(6));
-          switch (data.type) {
-            case 'content':            onChunk?.(data); break;
-            case 'done':               receivedTerminal = true; onDone?.(data.message_id); break;
-            case 'error':              receivedTerminal = true; onError?.(data.content || errorLabel, data.data); break;
-            case 'interrupted':        receivedTerminal = true; onInterrupted?.(data.message_id); break;
-            case 'context_compacting': onContextCompacting?.(); break;
-            case 'context_compacted':  onContextCompacted?.(); break;
-          }
-        } catch { /* 忽略解析错误 */ }
+    // 心跳超时检测：定时检查，超时则取消 reader 触发 __SSE_STREAM_BROKEN__
+    const heartbeatTimer = setInterval(() => {
+      if (Date.now() - lastDataTime > HEARTBEAT_TIMEOUT_MS) {
+        reader.cancel();
       }
+    }, HEARTBEAT_CHECK_MS);
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        lastDataTime = Date.now();
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data: ChatStreamEvent = JSON.parse(line.slice(6));
+            switch (data.type) {
+              case 'heartbeat':        break; // 仅更新 lastDataTime
+              case 'content':            onChunk?.(data); break;
+              case 'done':               receivedTerminal = true; onDone?.(data.message_id); break;
+              case 'error':              receivedTerminal = true; onError?.(data.content || errorLabel, data.data); break;
+              case 'interrupted':        receivedTerminal = true; onInterrupted?.(data.message_id); break;
+              case 'context_compacting': onContextCompacting?.(); break;
+              case 'context_compacted':  onContextCompacted?.(); break;
+            }
+          } catch { /* 忽略解析错误 */ }
+        }
+      }
+    } finally {
+      clearInterval(heartbeatTimer);
     }
 
     // 流读完但未收到终态事件 → 异常断开

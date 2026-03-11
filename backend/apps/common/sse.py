@@ -59,8 +59,8 @@ def make_sse_response(stream: AsyncGenerator[StreamChunk, None], user_id: int, c
                     )
                     pending_next = None  # 已消费，下轮重新获取
                 except asyncio.TimeoutError:
-                    # SSE 注释行：保持连接活跃，防止代理层空闲超时断连
-                    yield ": keepalive\n\n"
+                    # 心跳 data 事件：前端可感知并更新 lastDataTime，用于超时检测
+                    yield 'data: {"type":"heartbeat"}\n\n'
                     continue  # 重用同一个 pending_next
                 except StopAsyncIteration:
                     break
