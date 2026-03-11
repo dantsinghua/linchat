@@ -3,25 +3,10 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from apps.context.loader import render
 from apps.graph.subagents.base import _get_user_id, run_subagent
 
 logger = logging.getLogger(__name__)
-
-MULTIMODAL_PROMPT = """你是多媒体分析助手。仅处理图片、视频、音频分析，不处理文档。
-
-## 工具
-- multimodal_analyze: 分析图片、视频、音频附件
-
-## 重要规则（必须遵守）
-- 收到分析请求时，必须直接调用 multimodal_analyze 工具，不要质疑或确认附件是否存在
-- 附件由工具内部自动从上下文加载，你无需预先验证附件
-- 即使你在消息中看不到附件内容，也必须调用工具——工具会自行处理
-- PDF/DOCX 文档不由本助手处理，文档请求应路由到 document_subagent
-
-## 执行策略
-- 将分析结果如实、完整地返回
-- 如果分析失败，返回具体错误信息
-- 独立完成任务，返回完整的分析结果"""
 
 
 @tool
@@ -61,4 +46,4 @@ async def multimodal_subagent(task: str, config: RunnableConfig) -> str:
     uuids = cfg.get("attachment_uuids", [])
     if uuids:
         task = f"{task}\n\n[系统：用户已上传 {len(uuids)} 个附件，请直接调用对应工具进行分析，附件会自动从上下文加载。]"
-    return await run_subagent(task, config, tools=[multimodal_analyze], prompt=MULTIMODAL_PROMPT, name="multimodal_subagent", timeout=getattr(settings, "MULTIMODAL_SUBAGENT_TIMEOUT", 1200))
+    return await run_subagent(task, config, tools=[multimodal_analyze], prompt=render("multimodal_subagent.j2"), name="multimodal_subagent", timeout=getattr(settings, "MULTIMODAL_SUBAGENT_TIMEOUT", 1200))

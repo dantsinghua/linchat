@@ -23,10 +23,12 @@ ACTION_DESC: dict[str, str] = {
     "unlock": "解锁", "open_cover": "打开", "close_cover": "关闭"}
 _SENS = [("unlock", "*", "敏感", "解锁"), ("open_cover", "cover.garage_*", "敏感", "打开车库门"),
          ("turn_off", "automation.*", "危险", "禁用自动化规则")]
-_ATTR_FMT = [("brightness", lambda v: f"亮度: {v}/255 ({round(v/255*100)}%)"),
-    ("color_temp_kelvin", lambda v: f"色温: {v}K"), ("temperature", lambda v: f"温度: {v}°C"),
-    ("current_temperature", lambda v: f"当前温度: {v}°C"), ("hvac_mode", lambda v: f"模式: {v}"),
-    ("volume_level", lambda v: f"音量: {int(v*100)}%")]
+_ATTR_FMT = [("brightness", lambda v: f"亮度: {v}/255 ({round(v/255*100)}%)" if v is not None else "亮度: N/A"),
+    ("color_temp_kelvin", lambda v: f"色温: {v}K" if v is not None else "色温: N/A"),
+    ("temperature", lambda v: f"温度: {v}°C" if v is not None else "温度: N/A"),
+    ("current_temperature", lambda v: f"当前温度: {v}°C" if v is not None else "当前温度: N/A"),
+    ("hvac_mode", lambda v: f"模式: {v}" if v is not None else "模式: N/A"),
+    ("volume_level", lambda v: f"音量: {int(v*100)}%" if v is not None else "音量: N/A")]
 
 def _get_user_id(config: Any) -> int:
     if config is None: raise ValueError("config is required for HA tools")
@@ -68,7 +70,8 @@ def _format_device_list(states: list[dict], domain: str | None) -> str:
         lines.append(f"\n## {d} ({len(devs)} 个)")
         for i, dev in enumerate(devs[:_MAX_DISPLAY_ITEMS], 1):
             eid, a, st = dev["entity_id"], dev.get("attributes", {}), dev.get("state", "unknown")
-            si = f"{st} ({round(a['brightness']/255*100)}%)" if "brightness" in a else st
+            b = a.get("brightness")
+            si = f"{st} ({round(b/255*100)}%)" if b is not None else st
             lines.append(f"{i}. {eid} — {a.get('friendly_name', eid)} — {si}")
         if len(devs) > _MAX_DISPLAY_ITEMS: lines.append(f"... 及其他 {len(devs) - _MAX_DISPLAY_ITEMS} 个")
     on_n = sum(1 for s in states if s.get("state") in ("on", "playing", "open"))
@@ -86,13 +89,19 @@ def _format_history(history: list[list[dict]], entity_id: str, hours: int) -> st
 
 def _format_control_result(action: str, entity_id: str, result: list | None) -> str:
     desc = ACTION_DESC.get(action, action)
-    if result and len(result) > 0:
-        a, st = result[0].get("attributes", {}), result[0].get("state", "unknown")
-        fname, detail = a.get("friendly_name", entity_id), f"当前状态: {st}"
-        if "brightness" in a: detail += f", 亮度 {a['brightness']}/255 ({round(a['brightness']/255*100)}%)"
-        if "temperature" in a: detail += f", 温度 {a['temperature']}°C"
-        return f"✅ 已执行: {desc} {fname} ({entity_id})\n{detail}"
-    return f"✅ 操作已发送: {desc} {entity_id}"
+    if not result or len(result) == 0:
+        return (f"⚠️ 操作未生效: {desc} {entity_id}\n"
+                f"Home Assistant 未返回设备状态，该 entity_id 可能不存在。\n"
+                f"请使用 ha_query(query_type=\"list\") 查看正确的 entity_id。")
+    a, st = result[0].get("attributes", {}), result[0].get("state", "unknown")
+    fname, detail = a.get("friendly_name", entity_id), f"当前状态: {st}"
+    b = a.get("brightness")
+    if b is not None:
+        detail += f", 亮度 {b}/255 ({round(b/255*100)}%)"
+    t = a.get("temperature")
+    if t is not None:
+        detail += f", 温度 {t}°C"
+    return f"✅ 已执行: {desc} {fname} ({entity_id})\n{detail}"
 
 async def _diagnose_health(client: HAClient) -> str:
     healthy, cfg = await client.check_health(), await client.get_config()
