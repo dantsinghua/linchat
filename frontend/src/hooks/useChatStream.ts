@@ -90,8 +90,23 @@ export function useChatStream(): UseChatStreamReturn {
             store.updateMessage(msg.message_id, { status: 1 as MessageStatus });
             resetStream();
           },
-          onError: (err) => {
-            store.setError(err);
+          onError: async (err) => {
+            if (err === '__SSE_STREAM_BROKEN__') {
+              // 重连流也断了 → 重新加载最新消息
+              try {
+                const history = await getMessages(1);
+                const latest = history.messages?.[0];
+                if (latest && latest.message_id === msg.message_id) {
+                  store.updateMessage(msg.message_id, {
+                    content: latest.content,
+                    status: latest.status as MessageStatus,
+                  });
+                  resetStream();
+                  return;
+                }
+              } catch { /* 降级走错误流程 */ }
+            }
+            store.setError(getErrorMessage(err));
             store.updateMessage(msg.message_id, { status: 0 as MessageStatus });
             resetStream();
           },
@@ -207,8 +222,44 @@ export function useChatStream(): UseChatStreamReturn {
           store.setIsCompacting(false);
           resetStream();
         },
-        onError: (err, data) => {
+        onError: async (err, data) => {
           store.setIsCompacting(false);
+          if (err === '__SSE_STREAM_BROKEN__' && realId) {
+            // SSE 流异常断开，但已有消息 ID，尝试恢复
+            try {
+              const generating = await getGeneratingMessage();
+              if (generating && generating.message_id === realId && generating.request_id) {
+                // 后端仍在生成 → 自动重连
+                await reconnectStream(generating.request_id, {
+                  onChunk: (c) => store.appendContent(realId!, c.content),
+                  onDone: (msgId) => {
+                    store.updateMessage(msgId || realId!, { status: 1 as MessageStatus });
+                    resetStream();
+                  },
+                  onError: (reconnErr) => {
+                    handleFail(reconnErr);
+                  },
+                  onInterrupted: (msgId) => {
+                    store.updateMessage(msgId || realId!, { status: 3 as MessageStatus });
+                    resetStream();
+                    toast.info('响应已中断，如有需要请复制已显示内容');
+                  },
+                }, controller.signal);
+                return;
+              }
+              // 后端已完成但流断了 → 重新加载该消息
+              const history = await getMessages(1);
+              const latest = history.messages?.[0];
+              if (latest && latest.message_id === realId) {
+                store.updateMessage(realId, {
+                  content: latest.content,
+                  status: latest.status as MessageStatus,
+                });
+                resetStream();
+                return;
+              }
+            } catch { /* 恢复失败，走正常错误流程 */ }
+          }
           handleFail(err, data);
         },
         onInterrupted: (msgId) => {

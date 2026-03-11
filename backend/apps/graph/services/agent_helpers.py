@@ -318,7 +318,7 @@ async def handle_execution_failure(
     )
     await execution_repo.update(execution)
     if assistant_msg and message_repo:
-        assistant_msg.status = "failed"
+        assistant_msg.status = 0  # Message.STATUS_FAILED
         assistant_msg.content = content or ""
         await message_repo.update(assistant_msg)
 

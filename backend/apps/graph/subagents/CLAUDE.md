@@ -117,3 +117,15 @@ from apps.graph.subagents.multimodal_agent import multimodal_subagent, multimoda
 4. GPU 锁（`acquire_gpu_lock`）确保同一时间只有一个 GPU 推理任务运行
 5. `multimodal_analyze` 和 `document_parse` 的 GPU 锁引用路径是 `apps.graph.services.gpu_lock`
 6. `document_agent.py` 内 `document_parse` 含全链路日志（启动/轮询里程碑/失败/超时/结果获取）
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Mar 11, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1628 | 8:33 AM | 🔵 | Model Configuration Consumption in Graph Agents | ~380 |
+| #1626 | " | 🔵 | LLM Configuration Usage Across LinChat Backend | ~340 |
+</claude-mem-context>

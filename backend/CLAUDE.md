@@ -110,3 +110,20 @@ pytest --cov=apps --cov-report=term-missing  # 覆盖率
 4. **统一响应**: `{"code": "...", "message": "...", "data": ...}`
 5. **Langfuse 3.x**: 使用 `start_span()` API，客户端模块级单例，不同步 flush
 6. **PYTHONUNBUFFERED=1**: 后端 nohup 启动必须设置，否则日志缓冲导致 traceback 丢失
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 12, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #995 | 4:25 PM | 🔵 | Backend Environment Configuration Review | ~375 |
+
+### Mar 11, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1625 | 8:32 AM | 🔵 | Current LLM Configuration in LinChat Backend | ~260 |
+</claude-mem-context>

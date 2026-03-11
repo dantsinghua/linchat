@@ -130,36 +130,39 @@ class TestHASubAgentIntegration:
 
 
 class TestHASubAgentPrompt:
-    """测试 HA_PROMPT 内容"""
+    """测试 ha_subagent.j2 模板内容"""
 
     def test_prompt_contains_required_sections(self):
         """测试 prompt 包含必需的章节"""
-        from apps.graph.subagents.ha_agent import HA_PROMPT
+        from apps.context.loader import render
+
+        ha_prompt = render("ha_subagent.j2")
 
         # 工具说明
-        assert "ha_query" in HA_PROMPT
-        assert "ha_control" in HA_PROMPT
-        assert "ha_diagnose" in HA_PROMPT
+        assert "ha_query" in ha_prompt
+        assert "ha_control" in ha_prompt
+        assert "ha_diagnose" in ha_prompt
 
         # 执行策略
-        assert "执行策略" in HA_PROMPT
-        assert "设备名模糊" in HA_PROMPT
+        assert "执行策略" in ha_prompt
+        assert "设备名模糊" in ha_prompt
 
         # 安全规则
-        assert "安全规则" in HA_PROMPT
-        assert "敏感操作" in HA_PROMPT
-        assert "L3" in HA_PROMPT or "unlock" in HA_PROMPT
-        assert "L4" in HA_PROMPT or "automation" in HA_PROMPT
+        assert "安全规则" in ha_prompt
+        assert "敏感操作" in ha_prompt
+        assert "L3" in ha_prompt or "unlock" in ha_prompt
+        assert "L4" in ha_prompt or "automation" in ha_prompt
 
         # 响应规范
-        assert "响应规范" in HA_PROMPT
-        assert "中文" in HA_PROMPT
+        assert "响应规范" in ha_prompt
+        assert "中文" in ha_prompt
 
     def test_prompt_mentions_mem_search(self):
         """测试 prompt 提到 mem_search 工具"""
-        from apps.graph.subagents.ha_agent import HA_PROMPT
+        from apps.context.loader import render
 
-        assert "mem_search" in HA_PROMPT
+        ha_prompt = render("ha_subagent.j2")
+        assert "mem_search" in ha_prompt
 
 
 class TestHAToolsImport:

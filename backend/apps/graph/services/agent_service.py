@@ -216,11 +216,8 @@ class AgentService:
                     pass
             if is_multimodal:
                 await inference_service.complete_task(user_id, request_id)
-            if langfuse_handler and langfuse_handler.client:
-                try:
-                    langfuse_handler.client.flush()
-                except Exception:
-                    pass
+            # Langfuse BatchSpanProcessor 自动批量导出，无需手动 flush
+            # （同步 flush 会阻塞 async 事件循环，影响 SSE 心跳）
 
     @staticmethod
     async def resume(user_id: int, thread_id: str, request_id: str, message: Message) -> AsyncGenerator[StreamChunk, None]:

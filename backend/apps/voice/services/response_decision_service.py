@@ -6,6 +6,7 @@ from typing import Optional
 import httpx
 from pypinyin import lazy_pinyin
 
+from apps.context.loader import render
 from apps.voice.repositories import voice_settings_repo
 from apps.voice.services.voice_session_service import voice_session_service
 from core.redis import get_redis
@@ -60,14 +61,9 @@ class ResponseDecisionService:
             model_config = await model_service.get_active_model("tool")
             if not model_config:
                 return None
-            prompt = (
-                "你是一个智能家居环境中的语音助手判断器。\n"
-                "判断以下用户话语是否需要 AI 助手回复。\n\n"
-                "需要回复的情况：明确的指令、请求、提问、需要帮助。\n"
-                "不需要回复的情况：自言自语、与他人交谈、感叹、无意义的声音。\n\n"
-                f"用户话语：{text}\n\n"
-                '返回 JSON：{"decision": "RESPOND" 或 "RECORD_ONLY", "confidence": 0.0-1.0, "reason": "简短原因"}'
-            )
+
+            prompt = render("voice_intent_classify.j2", text=text)
+
             async with httpx.AsyncClient(timeout=django_settings.VOICE_DECISION_LLM_TIMEOUT) as client:
                 resp = await client.post(
                     f"{model_config.api_base}/chat/completions",

@@ -93,3 +93,21 @@ from apps.graph.multimodal import build_multimodal_messages, stream_multimodal_h
 from apps.graph.services import AgentService, ContextService, InferenceService, inference_service, GPULockTimeout, acquire_gpu_lock
 from apps.graph.subagents import get_subagent_tools
 ```
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 13, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1044 | 11:00 AM | ⚖️ | Code Review Findings for Multimodal Feature Require Comprehensive Fix Plan | ~728 |
+
+### Mar 11, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1630 | 8:34 AM | 🔵 | LLM Initialization from Database Configuration | ~438 |
+| #1628 | 8:33 AM | 🔵 | Model Configuration Consumption in Graph Agents | ~380 |
+| #1626 | " | 🔵 | LLM Configuration Usage Across LinChat Backend | ~340 |
+</claude-mem-context>

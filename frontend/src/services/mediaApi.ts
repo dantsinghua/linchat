@@ -127,6 +127,28 @@ export async function cancelInference(
 // ============ 文档解析 API (T043a) ============
 
 /**
+ * 查询文档解析任务状态（REST 轮询降级用）
+ *
+ * 复用已有后端接口: GET /api/v1/chat/documents/tasks/<task_id>/
+ */
+export interface DocParseStatusResponse {
+  code: string;
+  message: string;
+  data: {
+    status: string;
+    progress?: { current: number; total: number };
+  };
+}
+
+export async function getDocParseStatus(
+  taskId: string
+): Promise<DocParseStatusResponse> {
+  return get<DocParseStatusResponse['data']>(
+    `/chat/documents/tasks/${taskId}/`
+  ) as unknown as Promise<DocParseStatusResponse>;
+}
+
+/**
  * 文档解析任务响应
  */
 export interface DocParseResponse {
