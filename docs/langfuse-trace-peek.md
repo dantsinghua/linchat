@@ -1,0 +1,1165 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - generic [ref=e9]:
+      - generic [ref=e13]:
+        - link "Langfuse Icon Langfuse" [ref=e14] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e15]:
+            - img "Langfuse Icon" [ref=e16]
+            - generic [ref=e17]: Langfuse
+        - button "v3.148.0 OSS" [ref=e18] [cursor=pointer]:
+          - text: v3.148.0 OSS
+          - img [ref=e573]
+      - generic [ref=e20]:
+        - list [ref=e23]:
+          - listitem [ref=e24]:
+            - button "Go to... Ctrl K" [ref=e25] [cursor=pointer]:
+              - img [ref=e26]
+              - text: Go to...
+              - generic:
+                - generic: Ctrl
+                - generic: K
+          - listitem [ref=e29]:
+            - link "Home" [ref=e30] [cursor=pointer]:
+              - /url: /project/linchat-project
+              - img [ref=e31]
+              - generic [ref=e34]: Home
+          - listitem [ref=e35]:
+            - link "Dashboards" [ref=e36] [cursor=pointer]:
+              - /url: /project/linchat-project/dashboards
+              - img [ref=e37]
+              - generic [ref=e42]: Dashboards
+        - generic [ref=e43]:
+          - generic [ref=e44]: Observability
+          - list [ref=e46]:
+            - listitem [ref=e47]:
+              - link "Tracing" [ref=e48] [cursor=pointer]:
+                - /url: /project/linchat-project/traces
+                - img [ref=e49]
+                - generic [ref=e52]: Tracing
+            - listitem [ref=e53]:
+              - link "Sessions" [ref=e54] [cursor=pointer]:
+                - /url: /project/linchat-project/sessions
+                - img [ref=e55]
+                - generic [ref=e58]: Sessions
+            - listitem [ref=e59]:
+              - link "Users" [ref=e60] [cursor=pointer]:
+                - /url: /project/linchat-project/users
+                - img [ref=e61]
+                - generic [ref=e66]: Users
+        - generic [ref=e67]:
+          - generic [ref=e68]: Prompt Management
+          - list [ref=e70]:
+            - listitem [ref=e71]:
+              - link "Prompts" [ref=e72] [cursor=pointer]:
+                - /url: /project/linchat-project/prompts
+                - img [ref=e73]
+                - generic [ref=e78]: Prompts
+            - listitem [ref=e79]:
+              - link "Playground" [ref=e80] [cursor=pointer]:
+                - /url: /project/linchat-project/playground
+                - img [ref=e81]
+                - generic [ref=e83]: Playground
+        - generic [ref=e84]:
+          - generic [ref=e85]: Evaluation
+          - list [ref=e87]:
+            - listitem [ref=e88]:
+              - link "Scores" [ref=e89] [cursor=pointer]:
+                - /url: /project/linchat-project/scores
+                - img [ref=e90]
+                - generic [ref=e93]: Scores
+            - listitem [ref=e94]:
+              - link "LLM-as-a-Judge" [ref=e95] [cursor=pointer]:
+                - /url: /project/linchat-project/evals
+                - img [ref=e96]
+                - generic [ref=e98]: LLM-as-a-Judge
+            - listitem [ref=e99]:
+              - link "Human Annotation" [ref=e100] [cursor=pointer]:
+                - /url: /project/linchat-project/annotation-queues
+                - img [ref=e101]
+                - generic [ref=e106]: Human Annotation
+            - listitem [ref=e107]:
+              - link "Datasets" [ref=e108] [cursor=pointer]:
+                - /url: /project/linchat-project/datasets
+                - img [ref=e109]
+                - generic [ref=e113]: Datasets
+        - generic [ref=e116]:
+          - button "Dismiss" [ref=e117] [cursor=pointer]:
+            - img [ref=e118]
+          - generic [ref=e121]:
+            - heading "Star Langfuse" [level=3] [ref=e122]
+            - generic [ref=e123]: See the latest releases and help grow the community on GitHub
+          - link "Langfuse GitHub stars" [ref=e125] [cursor=pointer]:
+            - /url: https://github.com/langfuse/langfuse
+            - img "Langfuse GitHub stars" [ref=e126]
+        - list [ref=e129]:
+          - listitem
+          - listitem [ref=e130]:
+            - link "Settings" [ref=e131] [cursor=pointer]:
+              - /url: /project/linchat-project/settings
+              - img [ref=e132]
+              - generic [ref=e135]: Settings
+          - listitem [ref=e136]:
+            - button "Support" [ref=e137] [cursor=pointer]:
+              - img [ref=e138]
+              - text: Support
+      - list [ref=e146]:
+        - listitem [ref=e147]:
+          - button "A Admin admin@linchat.local" [ref=e148] [cursor=pointer]:
+            - generic [ref=e150]: A
+            - generic [ref=e151]:
+              - generic [ref=e152]: Admin
+              - generic "admin@linchat.local" [ref=e153]
+            - img [ref=e154]
+      - button "Toggle Sidebar" [ref=e157]
+    - main [ref=e158]:
+      - main [ref=e161]:
+        - generic [ref=e162]:
+          - generic [ref=e165]:
+            - generic [ref=e167]:
+              - button "Toggle Sidebar" [ref=e168] [cursor=pointer]:
+                - img [ref=e169]
+                - generic [ref=e171]: Toggle Sidebar
+              - navigation "breadcrumb" [ref=e173]:
+                - list [ref=e174]:
+                  - button "LinChat" [ref=e175] [cursor=pointer]:
+                    - text: LinChat
+                    - img [ref=e176]
+                  - listitem [ref=e178]:
+                    - img [ref=e179]
+                  - button "linchat-monitor" [ref=e181] [cursor=pointer]:
+                    - text: linchat-monitor
+                    - img [ref=e182]
+            - generic [ref=e184]:
+              - heading "Tracing" [level=2] [ref=e189]:
+                - generic "Tracing" [ref=e190]:
+                  - text: Tracing
+                  - img [ref=e193] [cursor=pointer]
+              - generic [ref=e196]:
+                - link "Traces" [ref=e197] [cursor=pointer]:
+                  - /url: /project/linchat-project/traces
+                - link "Observations" [ref=e198] [cursor=pointer]:
+                  - /url: /project/linchat-project/observations
+          - main [ref=e199]:
+            - generic [ref=e201]:
+              - generic [ref=e203]:
+                - button "Hide filters" [ref=e204] [cursor=pointer]:
+                  - img [ref=e205]
+                  - generic [ref=e208]: Hide filters
+                - generic [ref=e209]:
+                  - generic [ref=e210]:
+                    - button [ref=e211] [cursor=pointer]:
+                      - img [ref=e212]
+                    - textbox "Search..." [ref=e215]
+                  - button "IDs / Names" [ref=e216] [cursor=pointer]:
+                    - generic [ref=e217]:
+                      - text: IDs / Names
+                      - img [ref=e219]
+                    - img [ref=e221]
+                - button "1d Past 1 day" [ref=e224] [cursor=pointer]:
+                  - generic [ref=e225]:
+                    - generic [ref=e226]:
+                      - generic [ref=e227]: 1d
+                      - generic [ref=e228]: Past 1 day
+                    - img [ref=e229]
+                - generic [ref=e231]:
+                  - button "Refresh" [ref=e232] [cursor=pointer]:
+                    - img [ref=e233]
+                  - button "Off" [ref=e238] [cursor=pointer]:
+                    - img [ref=e239]
+                    - generic [ref=e241]: "Off"
+                - generic [ref=e242]:
+                  - button "Saved Views 0" [ref=e243] [cursor=pointer]:
+                    - generic [ref=e244]: Saved Views
+                    - generic [ref=e245]: "0"
+                  - button "Columns 14/26" [ref=e246] [cursor=pointer]:
+                    - generic [ref=e247]: Columns
+                    - generic [ref=e248]: 14/26
+                  - status [ref=e249]
+                  - button "Row height" [ref=e250] [cursor=pointer]:
+                    - img [ref=e251]
+                  - button "Export" [ref=e253] [cursor=pointer]:
+                    - img [ref=e254]
+              - generic [ref=e257]:
+                - generic [ref=e259]:
+                  - generic [ref=e261]: Filters
+                  - generic [ref=e263]:
+                    - generic [ref=e264]:
+                      - heading "Environment" [level=3] [ref=e265]:
+                        - button "Environment" [expanded] [ref=e266] [cursor=pointer]:
+                          - generic [ref=e268]: Environment
+                          - img [ref=e269]
+                      - region "Environment" [ref=e271]:
+                        - generic [ref=e273]:
+                          - generic [ref=e274]:
+                            - generic [ref=e275]: "Mode:"
+                            - generic [ref=e276]:
+                              - button "SELECT" [ref=e277] [cursor=pointer]
+                              - button "TEXT" [ref=e279] [cursor=pointer]
+                          - generic [ref=e575]:
+                            - checkbox [checked] [ref=e577] [cursor=pointer]:
+                              - generic:
+                                - img
+                            - generic "default" [ref=e579] [cursor=pointer]
+                    - generic [ref=e293]:
+                      - heading "Trace Name" [level=3] [ref=e294]:
+                        - button "Trace Name" [expanded] [ref=e295] [cursor=pointer]:
+                          - generic [ref=e297]: Trace Name
+                          - img [ref=e298]
+                      - region "Trace Name" [ref=e300]:
+                        - generic [ref=e302]:
+                          - generic [ref=e303]:
+                            - generic [ref=e304]: "Mode:"
+                            - generic [ref=e305]:
+                              - button "SELECT" [ref=e306] [cursor=pointer]
+                              - button "TEXT" [ref=e308] [cursor=pointer]
+                          - generic [ref=e309]:
+                            - generic [ref=e580]:
+                              - checkbox [checked] [ref=e582] [cursor=pointer]:
+                                - generic:
+                                  - img
+                              - generic [ref=e583] [cursor=pointer]:
+                                - generic "chat" [ref=e584]
+                                - generic [ref=e585]: "12"
+                            - generic [ref=e586]:
+                              - checkbox [checked] [ref=e588] [cursor=pointer]:
+                                - generic:
+                                  - img
+                              - generic [ref=e589] [cursor=pointer]:
+                                - generic "(empty)" [ref=e590]
+                                - generic [ref=e591]: "1"
+                    - heading "Trace ID" [level=3] [ref=e323]:
+                      - button "Trace ID" [ref=e324] [cursor=pointer]:
+                        - generic [ref=e326]: Trace ID
+                        - img [ref=e327]
+                    - heading "User ID" [level=3] [ref=e330]:
+                      - button "User ID" [ref=e331] [cursor=pointer]:
+                        - generic [ref=e333]: User ID
+                        - img [ref=e334]
+                    - heading "Session ID" [level=3] [ref=e337]:
+                      - button "Session ID" [ref=e338] [cursor=pointer]:
+                        - generic [ref=e340]: Session ID
+                        - img [ref=e341]
+                    - heading "Metadata" [level=3] [ref=e344]:
+                      - button "Metadata" [ref=e345] [cursor=pointer]:
+                        - generic [ref=e347]: Metadata
+                        - img [ref=e348]
+                    - heading "Version" [level=3] [ref=e351]:
+                      - button "Version" [ref=e352] [cursor=pointer]:
+                        - generic [ref=e354]: Version
+                        - img [ref=e355]
+                    - heading "Release" [level=3] [ref=e358]:
+                      - button "Release" [ref=e359] [cursor=pointer]:
+                        - generic [ref=e361]: Release
+                        - img [ref=e362]
+                    - heading "Bookmarked" [level=3] [ref=e365]:
+                      - button "Bookmarked" [ref=e366] [cursor=pointer]:
+                        - generic [ref=e368]: Bookmarked
+                        - img [ref=e369]
+                    - heading "Comment Count" [level=3] [ref=e372]:
+                      - button "Comment Count" [ref=e373] [cursor=pointer]:
+                        - generic [ref=e375]: Comment Count
+                        - img [ref=e376]
+                    - heading "Comment Content" [level=3] [ref=e379]:
+                      - button "Comment Content" [ref=e380] [cursor=pointer]:
+                        - generic [ref=e382]: Comment Content
+                        - img [ref=e383]
+                    - heading "Tags" [level=3] [ref=e386]:
+                      - button "Tags" [ref=e387] [cursor=pointer]:
+                        - generic [ref=e389]: Tags
+                        - img [ref=e390]
+                    - heading "Level" [level=3] [ref=e393]:
+                      - button "Level" [ref=e394] [cursor=pointer]:
+                        - generic [ref=e396]: Level
+                        - img [ref=e397]
+                    - heading "Latency" [level=3] [ref=e400]:
+                      - button "Latency" [ref=e401] [cursor=pointer]:
+                        - generic [ref=e403]: Latency
+                        - img [ref=e404]
+                    - heading "Input Tokens" [level=3] [ref=e407]:
+                      - button "Input Tokens" [ref=e408] [cursor=pointer]:
+                        - generic [ref=e410]: Input Tokens
+                        - img [ref=e411]
+                    - heading "Output Tokens" [level=3] [ref=e414]:
+                      - button "Output Tokens" [ref=e415] [cursor=pointer]:
+                        - generic [ref=e417]: Output Tokens
+                        - img [ref=e418]
+                    - heading "Total Tokens" [level=3] [ref=e421]:
+                      - button "Total Tokens" [ref=e422] [cursor=pointer]:
+                        - generic [ref=e424]: Total Tokens
+                        - img [ref=e425]
+                    - heading "Input Cost" [level=3] [ref=e428]:
+                      - button "Input Cost" [ref=e429] [cursor=pointer]:
+                        - generic [ref=e431]: Input Cost
+                        - img [ref=e432]
+                    - heading "Output Cost" [level=3] [ref=e435]:
+                      - button "Output Cost" [ref=e436] [cursor=pointer]:
+                        - generic [ref=e438]: Output Cost
+                        - img [ref=e439]
+                    - heading "Total Cost" [level=3] [ref=e442]:
+                      - button "Total Cost" [ref=e443] [cursor=pointer]:
+                        - generic [ref=e445]: Total Cost
+                        - img [ref=e446]
+                    - heading "Categorical Scores" [level=3] [ref=e449]:
+                      - button "Categorical Scores" [ref=e450] [cursor=pointer]:
+                        - generic [ref=e452]: Categorical Scores
+                        - img [ref=e453]
+                    - heading "Numeric Scores" [level=3] [ref=e456]:
+                      - button "Numeric Scores" [ref=e457] [cursor=pointer]:
+                        - generic [ref=e459]: Numeric Scores
+                        - img [ref=e460]
+                - separator [ref=e462]
+                - generic [ref=e465]:
+                  - table [ref=e468]:
+                    - rowgroup [ref=e469]:
+                      - row "Select all Timestamp ▼ Name Input Output Observation Levels Latency Tokens Total Cost Environment Tags Metadata Scores Action" [ref=e470]:
+                        - columnheader "Select all" [ref=e471]:
+                          - checkbox "Select all" [ref=e1344] [cursor=pointer]
+                        - columnheader [ref=e477] [cursor=pointer]
+                        - columnheader "Timestamp ▼" [ref=e479] [cursor=pointer]:
+                          - generic [ref=e480]:
+                            - generic [ref=e481]: Timestamp
+                            - generic "Sort by this column" [ref=e482]: ▼
+                        - columnheader "Name" [ref=e484] [cursor=pointer]:
+                          - generic [ref=e486]: Name
+                        - columnheader "Input" [ref=e488]:
+                          - generic [ref=e490]: Input
+                        - columnheader "Output" [ref=e492]:
+                          - generic [ref=e494]: Output
+                        - columnheader "Observation Levels" [ref=e496]:
+                          - generic [ref=e498]: Observation Levels
+                        - columnheader "Latency" [ref=e500] [cursor=pointer]:
+                          - generic [ref=e502]: Latency
+                        - columnheader "Tokens" [ref=e504] [cursor=pointer]:
+                          - generic [ref=e506]: Tokens
+                        - columnheader "Total Cost" [ref=e508] [cursor=pointer]:
+                          - generic [ref=e510]: Total Cost
+                        - columnheader "Environment" [ref=e512]:
+                          - generic [ref=e514]: Environment
+                        - columnheader "Tags" [ref=e516]:
+                          - generic [ref=e517]:
+                            - generic [ref=e518]: Tags
+                            - img [ref=e520] [cursor=pointer]
+                        - columnheader "Metadata" [ref=e523]:
+                          - generic [ref=e524]:
+                            - generic [ref=e525]: Metadata
+                            - img [ref=e527] [cursor=pointer]
+                        - columnheader "Scores" [ref=e530]:
+                          - generic [ref=e532]: Scores
+                        - columnheader "Action" [ref=e534]:
+                          - generic [ref=e536]: Action
+                    - rowgroup [ref=e538]:
+                      - row [ref=e594] [cursor=pointer]:
+                        - cell "Select row" [ref=e595]:
+                          - checkbox "Select row" [ref=e598]
+                        - cell "bookmark" [ref=e599]:
+                          - button "bookmark" [ref=e601]:
+                            - img [ref=e602]
+                        - cell "2026-03-11 08:42:01" [ref=e604]:
+                          - 'generic "UTC: 2026-03-11 00:42:01.698" [ref=e606]': 2026-03-11 08:42:01
+                        - cell "chat" [ref=e607]:
+                          - generic [ref=e609]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"你好！请简单介绍一下你自己，告诉我你还记得关于我的哪些信息？\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e610]':
+                          - generic [ref=e612]: "{\"messages\": [{\"content\": \"你好！请简单介绍一下你自己，告诉我你还记得关于我的哪些信息？\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - cell [ref=e613]:
+                          - generic [ref=e615]: "{\"messages\": [{\"content\": \"你好！请简单介绍一下你自己，告诉我你还记得关于我的哪些信息？\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"72631850-d3d2-4fec-abd0-727ef7cdab5a\"}, {\"content\": \"你好！我是 LinChat，一个智能AI助手，很高兴为您服务！\\n\\n关于我记得的您的信息，让我为您整理一下：\\n\\n---\\n\\n## 📝 关于您的记忆\\n\\n### 基本信息\\n| 项目 | 内容 |\\n|------|------|\\n| 居住地 | 深圳 |\\n| 工作单位 | 腾讯 |\\n| 职位 | 产品经理 |\\n| 生日 | 12月29日 |\\n\\n### 兴趣爱好\\n- 🎨 **编程语言**：Python、TypeScript、Rust（最近在学习Rust）\\n- 🏸 **运动爱好**：打羽毛球\\n- 🎹 **新技能**：最近开始学习弹钢琴（每周三晚上练习）\\n- 🍲 **美食偏好**：最喜欢吃火锅\\n\\n### 生活点滴\\n- 🐱 养了一只叫**团子**的橘猫\\n- 最近有一个重要事项需要完成：修改工具和添加实时监控功能\\n\\n---\\n\\n## 💡 我能为您做什么？\\n\\n作为您的智能助手，我可以：\\n\\n- **信息查询** - 搜索互联网获取最新资讯、新闻、技术动态等\\n- **文档处理** - 解析、总结、搜索您的文档资料\\n- **代码协助** - 执行Python代码、数据分析、技术问题解答\\n- **智能家居** - 控制和查询您的智能设备状态\\n- **多媒体分析** - 分析图片、视频等内容\\n- **记忆管理** - 帮您记录和回忆重要信息\\n- **历史对话** - 搜索我们之前的聊天记录\\n\\n有什么我可以帮您的吗？😊\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"kimi-k2.5\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cda57-ee67-7a71-a676-61cb55e97f94\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 3377, \"output_tokens\": 308, \"total_tokens\": 3685, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {}}}]}"
+                        - cell "ℹ️ 7" [ref=e616]:
+                          - generic [ref=e620]: ℹ️ 7
+                        - cell "10.64s" [ref=e621]:
+                          - generic [ref=e623]: 10.64s
+                        - cell "3,377 → 308 (∑ 3,685)" [ref=e624]:
+                          - button "3,377 → 308 (∑ 3,685)" [ref=e626]:
+                            - generic [ref=e627]:
+                              - generic [ref=e628]: 3,377 → 308 (∑ 3,685)
+                              - img [ref=e629]
+                        - cell [ref=e631]
+                        - cell "default" [ref=e633]:
+                          - generic [ref=e636]: default
+                        - cell [ref=e637]:
+                          - img [ref=e641]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"aac6310133474ee59f17ff7c711c8fb6\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e644]':
+                          - generic [ref=e646]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"aac6310133474ee59f17ff7c711c8fb6\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e647]
+                        - cell [ref=e649]:
+                          - button [ref=e651]:
+                            - img [ref=e652]
+                      - 'row "Select row bookmark 2026-03-10 22:43:36 chat {\"messages\": [{\"content\": \"现在是2026年3月份，有没有2026年3月份的大模型新闻\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]} 🚨 5 ℹ️ 40 1m 45s 8,139 → 1,083 (∑ 9,222) default {\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"f1a37e10146643f398a3a2ab83737820\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e656] [cursor=pointer]':
+                        - cell "Select row" [ref=e657]:
+                          - checkbox "Select row" [ref=e660]
+                        - cell "bookmark" [ref=e661]:
+                          - button "bookmark" [ref=e663]:
+                            - img [ref=e664]
+                        - cell "2026-03-10 22:43:36" [ref=e666]:
+                          - 'generic "UTC: 2026-03-10 14:43:36.339" [ref=e668]': 2026-03-10 22:43:36
+                        - cell "chat" [ref=e669]:
+                          - generic [ref=e671]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"现在是2026年3月份，有没有2026年3月份的大模型新闻\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e672]':
+                          - generic [ref=e674]: "{\"messages\": [{\"content\": \"现在是2026年3月份，有没有2026年3月份的大模型新闻\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - cell [ref=e675]
+                        - cell "🚨 5 ℹ️ 40" [ref=e678]:
+                          - generic [ref=e680]:
+                            - generic [ref=e682]: 🚨 5
+                            - generic [ref=e684]: ℹ️ 40
+                        - cell "1m 45s" [ref=e685]:
+                          - generic [ref=e687]: 1m 45s
+                        - cell "8,139 → 1,083 (∑ 9,222)" [ref=e688]:
+                          - button "8,139 → 1,083 (∑ 9,222)" [ref=e690]:
+                            - generic [ref=e691]:
+                              - generic [ref=e692]: 8,139 → 1,083 (∑ 9,222)
+                              - img [ref=e693]
+                        - cell [ref=e695]
+                        - cell "default" [ref=e697]:
+                          - generic [ref=e700]: default
+                        - cell [ref=e701]:
+                          - img [ref=e705]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"f1a37e10146643f398a3a2ab83737820\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e708]':
+                          - generic [ref=e710]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"f1a37e10146643f398a3a2ab83737820\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e711]
+                        - cell [ref=e713]:
+                          - button [ref=e715]:
+                            - img [ref=e716]
+                      - row [ref=e720] [cursor=pointer]:
+                        - cell "Select row" [ref=e721]:
+                          - checkbox "Select row" [ref=e724]
+                        - cell "bookmark" [ref=e725]:
+                          - button "bookmark" [ref=e727]:
+                            - img [ref=e728]
+                        - cell "2026-03-10 22:42:00" [ref=e730]:
+                          - 'generic "UTC: 2026-03-10 14:42:00.639" [ref=e732]': 2026-03-10 22:42:00
+                        - cell "chat" [ref=e733]:
+                          - generic [ref=e735]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"最近有什么大模型相关的最新消息么\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e736]':
+                          - generic [ref=e738]: "{\"messages\": [{\"content\": \"最近有什么大模型相关的最新消息么\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - cell [ref=e739]:
+                          - generic [ref=e741]: "{\"messages\": [{\"content\": \"最近有什么大模型相关的最新消息么\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"24162f7c-1733-4ccf-b588-e2251202c423\"}, {\"content\": \"我来帮您搜索一下最近大模型相关的最新消息。让我查询一下最新的技术动态。\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"tool_calls\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd832-9944-7dd1-9169-d84cdd211417\", \"tool_calls\": [{\"name\": \"search_subagent\", \"args\": {\"task\": \"最近大模型相关最新消息 技术进展 产品发布 AI动态\"}, \"id\": \"call_mu347yab8sew2lj3gdljydts\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 3262, \"output_tokens\": 110, \"total_tokens\": 3372, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}, {\"content\": \"基于搜索结果，我为您整理了2024年末至2025年初大模型领域的最新动态和技术进展：\\n\\n## 最新技术突破\\n\\n**1. 模型性能新突破**\\n- OpenAI的o1模型引领了首批超越GPT-4的重大智能飞跃[[5]]\\n- 推理时计算扩展、数据质量和新的强化学习技术成为提高模型性能的主要杠杆[[5]]\\n\\n**2. 模型优化创新**\\n- Meta的Llama 3.3 70B模型创造了\\\"以小博大\\\"的奇迹，在处理效率上表现突出[[1]]\\n- 微软Phi-4模型通过创新的后期训练方案，展现出相较其参数规模的卓越表现[[4]]\\n\\n## 产品发布动态\\n\\n**1. 国内大模型生态**\\n- 截至2024年4月，中国大模型数量已近200个，通用大模型达40个左右[[2]]\\n- 百度、阿里、华为、腾讯等科技巨头纷纷推出自己的大模型产品[[2]]\\n\\n**2. AI应用产品爆发**\\n- 2024年涌现400多款AI原生产品，涵盖20个细分品类[[6]]\\n- AI智能助手赛道表现突出，豆包等产品取得领先地位[[6]]\\n\\n## 政策与趋势\\n\\n**1. 国家战略支持**\\n- 2024年12月中央经济工作会议明确把\\\"人工智能+\\\"行动作为2025年重点任务[[3]]\\n- 习近平总书记强调人工智能是新一轮科技革命的重要驱动力量[[3]]\\n\\n**2. 技术发展趋势**\\n- 大模型推理、多模态生成、智能体等创新技术快速发展[[3]]\\n- 大模型赋能千行百业将进一步提速[[3]]\\n\\n## 市场动态\\n\\n**1. 竞争格局**\\n- AI智能助手赛道内部已出现明显梯队划分[[6]]\\n- 国内大模型厂商技术实力通过产品表现直观体现[[6]]\\n\\n**2. 应用场景拓展**\\n- 从AI写作、AI视频到AI教育、AI音乐等20个细分领域均有代表性产品[[6]]\\n\\n这些进展显示大模型技术正在从实验室走向产业化应用，性能持续提升的同时，应用场景也在不断拓展。\\n\\n**参考来源：**\\n1. [2024年AI\\\"洋模型\\\"大起底](https://finance.sina.com.cn/tech/2024-12-27/doc-ineawatz6109654.shtml)\\n2. [2024国产AI大模型应用发展现状与未来趋势](https://www.infoobs.com/article/20241024/67367.html)\\n3. [人工智能大模型年度发展趋势报告](https://www.china-aii.com/yjbg/7140791.jhtml)\\n4. [国内外知名大模型及应用](https://zhuanlan.zhihu.com/p/670574382)\\n5. [Artificial Analysis最新发布2024年大模型总结报告](https://zhuanlan.zhihu.com/p/15244975924)\\n6. [2024年度AI十大趋势报告](https://www.qbitai.com/2025/06/298181.html)\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_subagent\", \"id\": \"32cbcf2e-a0f5-4c6c-a213-1bded2d72d2d\", \"tool_call_id\": \"call_mu347yab8sew2lj3gdljydts\", \"artifact\": null, \"status\": \"success\"}, {\"content\": \"根据搜索结果，我为您整理了近期大模型领域的重要动态：\\n\\n## 🔥 最新技术突破\\n\\n**性能飞跃**\\n- **OpenAI o1模型**：实现了超越GPT-4的重大智能突破，推理时计算扩展、数据质量和强化学习成为关键杠杆\\n- **Meta Llama 3.3 70B**：创造了\\\"以小博大\\\"的奇迹，在参数效率上表现突出\\n- **微软Phi-4**：通过创新的后期训练方案，展现出卓越的性能表现\\n\\n## 🚀 国内大模型生态\\n\\n**快速发展**\\n- 截至2024年4月，中国大模型数量已近**200个**，通用大模型约**40个**\\n- 百度、阿里、华为、腾讯等巨头纷纷推出自研大模型产品\\n- **AI智能助手赛道**竞争激烈，豆包等产品表现突出\\n\\n## 📈 政策与市场趋势\\n\\n**国家战略支持**\\n- 2024年12月中央经济工作会议明确将\\\"**人工智能+**\\\"行动作为2025年重点任务\\n- 大模型赋能千行百业进一步提速\\n\\n**应用场景爆发**\\n- 2024年涌现**400多款**AI原生产品，涵盖20个细分领域\\n- 从AI写作、AI视频到AI教育、AI音乐等均有代表性产品\\n\\n## 💡 技术演进方向\\n\\n当前大模型技术正从实验室走向产业化，主要趋势包括：\\n- 多模态生成能力提升\\n- 智能体技术快速发展\\n- 推理能力持续优化\\n\\n这些进展显示大模型技术正在快速成熟，应用场景不断扩展，性能持续提升。您对哪个特定方向更感兴趣？我可以为您提供更详细的信息。\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd833-0c4b-7222-b5d6-fe4e2dd85b07\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 2172, \"output_tokens\": 358, \"total_tokens\": 2530, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}]}"
+                        - cell "ℹ️ 38" [ref=e742]:
+                          - generic [ref=e746]: ℹ️ 38
+                        - cell "39.14s" [ref=e747]:
+                          - generic [ref=e749]: 39.14s
+                        - cell "7,975 → 1,239 (∑ 9,214)" [ref=e750]:
+                          - button "7,975 → 1,239 (∑ 9,214)" [ref=e752]:
+                            - generic [ref=e753]:
+                              - generic [ref=e754]: 7,975 → 1,239 (∑ 9,214)
+                              - img [ref=e755]
+                        - cell [ref=e757]
+                        - cell "default" [ref=e759]:
+                          - generic [ref=e762]: default
+                        - cell [ref=e763]:
+                          - img [ref=e767]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"c043af081b664540943dc94f7a8c9e91\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e770]':
+                          - generic [ref=e772]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"c043af081b664540943dc94f7a8c9e91\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e773]
+                        - cell [ref=e775]:
+                          - button [ref=e777]:
+                            - img [ref=e778]
+                      - row [ref=e782] [cursor=pointer]:
+                        - cell "Select row" [ref=e783]:
+                          - checkbox "Select row" [ref=e786]
+                        - cell "bookmark" [ref=e787]:
+                          - button "bookmark" [ref=e789]:
+                            - img [ref=e790]
+                        - cell "2026-03-10 17:40:16" [ref=e792]:
+                          - 'generic "UTC: 2026-03-10 09:40:16.632" [ref=e794]': 2026-03-10 17:40:16
+                        - cell "chat" [ref=e795]:
+                          - generic [ref=e797]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"请描述一下这张图片的内容\\n\\n[用户上传了 1 个附件: test-image.png(image)]\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e798]':
+                          - generic [ref=e800]: "{\"messages\": [{\"content\": \"请描述一下这张图片的内容\\n\\n[用户上传了 1 个附件: test-image.png(image)]\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - cell [ref=e801]:
+                          - generic [ref=e803]: "{\"messages\": [{\"content\": \"请描述一下这张图片的内容\\n\\n[用户上传了 1 个附件: test-image.png(image)]\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"c5768581-46ec-470e-8512-d969b26d294f\"}, {\"content\": \"我来帮您分析这张图片的内容。让我使用图像分析工具来查看图片内容。\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"tool_calls\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd71e-5a7a-74c3-818c-2b19960681f4\", \"tool_calls\": [{\"name\": \"multimodal_subagent\", \"args\": {\"task\": \"请描述用户上传的test-image.png图片的内容\"}, \"id\": \"call_v0j9ml1s89lfdfk8aifue1jy\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 3259, \"output_tokens\": 81, \"total_tokens\": 3340, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}, {\"content\": \"分析失败，无法获取图片内容。这可能是因为：\\n\\n1. 图片文件可能已损坏或格式不支持\\n2. 上传过程中可能出现问题\\n3. 系统暂时无法处理该图片\\n\\n建议您重新上传图片，或者尝试上传其他格式的图片文件（如JPG、PNG等）进行测试。\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"multimodal_subagent\", \"id\": \"8c395d57-fcae-42b4-9419-80242ef5d4bd\", \"tool_call_id\": \"call_v0j9ml1s89lfdfk8aifue1jy\", \"artifact\": null, \"status\": \"success\"}, {\"content\": \"看起来图片上传或处理过程中出现了一些问题。让我尝试使用文档分析工具来查看这个图片文件：\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"tool_calls\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd71e-816d-71e3-916a-3a9db89239ac\", \"tool_calls\": [{\"name\": \"document_subagent\", \"args\": {\"task\": \"请分析用户上传的test-image.png图片文件的内容\"}, \"id\": \"call_0odsz0ye1hvwczmamsifyd9n\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 1599, \"output_tokens\": 46, \"total_tokens\": 1645, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}, {\"content\": \"我主要专注于处理PDF、DOCX等文档文件的分析和管理。对于图片文件（如test-image.png）的分析，需要由专门的多模态助手来处理，这类助手能够识别图像内容、进行视觉分析等。\\n\\n目前我无法直接处理图片文件，建议您：\\n1. 如果需要分析图片内容，可以联系支持图像处理的多模态助手\\n2. 如果您有PDF、Word等文档文件需要分析，我很乐意为您处理\\n\\n您还有其他文档相关的需求吗？比如管理已有的文档、搜索特定内容等。\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"document_subagent\", \"id\": \"2e25cb4f-4e2d-4d6f-be1d-d0882c3edab9\", \"tool_call_id\": \"call_0odsz0ye1hvwczmamsifyd9n\", \"artifact\": null, \"status\": \"success\"}, {\"content\": \"很抱歉，目前我无法直接分析您上传的图片内容。从系统反馈来看，图片处理功能暂时遇到了一些技术限制。\\n\\n**建议您尝试以下方法：**\\n\\n1. **重新上传图片** - 可能是上传过程中出现了问题，重新上传可能会有帮助\\n2. **描述图片内容** - 如果您能简单描述一下图片的内容，我可以基于您的描述提供相关信息和帮助\\n3. **使用其他格式** - 如果可能的话，可以尝试将图片转换为JPG等常见格式\\n\\n**我能为您提供的替代帮助：**\\n- 如果您有PDF、Word等文档文件，我可以帮您分析\\n- 如果您能描述图片内容，我可以提供相关知识或建议\\n- 我可以帮您搜索相关的图片主题信息\\n\\n请告诉我您希望如何继续，或者重新上传图片让我再试一次！\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd71e-a286-75b2-98d4-92c35d059d3b\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 1758, \"output_tokens\": 172, \"total_tokens\": 1930, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}]}"
+                        - cell "ℹ️ 45" [ref=e804]:
+                          - generic [ref=e808]: ℹ️ 45
+                        - cell "25.23s" [ref=e809]:
+                          - generic [ref=e811]: 25.23s
+                        - cell "8,627 → 503 (∑ 9,130)" [ref=e812]:
+                          - button "8,627 → 503 (∑ 9,130)" [ref=e814]:
+                            - generic [ref=e815]:
+                              - generic [ref=e816]: 8,627 → 503 (∑ 9,130)
+                              - img [ref=e817]
+                        - cell [ref=e819]
+                        - cell "default" [ref=e821]:
+                          - generic [ref=e824]: default
+                        - cell [ref=e825]:
+                          - img [ref=e829]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"c207b1d74f0549edb739b159462fb0eb\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e832]':
+                          - generic [ref=e834]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"c207b1d74f0549edb739b159462fb0eb\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e835]
+                        - cell [ref=e837]:
+                          - button [ref=e839]:
+                            - img [ref=e840]
+                      - row [ref=e844] [cursor=pointer]:
+                        - cell "Select row" [ref=e845]:
+                          - checkbox "Select row" [ref=e848]
+                        - cell "bookmark" [ref=e849]:
+                          - button "bookmark" [ref=e851]:
+                            - img [ref=e852]
+                        - cell "2026-03-10 17:34:09" [ref=e854]:
+                          - 'generic "UTC: 2026-03-10 09:34:09.834" [ref=e856]': 2026-03-10 17:34:09
+                        - cell "chat" [ref=e857]:
+                          - generic [ref=e859]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"请解析这个PDF文档的标题和核心内容\\n\\n[用户上传了 1 个附件: test-doc.pdf(document)]\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e860]':
+                          - generic [ref=e862]: "{\"messages\": [{\"content\": \"请解析这个PDF文档的标题和核心内容\\n\\n[用户上传了 1 个附件: test-doc.pdf(document)]\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - cell [ref=e863]:
+                          - generic [ref=e865]: "{\"messages\": [{\"content\": \"请解析这个PDF文档的标题和核心内容\\n\\n[用户上传了 1 个附件: test-doc.pdf(document)]\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"6ad07050-8c1c-441e-8703-7bc246be84fd\"}, {\"content\": \"我来帮您解析这个PDF文档的标题和核心内容。让我使用文档解析工具来查看文档内容。\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"tool_calls\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd718-c1af-7d32-9c07-6e5306055a8e\", \"tool_calls\": [{\"name\": \"document_subagent\", \"args\": {\"task\": \"解析文档test-doc.pdf，获取标题和核心内容\"}, \"id\": \"call_v6roteb664g62uywqyv3y3df\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 3474, \"output_tokens\": 88, \"total_tokens\": 3562, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}, {\"content\": \"我看到您的文档列表中确实有test-doc.pdf文件（ID: de482a），但显示为\\\"未解析\\\"状态。由于文档解析服务目前暂时不可用，我无法直接获取该文档的标题和核心内容。\\n\\n不过，我可以为您提供几个替代方案：\\n\\n1. **稍后重试**：文档解析服务可能只是暂时性的技术问题，您可以稍后重新尝试解析\\n\\n2. **查看其他已解析文档**：如果您有其他已解析的文档需要分析，我可以帮您读取它们的内容\\n\\n3. **手动描述**：如果您能简单描述一下test-doc.pdf的大致内容，我可以基于您的描述提供相关建议或帮助\\n\\n目前文档解析功能遇到技术问题，建议您稍后再试。如果您有其他已解析的文档需要分析，请告诉我具体的文档名称或ID，我很乐意帮您提取其中的信息。\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"document_subagent\", \"id\": \"b7db8eac-dc01-495f-b18b-4170f593f9dc\", \"tool_call_id\": \"call_v6roteb664g62uywqyv3y3df\", \"artifact\": null, \"status\": \"success\"}, {\"content\": \"目前文档解析服务暂时不可用，我无法直接解析您上传的test-doc.pdf文档。\\n\\n不过，我可以为您提供几个替代方案：\\n\\n## 当前可用的选项\\n\\n1. **稍后重试** - 文档解析服务可能只是暂时性的技术问题，建议您稍后再尝试解析\\n\\n2. **手动描述内容** - 如果您能简单描述一下文档的大致内容，我可以基于您的描述提供相关建议或分析\\n\\n3. **查看其他已解析文档** - 如果您有其他已解析的文档需要分析，我可以帮您读取它们的内容\\n\\n## 其他帮助方式\\n\\n如果您需要：\\n- **搜索相关信息** - 我可以帮您搜索与文档主题相关的网络信息\\n- **代码分析** - 如果是技术文档，我可以帮您分析相关代码或技术概念\\n- **内容整理** - 基于您描述的内容，我可以帮您整理要点或制作摘要\\n\\n您希望采用哪种方式来处理这个文档呢？\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd719-1197-7171-88f9-427992f7a70c\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 1738, \"output_tokens\": 199, \"total_tokens\": 1937, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}]}"
+                        - cell "ℹ️ 39" [ref=e866]:
+                          - generic [ref=e870]: ℹ️ 39
+                        - cell "28.13s" [ref=e871]:
+                          - generic [ref=e873]: 28.13s
+                        - cell "8,799 → 607 (∑ 9,406)" [ref=e874]:
+                          - button "8,799 → 607 (∑ 9,406)" [ref=e876]:
+                            - generic [ref=e877]:
+                              - generic [ref=e878]: 8,799 → 607 (∑ 9,406)
+                              - img [ref=e879]
+                        - cell [ref=e881]
+                        - cell "default" [ref=e883]:
+                          - generic [ref=e886]: default
+                        - cell [ref=e887]:
+                          - img [ref=e891]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"35e0898003b94be7998bcec9bb37ffac\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e894]':
+                          - generic [ref=e896]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"35e0898003b94be7998bcec9bb37ffac\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e897]
+                        - cell [ref=e899]:
+                          - button [ref=e901]:
+                            - img [ref=e902]
+                      - row [ref=e906] [cursor=pointer]:
+                        - cell "Select row" [ref=e907]:
+                          - checkbox "Select row" [ref=e910]
+                        - cell "bookmark" [ref=e911]:
+                          - button "bookmark" [ref=e913]:
+                            - img [ref=e914]
+                        - cell "2026-03-10 17:16:48" [ref=e916]:
+                          - 'generic "UTC: 2026-03-10 09:16:48.218" [ref=e918]': 2026-03-10 17:16:48
+                        - cell "chat" [ref=e919]:
+                          - generic [ref=e921]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"帮我查一下家里客厅的温度是多少\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e922]':
+                          - generic [ref=e924]: "{\"messages\": [{\"content\": \"帮我查一下家里客厅的温度是多少\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - cell [ref=e925]:
+                          - generic [ref=e927]: "{\"messages\": [{\"content\": \"帮我查一下家里客厅的温度是多少\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"1adf006f-f733-44d8-ab3a-f99f8cf09636\"}, {\"content\": \"我来帮您查询家里客厅的温度。让我连接到智能家居系统查看当前状态。\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"tool_calls\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd708-dcdd-75a3-ad84-1aaf5caad7d4\", \"tool_calls\": [{\"name\": \"ha_subagent\", \"args\": {\"task\": \"查询客厅温度设备的当前状态和温度值\"}, \"id\": \"call_vmf0p87c9wbxxbn6qxcmqtrz\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 3655, \"output_tokens\": 90, \"total_tokens\": 3745, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}, {\"content\": \"根据查询结果，目前您的智能家居系统中存在温度传感器设备，但所有温度传感器都显示为**不可用状态**（unavailable）。\\n\\n**当前状态：**\\n- 检测到多个温度传感器设备（如 `sensor.xiaomi_mini_0ba5_temperature`）\\n- 所有温度传感器状态：**不可用**\\n- 最后更新时间：2026-03-05 03:04:04（已有一段时间未更新）\\n\\n**可能原因：**\\n1. 温度传感器设备可能电池耗尽或离线\\n2. 设备连接问题（如WiFi断开）\\n3. 传感器固件或通信故障\\n\\n**建议操作：**\\n1. 检查温度传感器的物理状态和电池电量\\n2. 确认设备是否在有效连接范围内\\n3. 尝试重启相关设备或Home Assistant系统\\n\\n系统整体运行正常，但温度传感器设备需要重新连接才能获取实时温度数据。\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"ha_subagent\", \"id\": \"ceadf8e6-bbf2-4536-85a9-6f9fecbc12e6\", \"tool_call_id\": \"call_vmf0p87c9wbxxbn6qxcmqtrz\", \"artifact\": null, \"status\": \"success\"}, {\"content\": \"根据智能家居系统的查询结果，目前无法获取客厅的实时温度信息。\\n\\n**当前状态：**\\n- 温度传感器设备处于**不可用状态**\\n- 最后更新时间是2026年3月5日，已经有一段时间没有更新数据了\\n\\n**可能的原因：**\\n1. 温度传感器电池可能耗尽\\n2. 设备连接问题（WiFi断开或距离过远）\\n3. 传感器固件或通信故障\\n\\n**建议您：**\\n1. 检查一下客厅的温度传感器设备是否正常供电\\n2. 确认设备是否在WiFi信号覆盖范围内\\n3. 可以尝试重启设备或重新配对\\n\\n如果您需要了解当前温度，建议您手动查看一下温度计，或者我可以帮您查询深圳当前的气温作为参考。\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd709-3bab-7092-a6f8-5058098d104f\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 1688, \"output_tokens\": 161, \"total_tokens\": 1849, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}]}"
+                        - cell "ℹ️ 46" [ref=e928]:
+                          - generic [ref=e932]: ℹ️ 46
+                        - cell "31.51s" [ref=e933]:
+                          - generic [ref=e935]: 31.51s
+                        - cell "12,617 → 592 (∑ 13,209)" [ref=e936]:
+                          - button "12,617 → 592 (∑ 13,209)" [ref=e938]:
+                            - generic [ref=e939]:
+                              - generic [ref=e940]: 12,617 → 592 (∑ 13,209)
+                              - img [ref=e941]
+                        - cell [ref=e943]
+                        - cell "default" [ref=e945]:
+                          - generic [ref=e948]: default
+                        - cell [ref=e949]:
+                          - img [ref=e953]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"2da0d8699f05431b8222c13ed077a767\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e956]':
+                          - generic [ref=e958]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"2da0d8699f05431b8222c13ed077a767\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e959]
+                        - cell [ref=e961]:
+                          - button [ref=e963]:
+                            - img [ref=e964]
+                      - row [ref=e968] [cursor=pointer]:
+                        - cell "Select row" [ref=e969]:
+                          - checkbox "Select row" [ref=e972]
+                        - cell "bookmark" [ref=e973]:
+                          - button "bookmark" [ref=e975]:
+                            - img [ref=e976]
+                        - cell "2026-03-10 17:16:09" [ref=e978]:
+                          - 'generic "UTC: 2026-03-10 09:16:09.671" [ref=e980]': 2026-03-10 17:16:09
+                        - cell "chat" [ref=e981]:
+                          - generic [ref=e983]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"请记住：我最近开始学习弹钢琴了\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e984]':
+                          - generic [ref=e986]: "{\"messages\": [{\"content\": \"请记住：我最近开始学习弹钢琴了\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - cell [ref=e987]:
+                          - generic [ref=e989]: "{\"messages\": [{\"content\": \"请记住：我最近开始学习弹钢琴了\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"a6697953-fc45-427b-b0de-b312fb16fbd2\"}, {\"content\": \"\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"tool_calls\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd708-464c-7ee0-b972-c6675ea3b883\", \"tool_calls\": [{\"name\": \"memory_subagent\", \"args\": {\"task\": \"记住用户最近开始学习弹钢琴了\"}, \"id\": \"call_fcurxkgsbnjy6jf6oubj3krp\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 4053, \"output_tokens\": 21, \"total_tokens\": 4074, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}, {\"content\": \"已成功更新您的记忆！我已经确认并记录了您最近开始学习弹钢琴的信息，包括每周三晚上练习的习惯。这条信息已保存在您的个人爱好分类中。\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"memory_subagent\", \"id\": \"f2a66541-9174-4c99-92ed-53827951d9cc\", \"tool_call_id\": \"call_fcurxkgsbnjy6jf6oubj3krp\", \"artifact\": null, \"status\": \"success\"}, {\"content\": \"好的！已经帮您记住了这个重要的信息：\\n\\n🎹 **弹钢琴学习记录**\\n- 您最近开始学习弹钢琴\\n- 每周三晚上进行练习\\n\\n这个信息已经安全地保存在您的个人档案中。学习弹钢琴是个很棒的兴趣爱好！如果您在钢琴学习过程中有任何问题，比如：\\n- 乐理知识\\n- 指法练习\\n- 曲目推荐\\n- 练习方法\\n\\n随时可以问我，我很乐意帮助您！祝您钢琴学习愉快！🎶\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd708-7ba3-78f1-9b0d-048158acd53b\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 1526, \"output_tokens\": 104, \"total_tokens\": 1630, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}]}"
+                        - cell "ℹ️ 38" [ref=e990]:
+                          - generic [ref=e994]: ℹ️ 38
+                        - cell "19.19s" [ref=e995]:
+                          - generic [ref=e997]: 19.19s
+                        - cell "8,374 → 257 (∑ 8,631)" [ref=e998]:
+                          - button "8,374 → 257 (∑ 8,631)" [ref=e1000]:
+                            - generic [ref=e1001]:
+                              - generic [ref=e1002]: 8,374 → 257 (∑ 8,631)
+                              - img [ref=e1003]
+                        - cell [ref=e1005]
+                        - cell "default" [ref=e1007]:
+                          - generic [ref=e1010]: default
+                        - cell [ref=e1011]:
+                          - img [ref=e1015]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"b4c6e2ac098c4a59bb68280aa4b16588\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e1018]':
+                          - generic [ref=e1020]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"b4c6e2ac098c4a59bb68280aa4b16588\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e1021]
+                        - cell [ref=e1023]:
+                          - button [ref=e1025]:
+                            - img [ref=e1026]
+                      - row [ref=e1030] [cursor=pointer]:
+                        - cell "Select row" [ref=e1031]:
+                          - checkbox "Select row" [ref=e1034]
+                        - cell "bookmark" [ref=e1035]:
+                          - button "bookmark" [ref=e1037]:
+                            - img [ref=e1038]
+                        - cell "2026-03-10 17:07:38" [ref=e1040]:
+                          - 'generic "UTC: 2026-03-10 09:07:38.605" [ref=e1042]': 2026-03-10 17:07:38
+                        - cell "chat" [ref=e1043]:
+                          - generic [ref=e1045]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"你记得我养的宠物叫什么名字吗？\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e1046]':
+                          - generic [ref=e1048]: "{\"messages\": [{\"content\": \"你记得我养的宠物叫什么名字吗？\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - 'cell "{\"messages\": [{\"content\": \"你记得我养的宠物叫什么名字吗？\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"9ae6cfc4-e599-4f9b-a735-4d2fbccb1b87\"}, {\"content\": \"根据系统检索到的用户记忆，您养了一只叫**团子**的橘猫！🐱\\n\\n我记得您之前提到过这只可爱的橘猫，名字很可爱呢！橘猫通常性格都很温顺亲人，团子一定给您带来了很多欢乐吧？\\n\\n如果您想聊聊团子的近况，或者需要任何关于宠物护理的建议，我都很乐意帮助您！\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd700-79f0-7991-9d3a-27a160a9c197\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 4067, \"output_tokens\": 77, \"total_tokens\": 4144, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}]}" [ref=e1049]':
+                          - generic [ref=e1051]: "{\"messages\": [{\"content\": \"你记得我养的宠物叫什么名字吗？\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"9ae6cfc4-e599-4f9b-a735-4d2fbccb1b87\"}, {\"content\": \"根据系统检索到的用户记忆，您养了一只叫**团子**的橘猫！🐱\\n\\n我记得您之前提到过这只可爱的橘猫，名字很可爱呢！橘猫通常性格都很温顺亲人，团子一定给您带来了很多欢乐吧？\\n\\n如果您想聊聊团子的近况，或者需要任何关于宠物护理的建议，我都很乐意帮助您！\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd700-79f0-7991-9d3a-27a160a9c197\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 4067, \"output_tokens\": 77, \"total_tokens\": 4144, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}]}"
+                        - cell "ℹ️ 7" [ref=e1052]:
+                          - generic [ref=e1056]: ℹ️ 7
+                        - cell "4.61s" [ref=e1057]:
+                          - generic [ref=e1059]: 4.61s
+                        - cell "4,067 → 77 (∑ 4,144)" [ref=e1060]:
+                          - button "4,067 → 77 (∑ 4,144)" [ref=e1062]:
+                            - generic [ref=e1063]:
+                              - generic [ref=e1064]: 4,067 → 77 (∑ 4,144)
+                              - img [ref=e1065]
+                        - cell [ref=e1067]
+                        - cell "default" [ref=e1069]:
+                          - generic [ref=e1072]: default
+                        - cell [ref=e1073]:
+                          - img [ref=e1077]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"dfaf99ab26c147439337afa30e12570c\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e1080]':
+                          - generic [ref=e1082]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"dfaf99ab26c147439337afa30e12570c\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e1083]
+                        - cell [ref=e1085]:
+                          - button [ref=e1087]:
+                            - img [ref=e1088]
+                      - row [ref=e1092] [cursor=pointer]:
+                        - cell "Select row" [ref=e1093]:
+                          - checkbox "Select row" [ref=e1096]
+                        - cell "bookmark" [ref=e1097]:
+                          - button "bookmark" [ref=e1099]:
+                            - img [ref=e1100]
+                        - cell "2026-03-10 17:01:26" [ref=e1102]:
+                          - 'generic "UTC: 2026-03-10 09:01:26.888" [ref=e1104]': 2026-03-10 17:01:26
+                        - cell "chat" [ref=e1105]:
+                          - generic [ref=e1107]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"你好，今天天气怎么样？\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e1108]':
+                          - generic [ref=e1110]: "{\"messages\": [{\"content\": \"你好，今天天气怎么样？\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - cell [ref=e1111]:
+                          - generic [ref=e1113]: "{\"messages\": [{\"content\": \"你好，今天天气怎么样？\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"ed8e6a1f-9299-4864-b343-0688daae15ca\"}, {\"content\": \"我来帮您查询今天深圳的天气情况。\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"tool_calls\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd6fa-cdeb-73b3-b6dd-bd4f9a1b67da\", \"tool_calls\": [{\"name\": \"search_subagent\", \"args\": {\"task\": \"今天深圳天气预报 温度 降雨 风力\"}, \"id\": \"call_0wn28gf3yv0mulxdtn95xewi\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 3922, \"output_tokens\": 74, \"total_tokens\": 3996, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}, {\"content\": \"根据搜索结果，我来为您提供深圳今天的详细天气预报信息：\\n\\n## 深圳今天天气预报\\n\\n根据深圳市气象局的官方信息[[2]]，今天深圳的天气情况如下：\\n\\n**温度：** 无明显降温，感冒机率较低[[1]]\\n\\n**降雨：** 具体降雨情况需要查看实时预报，建议关注深圳市气象局官方发布的今日天气预报[[2]]\\n\\n**风力：** 可通过深圳市气象局网站查看阵风监测数据[[2]]\\n\\n由于搜索结果中未显示具体的温度、降雨和风力数值，建议您直接访问深圳市气象局官方网站获取最准确的实时天气信息。深圳市气象局提供详细的天气实况与预报服务[[2]]，包括雷达图像、卫星云图、降雨估测、自动站查询等专业气象数据。\\n\\n**参考来源：**\\n1. [深圳天气预报,深圳7天天气预报,深圳15天天气预报,深圳天气查询](https://www.weather.com.cn/weather/101280601.shtml)\\n2. [天气实况与预报-深圳市气象局（台）](https://weather.sz.gov.cn/mobile/qixiangfuwu/yubaofuwu/jinmingtianqiyubao/)\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"search_subagent\", \"id\": \"e5c60d3a-a2ac-4e34-bc86-269e0ecd0ecd\", \"tool_call_id\": \"call_0wn28gf3yv0mulxdtn95xewi\", \"artifact\": null, \"status\": \"success\"}, {\"content\": \"根据我查询到的信息，今天深圳的天气情况如下：\\n\\n## 🌤️ 深圳今日天气概况\\n\\n**温度：** 无明显降温，感冒机率较低，整体温度适宜\\n\\n**降雨：** 具体降雨情况需要查看实时预报\\n\\n**风力：** 可通过气象局网站查看阵风监测数据\\n\\n由于搜索结果中缺少具体的温度数值和详细预报，我建议您：\\n\\n1. **访问官方渠道**：深圳市气象局官网提供最准确的实时天气信息\\n2. **查看详细预报**：包括雷达图像、卫星云图、降雨估测等专业数据\\n3. **关注变化**：深圳天气变化较快，建议随时关注最新预报\\n\\n需要我帮您查询更详细的天气预报信息吗？比如具体的温度范围、降雨概率等？\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd6fb-2db5-7a92-832d-daa783941f40\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 1730, \"output_tokens\": 164, \"total_tokens\": 1894, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}]}"
+                        - cell "ℹ️ 38" [ref=e1114]:
+                          - generic [ref=e1118]: ℹ️ 38
+                        - cell "32.09s" [ref=e1119]:
+                          - generic [ref=e1121]: 32.09s
+                        - cell "7,515 → 600 (∑ 8,115)" [ref=e1122]:
+                          - button "7,515 → 600 (∑ 8,115)" [ref=e1124]:
+                            - generic [ref=e1125]:
+                              - generic [ref=e1126]: 7,515 → 600 (∑ 8,115)
+                              - img [ref=e1127]
+                        - cell [ref=e1129]
+                        - cell "default" [ref=e1131]:
+                          - generic [ref=e1134]: default
+                        - cell [ref=e1135]:
+                          - img [ref=e1139]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"8cb7f24423fd46eb819f0c8be1bda0e4\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e1142]':
+                          - generic [ref=e1144]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"8cb7f24423fd46eb819f0c8be1bda0e4\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e1145]
+                        - cell [ref=e1147]:
+                          - button [ref=e1149]:
+                            - img [ref=e1150]
+                      - row [ref=e1154] [cursor=pointer]:
+                        - cell "Select row" [ref=e1155]:
+                          - checkbox "Select row" [ref=e1158]
+                        - cell "bookmark" [ref=e1159]:
+                          - button "bookmark" [ref=e1161]:
+                            - img [ref=e1162]
+                        - cell "2026-03-10 11:47:50" [ref=e1164]:
+                          - 'generic "UTC: 2026-03-10 03:47:50.148" [ref=e1166]': 2026-03-10 11:47:50
+                        - cell "chat" [ref=e1167]:
+                          - generic [ref=e1169]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"你好，简短回复测试一下SSE流是否正常\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e1170]':
+                          - generic [ref=e1172]: "{\"messages\": [{\"content\": \"你好，简短回复测试一下SSE流是否正常\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - 'cell "{\"messages\": [{\"content\": \"你好，简短回复测试一下SSE流是否正常\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"3d1328dd-a540-49a7-a1bf-0c020a65aef7\"}, {\"content\": \"您好！SSE流连接正常，可以正常接收我的回复。这是一个简短的测试回复，确认通信畅通。\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd5db-af0a-79f3-884b-c3a08b180717\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 3915, \"output_tokens\": 24, \"total_tokens\": 3939, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}]}" [ref=e1173]':
+                          - generic [ref=e1175]: "{\"messages\": [{\"content\": \"你好，简短回复测试一下SSE流是否正常\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"3d1328dd-a540-49a7-a1bf-0c020a65aef7\"}, {\"content\": \"您好！SSE流连接正常，可以正常接收我的回复。这是一个简短的测试回复，确认通信畅通。\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd5db-af0a-79f3-884b-c3a08b180717\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 3915, \"output_tokens\": 24, \"total_tokens\": 3939, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}]}"
+                        - cell "ℹ️ 7" [ref=e1176]:
+                          - generic [ref=e1180]: ℹ️ 7
+                        - cell "2.18s" [ref=e1181]:
+                          - generic [ref=e1183]: 2.18s
+                        - cell "3,915 → 24 (∑ 3,939)" [ref=e1184]:
+                          - button "3,915 → 24 (∑ 3,939)" [ref=e1186]:
+                            - generic [ref=e1187]:
+                              - generic [ref=e1188]: 3,915 → 24 (∑ 3,939)
+                              - img [ref=e1189]
+                        - cell [ref=e1191]
+                        - cell "default" [ref=e1193]:
+                          - generic [ref=e1196]: default
+                        - cell [ref=e1197]:
+                          - img [ref=e1201]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"8b75d974e658466880b65f0616f7eda2\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e1204]':
+                          - generic [ref=e1206]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"8b75d974e658466880b65f0616f7eda2\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e1207]
+                        - cell [ref=e1209]:
+                          - button [ref=e1211]:
+                            - img [ref=e1212]
+                      - row [ref=e1216] [cursor=pointer]:
+                        - cell "Select row" [ref=e1217]:
+                          - checkbox "Select row" [ref=e1220]
+                        - cell "bookmark" [ref=e1221]:
+                          - button "bookmark" [ref=e1223]:
+                            - img [ref=e1224]
+                        - cell "2026-03-10 09:03:38" [ref=e1226]:
+                          - 'generic "UTC: 2026-03-10 01:03:38.386" [ref=e1228]': 2026-03-10 09:03:38
+                        - cell "chat" [ref=e1229]:
+                          - generic [ref=e1231]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"请解析这篇PDF论文，总结核心方法和实验结果\\n\\n[用户上传了 1 个附件: 2506.11555v2.pdf(document)]\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e1232]':
+                          - generic [ref=e1234]: "{\"messages\": [{\"content\": \"请解析这篇PDF论文，总结核心方法和实验结果\\n\\n[用户上传了 1 个附件: 2506.11555v2.pdf(document)]\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - cell [ref=e1235]:
+                          - generic [ref=e1237]: "{\"messages\": [{\"content\": \"请解析这篇PDF论文，总结核心方法和实验结果\\n\\n[用户上传了 1 个附件: 2506.11555v2.pdf(document)]\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": \"68927885-bebf-413c-b7b7-c732facfbc47\"}, {\"content\": \"我来帮您解析这篇PDF论文，总结核心方法和实验结果。让我使用文档解析工具来详细查看文档内容。\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"tool_calls\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd545-5b95-7671-bc88-35b5af59e86e\", \"tool_calls\": [{\"name\": \"document_subagent\", \"args\": {\"task\": \"解析文档 2506.11555v2.pdf 的标题、作者、核心方法和实验结果\"}, \"id\": \"call_1ttajor18senr4shr5cw9pld\", \"type\": \"tool_call\"}], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 3773, \"output_tokens\": 118, \"total_tokens\": 3891, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}, {\"content\": \"基于文档解析结果，我为您提取了文档 2506.11555v2.pdf 的核心信息：\\n\\n## 📄 文档基本信息\\n\\n**标题**: RAG+: Enhancing Retrieval-Augmented Generation with Application-Aware Reasoning\\n\\n**作者**: \\n- Yu Wang¹,² (华为技术有限公司 & 西安交通大学)\\n- Shiwuan Zhao³ (南开大学) \\n- Zhihu Wang¹ (华为技术有限公司)\\n- Yubo Zhang¹ (华为技术有限公司)\\n- Xicheng Zhang² (西安交通大学)\\n- Zhengfan Zhang¹ (华为技术有限公司)\\n- Heyuan Huang¹ (华为技术有限公司)\\n- Ming Fan² (西安交通大学)\\n- Ting Liu² (西安交通大学)\\n\\n## 🔬 核心方法\\n\\n**RAG+ 框架的核心创新**:\\n1. **双语料库设计**: 同时包含知识示例和应用导向的推理示例\\n2. **应用感知推理**: 在检索和生成过程中集成应用特定的推理结构\\n3. **动态调优**: 根据任务推理需求动态调整检索和生成过程\\n4. **联合检索**: 在推理时联合检索知识示例和应用示例\\n\\n**与传统RAG的区别**:\\n- 标准RAG仅关注知识检索的相关性\\n- RAG+强调知识的正确应用，确保检索到的知识能够在推理过程中被正确使用\\n\\n## 📊 实验结果\\n\\n**性能提升显著**:\\n- **数学领域**: RAG+ 达到 87.0% 性能，显著优于：\\n - 标准RAG: 76.5%\\n - Answer-First RAG: 72.5%\\n - Rerank RAG: 70.3%\\n- **医学领域**: RAG+ 得分 86.5%，超越 DS-Qwen-7B (83.2%)\\n- **整体提升**: 在复杂推理任务上比标准RAG提升高达 7.5% 的准确率\\n\\n**关键优势**:\\n- 在需要领域特定知识应用的复杂任务中表现尤为突出\\n- 提供更可解释和准确的响应\\n- 通过分解任务为更小的推理步骤，实现更精细的控制\\n\\nRAG+ 框架通过将信息检索与应用感知推理相结合，显著提升了大型语言模型在复杂推理任务中的性能表现。\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"tool\", \"name\": \"document_subagent\", \"id\": \"8ba3d59a-9fd2-4b98-a85e-a907a6964293\", \"tool_call_id\": \"call_1ttajor18senr4shr5cw9pld\", \"artifact\": null, \"status\": \"success\"}, {\"content\": \"基于对论文的详细解析，我来为您总结这篇《RAG+：通过应用感知推理增强检索增强生成》的核心内容：\\n\\n## 📋 论文核心摘要\\n\\n### 🎯 研究问题\\n传统RAG（检索增强生成）框架在复杂推理任务中存在局限性，仅关注知识检索的相关性，而忽略了知识在特定应用场景中的正确使用。\\n\\n### 💡 核心创新方法\\n**RAG+ 框架的三大核心组件：**\\n\\n1. **双语料库设计**\\n - **知识示例**：包含领域特定知识\\n - **应用示例**：展示如何正确应用知识的推理过程\\n\\n2. **应用感知推理机制**\\n - 在检索阶段就考虑知识如何被应用\\n - 根据任务推理需求动态调整检索策略\\n\\n3. **联合检索优化**\\n - 同时检索相关知识和应用范例\\n - 确保检索到的知识能够在推理过程中被正确使用\\n\\n### 📊 实验结果亮点\\n\\n**性能显著提升：**\\n- **数学推理任务**：87.0%准确率，比标准RAG提升10.5%\\n- **医学问答任务**：86.5%准确率，超越现有先进模型\\n- **复杂推理任务**：整体提升7.5%准确率\\n\\n**关键优势：**\\n- 在需要领域特定知识应用的复杂任务中表现突出\\n- 提供更可解释和准确的响应\\n- 通过任务分解实现更精细的控制\\n\\n### 🔍 技术意义\\nRAG+ 框架通过将信息检索与应用感知推理相结合，解决了传统RAG在复杂推理任务中的关键瓶颈，为大型语言模型在专业领域的应用提供了新的技术路径。\\n\\n这篇论文在检索增强生成领域提出了重要的创新思路，特别是在需要精确知识应用的复杂推理场景中具有显著优势。\", \"additional_kwargs\": {}, \"response_metadata\": {\"finish_reason\": \"stop\", \"model_name\": \"deepseek-v3-1-terminus\", \"service_tier\": \"default\", \"model_provider\": \"openai\"}, \"type\": \"ai\", \"name\": \"chat\", \"id\": \"lc_run--019cd551-7864-7480-ad27-2b63713a8598\", \"tool_calls\": [], \"invalid_tool_calls\": [], \"usage_metadata\": {\"input_tokens\": 2046, \"output_tokens\": 379, \"total_tokens\": 2425, \"input_token_details\": {\"cache_read\": 0}, \"output_token_details\": {\"reasoning\": 0}}}]}"
+                        - cell "ℹ️ 159" [ref=e1238]:
+                          - generic [ref=e1242]: ℹ️ 159
+                        - cell "13m 27s" [ref=e1243]:
+                          - generic [ref=e1245]: 13m 27s
+                        - cell "9,058 → 1,033 (∑ 10,091)" [ref=e1246]:
+                          - button "9,058 → 1,033 (∑ 10,091)" [ref=e1248]:
+                            - generic [ref=e1249]:
+                              - generic [ref=e1250]: 9,058 → 1,033 (∑ 10,091)
+                              - img [ref=e1251]
+                        - cell [ref=e1253]
+                        - cell "default" [ref=e1255]:
+                          - generic [ref=e1258]: default
+                        - cell [ref=e1259]:
+                          - img [ref=e1263]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"01275860115241048634894ef3bc0e22\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e1266]':
+                          - generic [ref=e1268]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"01275860115241048634894ef3bc0e22\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e1269]
+                        - cell [ref=e1271]:
+                          - button [ref=e1273]:
+                            - img [ref=e1274]
+                      - 'row "Select row bookmark 2026-03-10 08:50:01 chat {\"messages\": [{\"content\": \"请重新解析刚才上传的那篇RAG+论文PDF，总结核心方法和实验结果\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]} 🚨 9 ℹ️ 198 4m 8s 41,131 → 2,612 (∑ 43,743) default {\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"b4232b03c4e74f3992551f8743c23848\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e1278] [cursor=pointer]':
+                        - cell "Select row" [ref=e1279]:
+                          - checkbox "Select row" [ref=e1282]
+                        - cell "bookmark" [ref=e1283]:
+                          - button "bookmark" [ref=e1285]:
+                            - img [ref=e1286]
+                        - cell "2026-03-10 08:50:01" [ref=e1288]:
+                          - 'generic "UTC: 2026-03-10 00:50:01.946" [ref=e1290]': 2026-03-10 08:50:01
+                        - cell "chat" [ref=e1291]:
+                          - generic [ref=e1293]: chat
+                        - 'cell "{\"messages\": [{\"content\": \"请重新解析刚才上传的那篇RAG+论文PDF，总结核心方法和实验结果\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}" [ref=e1294]':
+                          - generic [ref=e1296]: "{\"messages\": [{\"content\": \"请重新解析刚才上传的那篇RAG+论文PDF，总结核心方法和实验结果\", \"additional_kwargs\": {}, \"response_metadata\": {}, \"type\": \"human\", \"name\": null, \"id\": null}]}"
+                        - cell [ref=e1297]
+                        - cell "🚨 9 ℹ️ 198" [ref=e1300]:
+                          - generic [ref=e1302]:
+                            - generic [ref=e1304]: 🚨 9
+                            - generic [ref=e1306]: ℹ️ 198
+                        - cell "4m 8s" [ref=e1307]:
+                          - generic [ref=e1309]: 4m 8s
+                        - cell "41,131 → 2,612 (∑ 43,743)" [ref=e1310]:
+                          - button "41,131 → 2,612 (∑ 43,743)" [ref=e1312]:
+                            - generic [ref=e1313]:
+                              - generic [ref=e1314]: 41,131 → 2,612 (∑ 43,743)
+                              - img [ref=e1315]
+                        - cell [ref=e1317]
+                        - cell "default" [ref=e1319]:
+                          - generic [ref=e1322]: default
+                        - cell [ref=e1323]:
+                          - img [ref=e1327]
+                        - 'cell "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"b4232b03c4e74f3992551f8743c23848\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}" [ref=e1330]':
+                          - generic [ref=e1332]: "{\"thread_id\":\"user_5\",\"user_id\":5,\"request_id\":\"b4232b03c4e74f3992551f8743c23848\",\"resourceAttributes\":{\"telemetry.sdk.language\":\"python\",\"telemetry.sdk.name\":\"opentelemetry\",\"telemetry.sdk.version\":\"1.39.1\",\"service.name\":\"unknown_service\"},\"scope\":{\"name\":\"langfuse-sdk\",\"version\":\"3.12.0\",\"attributes\":{\"public_key\":\"pk-lf-65ecfc3a-02f7-4db4-a3ed-56b61e90d7e5\"}}}"
+                        - cell [ref=e1333]
+                        - cell [ref=e1335]:
+                          - button [ref=e1337]:
+                            - img [ref=e1338]
+                  - generic [ref=e543]:
+                    - generic [ref=e544]:
+                      - paragraph [ref=e545]: Rows per page
+                      - combobox [ref=e546] [cursor=pointer]:
+                        - generic: "50"
+                        - img [ref=e547]
+                    - generic [ref=e549]:
+                      - text: Page
+                      - spinbutton [ref=e1342]: "1"
+                      - generic [ref=e550]: of 1
+                    - generic [ref=e553]:
+                      - button "Go to first page" [disabled] [ref=e554]:
+                        - generic [ref=e555]: Go to first page
+                        - img [ref=e556]
+                      - button "Go to previous page" [disabled] [ref=e559]:
+                        - generic [ref=e560]: Go to previous page
+                        - img [ref=e561]
+                      - button "Go to next page" [disabled] [ref=e563]:
+                        - generic [ref=e564]: Go to next page
+                        - img [ref=e565]
+                      - button "Go to last page" [disabled] [ref=e567]:
+                        - generic [ref=e568]: Go to last page
+                        - img [ref=e569]
+      - region "Notifications alt+T"
+  - alert [ref=e572]: Tracing | Langfuse
+  - dialog "Trace aac6310133474ee59f17ff7c711c8fb6" [ref=e1345]:
+    - generic [ref=e1346]:
+      - heading "Trace aac6310133474ee59f17ff7c711c8fb6" [level=2] [ref=e1347]:
+        - generic "Trace" [ref=e1348]:
+          - img [ref=e1349]
+          - generic "Trace" [ref=e1352]
+        - generic [active] [ref=e1353]: aac6310133474ee59f17ff7c711c8fb6
+      - generic [ref=e1354]:
+        - generic [ref=e1355]:
+          - button "K" [disabled] [ref=e1356]:
+            - img [ref=e1357]
+            - generic [ref=e1359]: K
+          - button "J" [ref=e1360] [cursor=pointer]:
+            - img [ref=e1361]
+            - generic [ref=e1363]: J
+        - generic [ref=e1364]:
+          - button "Open in current tab" [ref=e1365] [cursor=pointer]:
+            - img [ref=e1366]
+          - button "Open in new tab" [ref=e1375] [cursor=pointer]:
+            - img [ref=e1376]
+    - generic [ref=e1383]:
+      - generic [ref=e1385]:
+        - generic [ref=e1388]:
+          - button "Collapse panel" [ref=e1391] [cursor=pointer]:
+            - img [ref=e1392]
+          - generic [ref=e1396]:
+            - img [ref=e1397]
+            - combobox [expanded] [ref=e1400]
+          - generic [ref=e1401]:
+            - button "Collapse all" [ref=e1402] [cursor=pointer]:
+              - img [ref=e1403]
+            - button "View Options" [ref=e1406] [cursor=pointer]:
+              - img [ref=e1407]
+            - button "Download trace as JSON" [ref=e1410] [cursor=pointer]:
+              - img [ref=e1411]
+            - button "Timeline" [ref=e1414] [cursor=pointer]:
+              - generic [ref=e1415]: Timeline
+        - generic [ref=e1416]:
+          - generic [ref=e1420]:
+            - generic [ref=e1423] [cursor=pointer]:
+              - generic "Trace" [ref=e1426]:
+                - img [ref=e1427]
+              - button "chat 10.64s" [ref=e1433]:
+                - generic [ref=e1434]:
+                  - generic [ref=e1436]: chat
+                  - generic "Aggregated duration of all child observations" [ref=e1438]: 10.64s
+              - button [expanded] [ref=e1440]:
+                - img [ref=e1442]
+            - generic [ref=e1446] [cursor=pointer]:
+              - generic "Chain" [ref=e1452]:
+                - img [ref=e1453]
+              - button "chat 10.64s" [ref=e1458]:
+                - generic [ref=e1459]:
+                  - generic [ref=e1461]: chat
+                  - generic "Aggregated duration of all child observations" [ref=e1463]: 10.64s
+              - button [expanded] [ref=e1465]:
+                - img [ref=e1467]
+            - generic [ref=e1471] [cursor=pointer]:
+              - generic "Agent" [ref=e1479]:
+                - img [ref=e1480]
+              - button "agent 10.63s" [ref=e1485]:
+                - generic [ref=e1486]:
+                  - generic [ref=e1488]: agent
+                  - generic "Aggregated duration of all child observations" [ref=e1490]: 10.63s
+              - button [expanded] [ref=e1492]:
+                - img [ref=e1494]
+            - generic [ref=e1498] [cursor=pointer]:
+              - generic "Chain" [ref=e1508]:
+                - img [ref=e1509]
+              - button "call_model 10.62s" [ref=e1513]:
+                - generic [ref=e1514]:
+                  - generic [ref=e1516]: call_model
+                  - generic [ref=e1518]: 10.62s
+            - generic [ref=e1521] [cursor=pointer]:
+              - generic "Chain" [ref=e1531]:
+                - img [ref=e1532]
+              - button "RunnableSequence 10.62s" [ref=e1537]:
+                - generic [ref=e1538]:
+                  - generic [ref=e1540]: RunnableSequence
+                  - generic "Aggregated duration of all child observations" [ref=e1542]: 10.62s
+              - button [expanded] [ref=e1544]:
+                - img [ref=e1546]
+            - generic [ref=e1550] [cursor=pointer]:
+              - generic "Chain" [ref=e1562]:
+                - img [ref=e1563]
+              - button "Prompt 0.00s" [ref=e1567]:
+                - generic [ref=e1568]:
+                  - generic [ref=e1570]: Prompt
+                  - generic [ref=e1572]: 0.00s
+            - generic [ref=e1575] [cursor=pointer]:
+              - generic "Generation" [ref=e1586]:
+                - img [ref=e1587]
+              - button "ChatOpenAI 10.60s 3,377 → 308 (∑ 3,685)" [ref=e1590]:
+                - generic [ref=e1591]:
+                  - generic [ref=e1593]: ChatOpenAI
+                  - generic [ref=e1594]:
+                    - generic [ref=e1595]: 10.60s
+                    - generic [ref=e1596]: 3,377 → 308 (∑ 3,685)
+            - generic [ref=e1599] [cursor=pointer]:
+              - generic "Chain" [ref=e1608]:
+                - img [ref=e1609]
+              - button "should_continue 0.00s" [ref=e1613]:
+                - generic [ref=e1614]:
+                  - generic [ref=e1616]: should_continue
+                  - generic [ref=e1618]: 0.00s
+          - separator [ref=e1619]
+      - separator [ref=e1627]
+      - generic [ref=e1630]:
+        - generic [ref=e1631]:
+          - generic [ref=e1632]:
+            - generic [ref=e1633]:
+              - generic "Trace" [ref=e1635]:
+                - img [ref=e1636]
+              - generic [ref=e1639]: chat
+              - button "ID" [ref=e1640] [cursor=pointer]:
+                - img [ref=e1641]
+                - generic [ref=e1644]: ID
+            - generic [ref=e1645]:
+              - button "Add to datasets" [ref=e1646] [cursor=pointer]:
+                - img [ref=e1647]
+                - text: Add to datasets
+              - generic [ref=e1648]:
+                - button "Annotate" [ref=e1649] [cursor=pointer]:
+                  - img [ref=e1650]
+                  - generic [ref=e1653]: Annotate
+                - button [ref=e1654] [cursor=pointer]:
+                  - img [ref=e1656]
+              - button "Add comment" [ref=e1658] [cursor=pointer]:
+                - generic [ref=e1659]:
+                  - img [ref=e1660]
+                  - generic [ref=e1662]: Add comment
+          - generic [ref=e1663]:
+            - 'generic "UTC: 2026-03-11 00:42:01.698" [ref=e1665]': 2026-03-11 08:42:01.698
+            - generic [ref=e1667]: "Env: default"
+        - generic [ref=e1668]:
+          - tablist [ref=e1669]:
+            - tab "Preview" [selected] [ref=e1670] [cursor=pointer]
+            - tab "Log View" [ref=e1671] [cursor=pointer]:
+              - generic [ref=e1672]: Log View
+            - tablist [ref=e1674]:
+              - tab "Formatted" [selected] [ref=e1675] [cursor=pointer]
+              - tab "JSON" [ref=e1676] [cursor=pointer]
+          - tabpanel "Preview" [ref=e1677]:
+            - generic [ref=e1679]:
+              - generic [ref=e1680]:
+                - generic [ref=e1683]:
+                  - generic [ref=e1686]:
+                    - generic [ref=e1687]:
+                      - generic [ref=e1688]: user
+                      - generic [ref=e1689]:
+                        - button "Show passthrough JSON data" [ref=e1690] [cursor=pointer]:
+                          - img [ref=e1691]
+                        - button "Copy to clipboard" [ref=e1694] [cursor=pointer]:
+                          - img [ref=e1695]
+                    - paragraph [ref=e1701]: 你好！请简单介绍一下你自己，告诉我你还记得关于我的哪些信息？
+                  - generic [ref=e1704]:
+                    - generic [ref=e1705]:
+                      - generic [ref=e1706]: user
+                      - generic [ref=e1707]:
+                        - button "Show passthrough JSON data" [ref=e1708] [cursor=pointer]:
+                          - img [ref=e1709]
+                        - button "Copy to clipboard" [ref=e1712] [cursor=pointer]:
+                          - img [ref=e1713]
+                    - paragraph [ref=e1719]: 你好！请简单介绍一下你自己，告诉我你还记得关于我的哪些信息？
+                  - generic [ref=e1722]:
+                    - generic [ref=e1723]:
+                      - generic [ref=e1724]: chat
+                      - generic [ref=e1725]:
+                        - button "Show passthrough JSON data" [ref=e1726] [cursor=pointer]:
+                          - img [ref=e1727]
+                        - button "Copy to clipboard" [ref=e1730] [cursor=pointer]:
+                          - img [ref=e1731]
+                    - generic [ref=e1736]:
+                      - paragraph [ref=e1737]: 你好！我是 LinChat，一个智能AI助手，很高兴为您服务！
+                      - paragraph [ref=e1738]: 关于我记得的您的信息，让我为您整理一下：
+                      - separator [ref=e1739]
+                      - heading "📝 关于您的记忆" [level=2] [ref=e1740]
+                      - heading "基本信息" [level=3] [ref=e1741]
+                      - table [ref=e1743]:
+                        - rowgroup [ref=e1744]:
+                          - row "项目 内容" [ref=e1745]:
+                            - columnheader "项目" [ref=e1746]
+                            - columnheader "内容" [ref=e1747]
+                        - rowgroup [ref=e1748]:
+                          - row "居住地 深圳" [ref=e1749]:
+                            - cell "居住地" [ref=e1750]
+                            - cell "深圳" [ref=e1751]
+                          - row "工作单位 腾讯" [ref=e1752]:
+                            - cell "工作单位" [ref=e1753]
+                            - cell "腾讯" [ref=e1754]
+                          - row "职位 产品经理" [ref=e1755]:
+                            - cell "职位" [ref=e1756]
+                            - cell "产品经理" [ref=e1757]
+                          - row "生日 12月29日" [ref=e1758]:
+                            - cell "生日" [ref=e1759]
+                            - cell "12月29日" [ref=e1760]
+                      - heading "兴趣爱好" [level=3] [ref=e1761]
+                      - list [ref=e1762]:
+                        - listitem [ref=e1763]:
+                          - text: 🎨
+                          - strong [ref=e1764]: 编程语言
+                          - text: ：Python、TypeScript、Rust（最近在学习Rust）
+                        - listitem [ref=e1765]:
+                          - text: 🏸
+                          - strong [ref=e1766]: 运动爱好
+                          - text: ：打羽毛球
+                        - listitem [ref=e1767]:
+                          - text: 🎹
+                          - strong [ref=e1768]: 新技能
+                          - text: ：最近开始学习弹钢琴（每周三晚上练习）
+                        - listitem [ref=e1769]:
+                          - text: 🍲
+                          - strong [ref=e1770]: 美食偏好
+                          - text: ：最喜欢吃火锅
+                      - heading "生活点滴" [level=3] [ref=e1771]
+                      - list [ref=e1772]:
+                        - listitem [ref=e1773]:
+                          - text: 🐱 养了一只叫
+                          - strong [ref=e1774]: 团子
+                          - text: 的橘猫
+                        - listitem [ref=e1775]: 最近有一个重要事项需要完成：修改工具和添加实时监控功能
+                      - separator [ref=e1776]
+                      - heading "💡 我能为您做什么？" [level=2] [ref=e1777]
+                      - paragraph [ref=e1778]: 作为您的智能助手，我可以：
+                      - list [ref=e1779]:
+                        - listitem [ref=e1780]:
+                          - strong [ref=e1781]: 信息查询
+                          - text: "- 搜索互联网获取最新资讯、新闻、技术动态等"
+                        - listitem [ref=e1782]:
+                          - strong [ref=e1783]: 文档处理
+                          - text: "- 解析、总结、搜索您的文档资料"
+                        - listitem [ref=e1784]:
+                          - strong [ref=e1785]: 代码协助
+                          - text: "- 执行Python代码、数据分析、技术问题解答"
+                        - listitem [ref=e1786]:
+                          - strong [ref=e1787]: 智能家居
+                          - text: "- 控制和查询您的智能设备状态"
+                        - listitem [ref=e1788]:
+                          - strong [ref=e1789]: 多媒体分析
+                          - text: "- 分析图片、视频等内容"
+                        - listitem [ref=e1790]:
+                          - strong [ref=e1791]: 记忆管理
+                          - text: "- 帮您记录和回忆重要信息"
+                        - listitem [ref=e1792]:
+                          - strong [ref=e1793]: 历史对话
+                          - text: "- 搜索我们之前的聊天记录"
+                      - paragraph [ref=e1794]: 有什么我可以帮您的吗？😊
+                - generic [ref=e1796]:
+                  - generic [ref=e1797]:
+                    - generic [ref=e1798]:
+                      - generic [ref=e1799]: Corrected Output (Beta)
+                      - button [ref=e1800] [cursor=pointer]:
+                        - img [ref=e1801]
+                    - generic [ref=e1804]:
+                      - switch [disabled] [ref=e1805]
+                      - generic [ref=e1806]: JSON
+                  - button "Click to add corrected output" [ref=e1807] [cursor=pointer]
+              - generic [ref=e1809]:
+                - generic [ref=e1810]:
+                  - generic [ref=e1811]: Metadata
+                  - generic [ref=e1812]:
+                    - button "Expand all rows" [ref=e1813] [cursor=pointer]:
+                      - img [ref=e1814]
+                    - button "Copy to clipboard" [ref=e1817] [cursor=pointer]:
+                      - img [ref=e1818]
+                - table [ref=e1824]:
+                  - rowgroup [ref=e1825]:
+                    - row "Path Value" [ref=e1826]:
+                      - columnheader "Path" [ref=e1827]
+                      - columnheader "Value" [ref=e1828]
+                  - rowgroup [ref=e1829]:
+                    - row "thread_id \"user_5\" Copy cell value" [ref=e1830]:
+                      - cell "thread_id" [ref=e1831]:
+                        - generic [ref=e1833]: thread_id
+                      - cell "\"user_5\" Copy cell value" [ref=e1834]:
+                        - generic [ref=e1835]:
+                          - generic [ref=e1837]: "\"user_5\""
+                          - button "Copy cell value" [ref=e1838] [cursor=pointer]:
+                            - img [ref=e1839]
+                    - row "user_id 5 Copy cell value" [ref=e1842]:
+                      - cell "user_id" [ref=e1843]:
+                        - generic [ref=e1845]: user_id
+                      - cell "5 Copy cell value" [ref=e1846]:
+                        - generic [ref=e1847]:
+                          - generic [ref=e1848]: "5"
+                          - button "Copy cell value" [ref=e1849] [cursor=pointer]:
+                            - img [ref=e1850]
+                    - row "request_id \"aac6310133474ee59f17ff7c711c8fb6\" Copy cell value" [ref=e1853]:
+                      - cell "request_id" [ref=e1854]:
+                        - generic [ref=e1856]: request_id
+                      - cell "\"aac6310133474ee59f17ff7c711c8fb6\" Copy cell value" [ref=e1857]:
+                        - generic [ref=e1858]:
+                          - generic [ref=e1860]: "\"aac6310133474ee59f17ff7c711c8fb6\""
+                          - button "Copy cell value" [ref=e1861] [cursor=pointer]:
+                            - img [ref=e1862]
+                    - row "resourceAttributes 4 items Copy cell value" [ref=e1865] [cursor=pointer]:
+                      - cell "resourceAttributes" [ref=e1866]:
+                        - generic [ref=e1867]:
+                          - button [ref=e1869]:
+                            - img [ref=e1870]
+                          - generic [ref=e1872]: resourceAttributes
+                      - cell "4 items Copy cell value" [ref=e1873]:
+                        - generic [ref=e1874]:
+                          - generic [ref=e1876]: 4 items
+                          - button "Copy cell value" [ref=e1877]:
+                            - img [ref=e1878]
+                    - row "telemetry.sdk.language \"python\" Copy cell value" [ref=e1881]:
+                      - cell "telemetry.sdk.language" [ref=e1882]:
+                        - generic [ref=e1884]: telemetry.sdk.language
+                      - cell "\"python\" Copy cell value" [ref=e1885]:
+                        - generic [ref=e1886]:
+                          - generic [ref=e1888]: "\"python\""
+                          - button "Copy cell value" [ref=e1889] [cursor=pointer]:
+                            - img [ref=e1890]
+                    - row "telemetry.sdk.name \"opentelemetry\" Copy cell value" [ref=e1893]:
+                      - cell "telemetry.sdk.name" [ref=e1894]:
+                        - generic [ref=e1896]: telemetry.sdk.name
+                      - cell "\"opentelemetry\" Copy cell value" [ref=e1897]:
+                        - generic [ref=e1898]:
+                          - generic [ref=e1900]: "\"opentelemetry\""
+                          - button "Copy cell value" [ref=e1901] [cursor=pointer]:
+                            - img [ref=e1902]
+                    - row "telemetry.sdk.version \"1.39.1\" Copy cell value" [ref=e1905]:
+                      - cell "telemetry.sdk.version" [ref=e1906]:
+                        - generic [ref=e1908]: telemetry.sdk.version
+                      - cell "\"1.39.1\" Copy cell value" [ref=e1909]:
+                        - generic [ref=e1910]:
+                          - generic [ref=e1912]: "\"1.39.1\""
+                          - button "Copy cell value" [ref=e1913] [cursor=pointer]:
+                            - img [ref=e1914]
+                    - row "service.name \"unknown_service\" Copy cell value" [ref=e1917]:
+                      - cell "service.name" [ref=e1918]:
+                        - generic [ref=e1920]: service.name
+                      - cell "\"unknown_service\" Copy cell value" [ref=e1921]:
+                        - generic [ref=e1922]:
+                          - generic [ref=e1924]: "\"unknown_service\""
+                          - button "Copy cell value" [ref=e1925] [cursor=pointer]:
+                            - img [ref=e1926]
+                    - row "scope 3 items Copy cell value" [ref=e1929] [cursor=pointer]:
+                      - cell "scope" [ref=e1930]:
+                        - generic [ref=e1931]:
+                          - button [ref=e1933]:
+                            - img [ref=e1934]
+                          - generic [ref=e1936]: scope
+                      - cell "3 items Copy cell value" [ref=e1937]:
+                        - generic [ref=e1938]:
+                          - generic [ref=e1940]: 3 items
+                          - button "Copy cell value" [ref=e1941]:
+                            - img [ref=e1942]
+                    - row "name \"langfuse-sdk\" Copy cell value" [ref=e1945]:
+                      - cell "name" [ref=e1946]:
+                        - generic [ref=e1948]: name
+                      - cell "\"langfuse-sdk\" Copy cell value" [ref=e1949]:
+                        - generic [ref=e1950]:
+                          - generic [ref=e1952]: "\"langfuse-sdk\""
+                          - button "Copy cell value" [ref=e1953] [cursor=pointer]:
+                            - img [ref=e1954]
+                    - row "version \"3.12.0\" Copy cell value" [ref=e1957]:
+                      - cell "version" [ref=e1958]:
+                        - generic [ref=e1960]: version
+                      - cell "\"3.12.0\" Copy cell value" [ref=e1961]:
+                        - generic [ref=e1962]:
+                          - generic [ref=e1964]: "\"3.12.0\""
+                          - button "Copy cell value" [ref=e1965] [cursor=pointer]:
+                            - img [ref=e1966]
+                    - row "attributes 1 items Copy cell value" [ref=e1969] [cursor=pointer]:
+                      - cell "attributes" [ref=e1970]:
+                        - generic [ref=e1971]:
+                          - button [ref=e1973]:
+                            - img [ref=e1974]
+                          - generic [ref=e1976]: attributes
+                      - cell "1 items Copy cell value" [ref=e1977]:
+                        - generic [ref=e1978]:
+                          - generic [ref=e1980]: 1 items
+                          - button "Copy cell value" [ref=e1981]:
+                            - img [ref=e1982]
+    - button "Close" [ref=e1985] [cursor=pointer]:
+      - img [ref=e1986]
+      - generic [ref=e1989]: Close

@@ -107,6 +107,15 @@ _LLM_ERROR_MAP: list[tuple[list[str], type[LLMException]]] = [
 
 
 def map_llm_exception(e: Exception) -> LLMException:
+    # isinstance 优先：httpx 异常的 str() 可能为空，关键词匹配会漏掉
+    try:
+        import httpx
+        if isinstance(e, httpx.TimeoutException):
+            return LLMTimeoutError()
+        if isinstance(e, httpx.ConnectError):
+            return LLMConnectionError()
+    except ImportError:
+        pass
     error_str = str(e).lower()
     for keywords, exc_class in _LLM_ERROR_MAP:
         if any(kw in error_str for kw in keywords):

@@ -24,7 +24,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
 interface StreamCallbacks {
   onChunk?: (chunk: ChatStreamEvent) => void;
   onDone?: (messageId?: number) => void;
-  onError?: (error: string, data?: ChatStreamEvent['data']) => void;
+  onError?: (error: string, data?: ChatStreamEvent['data']) => void | Promise<void>;
   onInterrupted?: (messageId?: number) => void;
   onContextCompacting?: () => void;
   onContextCompacted?: () => void;
@@ -63,6 +63,7 @@ async function streamSSE(
 
     const decoder = new TextDecoder();
     let buffer = '';
+    let receivedTerminal = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -78,14 +79,19 @@ async function streamSSE(
           const data: ChatStreamEvent = JSON.parse(line.slice(6));
           switch (data.type) {
             case 'content':            onChunk?.(data); break;
-            case 'done':               onDone?.(data.message_id); break;
-            case 'error':              onError?.(data.content || errorLabel, data.data); break;
-            case 'interrupted':        onInterrupted?.(data.message_id); break;
+            case 'done':               receivedTerminal = true; onDone?.(data.message_id); break;
+            case 'error':              receivedTerminal = true; onError?.(data.content || errorLabel, data.data); break;
+            case 'interrupted':        receivedTerminal = true; onInterrupted?.(data.message_id); break;
             case 'context_compacting': onContextCompacting?.(); break;
             case 'context_compacted':  onContextCompacted?.(); break;
           }
         } catch { /* 忽略解析错误 */ }
       }
+    }
+
+    // 流读完但未收到终态事件 → 异常断开
+    if (!receivedTerminal) {
+      onError?.('__SSE_STREAM_BROKEN__');
     }
   } catch (error) {
     if ((error as Error).name === 'AbortError') return;

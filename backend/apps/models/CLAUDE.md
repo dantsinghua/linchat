@@ -75,3 +75,15 @@ source /home/dantsinghua/work/linchat/linchat/bin/activate
 cd /home/dantsinghua/work/linchat/backend
 pytest tests/models/ -v
 ```
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Mar 11, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1629 | 8:34 AM | 🔵 | Complete ModelConfig Schema Definition | ~431 |
+| #1627 | 8:33 AM | 🔵 | ModelConfig Database Schema and Security Implementation | ~361 |
+</claude-mem-context>

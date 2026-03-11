@@ -351,6 +351,9 @@ Password: Admin@123456
 
 ## 服务启动顺序
 
+> **⚠️ 推荐使用服务管理脚本**：`./scripts/services.sh {start|stop|restart|status}`
+> 脚本通过 PID 文件追踪进程，避免孤儿进程积累。每次 `start` 前自动清理旧进程。
+
 ```bash
 # 1. 启动 Docker 服务 (PostgreSQL, Redis, Langfuse 等)
 cd /home/dantsinghua/work/linchat
@@ -363,20 +366,16 @@ sudo systemctl start nginx
 sudo systemctl start wstunnel
 sudo systemctl start frpc
 
-# 4. 启动 LinChat 后端 (⚠️ 必须使用 uvicorn ASGI 模式)
-source /home/dantsinghua/work/linchat/linchat/bin/activate
-cd /home/dantsinghua/work/linchat/backend
-nohup uvicorn core.asgi:application --host 0.0.0.0 --port 8002 > /tmp/linchat-backend.log 2>&1 &
+# 4. 启动 LinChat 应用服务（后端 + Celery + 前端）
+# ⚠️ 必须使用 services.sh，禁止手动 nohup（会产生孤儿进程）
+./scripts/services.sh start     # 启动所有应用服务
+./scripts/services.sh status    # 查看状态
+./scripts/services.sh restart   # 重启所有应用服务
+./scripts/services.sh stop      # 停止所有应用服务
 
-# 5. 启动 Celery Worker 和 Beat (媒体过期清理定时任务)
-cd /home/dantsinghua/work/linchat/backend
-nohup celery -A core worker --loglevel=info > /tmp/linchat-celery-worker.log 2>&1 &
-nohup celery -A core beat --loglevel=info > /tmp/linchat-celery-beat.log 2>&1 &
-
-# 6. 启动 LinChat 前端 (必须先 build)
+# 前端需先 build（仅代码变更后）
 cd /home/dantsinghua/work/linchat/frontend
 npm run build
-nohup npm run start -- -p 3784 &
 ```
 
 ---

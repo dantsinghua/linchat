@@ -52,3 +52,16 @@ python scripts/init_minio.py
 - 脚本为幂等操作，Bucket 已存在时跳过创建
 - 需要在 Docker 的 MinIO 服务已启动后执行
 - 首次部署或重建 MinIO 时需执行此脚本
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Mar 11, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1638 | 8:41 AM | 🟣 | Isolated qwen3.5-plus Diagnostic Test Script | ~339 |
+| #1636 | " | 🔴 | Corrected MiniMax Model Name in Benchmark Script | ~285 |
+| #1632 | 8:35 AM | 🟣 | Benchmark Script for Multi-Model Performance Testing | ~532 |
+</claude-mem-context>

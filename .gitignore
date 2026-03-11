@@ -6,6 +6,9 @@
 # Claude Code
 .claude/
 
+# PID files (services.sh)
+.pids/
+
 # Environment variables
 .env
 .env.*
@@ -68,3 +71,10 @@ minicpm-o-video-test.tar.gz
 *.tar.gz
 *.mp4
 *.mp3
+
+# Runtime databases
+backend/celerybeat-schedule.db
+
+# Server config / credentials (not for repo)
+frps.toml
+greydan.xin

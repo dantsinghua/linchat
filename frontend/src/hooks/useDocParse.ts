@@ -6,13 +6,17 @@
  * 2. 通过 SSE 事件 doc_parse_progress 监听进度
  * 3. 完成后获取 Markdown 结果
  *
+ * 鲁棒性增强:
+ * - 5 分钟超时保护：SSE 终态事件丢失时自动标记失败
+ * - 10s REST 轮询降级：SSE 断线期间通过 REST API 兜底检测状态
+ *
  * 进度事件通过 window CustomEvent 分发（useAuth.tsx 中注册）
  */
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { createDocParseTask, getDocParseResult } from '@/services/mediaApi';
+import { createDocParseTask, getDocParseResult, getDocParseStatus } from '@/services/mediaApi';
 
 /** 解析状态 */
 export type DocParseStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
@@ -44,12 +48,81 @@ interface UseDocParseReturn {
 /** 最大结果字符数（FR-034, T003 定义） */
 const DOC_PARSE_MAX_RESULT_LENGTH = 8000;
 
+/** 超时保护：5 分钟 */
+const PARSE_TIMEOUT_MS = 300_000;
+
+/** REST 轮询间隔：10 秒 */
+const POLL_INTERVAL_MS = 10_000;
+
 export function useDocParse(): UseDocParseReturn {
   const [status, setStatus] = useState<DocParseStatus>('idle');
   const [progress, setProgress] = useState<DocParseProgress | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const taskIdRef = useRef<string | null>(null);
+  const statusRef = useRef<DocParseStatus>('idle');
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 同步 statusRef 以便定时器回调中读取最新值
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  /** 清除超时定时器和轮询 */
+  const clearTimers = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  // 组件卸载时清除定时器
+  useEffect(() => {
+    return () => clearTimers();
+  }, [clearTimers]);
+
+  /** 获取解析结果 */
+  const fetchResult = useCallback(async (taskId: string) => {
+    try {
+      const response = await getDocParseResult(taskId);
+      let content = response.data?.content ?? '';
+      if (content.length > DOC_PARSE_MAX_RESULT_LENGTH) {
+        content = content.slice(0, DOC_PARSE_MAX_RESULT_LENGTH) + '\n\n[内容已截断]';
+      }
+      setResult(content);
+    } catch (err) {
+      setError((err as Error).message || '获取解析结果失败');
+      setStatus('failed');
+    }
+  }, []);
+
+  /** 启动 REST 轮询降级 */
+  const startPolling = useCallback((taskId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await getDocParseStatus(taskId);
+        const s = res.data?.status;
+        if (s === 'completed' && statusRef.current !== 'completed') {
+          setStatus('completed');
+          clearTimers();
+          fetchResult(taskId);
+        } else if (s === 'failed' && statusRef.current !== 'failed') {
+          setStatus('failed');
+          setError('文档解析失败');
+          clearTimers();
+        } else if (s === 'processing' && res.data?.progress) {
+          setProgress({ current: res.data.progress.current, total: res.data.progress.total });
+          if (statusRef.current === 'pending') setStatus('processing');
+        }
+      } catch { /* 静默忽略轮询错误 */ }
+    }, POLL_INTERVAL_MS);
+  }, [clearTimers, fetchResult]);
 
   // 监听 SSE doc_parse_progress 事件
   useEffect(() => {
@@ -72,11 +145,13 @@ export function useDocParse(): UseDocParseReturn {
         }
       } else if (eventStatus === 'completed') {
         setStatus('completed');
+        clearTimers();
         // 自动获取结果
         fetchResult(taskIdRef.current);
       } else if (eventStatus === 'failed') {
         setStatus('failed');
         setError(detail.error_message || '文档解析失败');
+        clearTimers();
       }
     };
 
@@ -85,27 +160,13 @@ export function useDocParse(): UseDocParseReturn {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 获取解析结果 */
-  const fetchResult = useCallback(async (taskId: string) => {
-    try {
-      const response = await getDocParseResult(taskId);
-      let content = response.data?.content ?? '';
-      if (content.length > DOC_PARSE_MAX_RESULT_LENGTH) {
-        content = content.slice(0, DOC_PARSE_MAX_RESULT_LENGTH) + '\n\n[内容已截断]';
-      }
-      setResult(content);
-    } catch (err) {
-      setError((err as Error).message || '获取解析结果失败');
-      setStatus('failed');
-    }
-  }, []);
-
   /** 发起文档解析 */
   const parse = useCallback(async (attachmentUuid: string, pages?: string) => {
     setStatus('pending');
     setProgress(null);
     setResult(null);
     setError(null);
+    clearTimers();
 
     try {
       const response = await createDocParseTask(attachmentUuid, pages);
@@ -114,6 +175,18 @@ export function useDocParse(): UseDocParseReturn {
         throw new Error('未获取到解析任务 ID');
       }
       taskIdRef.current = taskId;
+
+      // 超时保护：5 分钟未收到终态事件则标记失败
+      timeoutRef.current = setTimeout(() => {
+        if (['pending', 'processing'].includes(statusRef.current)) {
+          setStatus('failed');
+          setError('文档解析超时，请稍后重试');
+          clearTimers();
+        }
+      }, PARSE_TIMEOUT_MS);
+
+      // REST 轮询降级：每 10s 检查状态，作为 SSE 的兜底
+      startPolling(taskId);
     } catch (err) {
       const errorMsg = (err as Error).message || '创建解析任务失败';
       // 特殊处理 E6006 页数超限
@@ -124,7 +197,7 @@ export function useDocParse(): UseDocParseReturn {
       }
       setStatus('failed');
     }
-  }, []);
+  }, [clearTimers, startPolling]);
 
   /** 重置状态 */
   const reset = useCallback(() => {
@@ -133,7 +206,8 @@ export function useDocParse(): UseDocParseReturn {
     setResult(null);
     setError(null);
     taskIdRef.current = null;
-  }, []);
+    clearTimers();
+  }, [clearTimers]);
 
   /** 状态文本 */
   const statusText = (() => {
