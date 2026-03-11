@@ -1,5 +1,3 @@
-"""语音会话服务 — Redis 状态管理 + 音频缓存 + 频率限制"""
-
 import base64
 import json
 import logging
@@ -11,35 +9,22 @@ from django.conf import settings
 from core.redis import get_redis, redis_delete, redis_get, redis_setex
 
 logger = logging.getLogger(__name__)
-_S = SESSION_KEY = "voice:session:{user_id}"
-_A = ACTIVE_CONV_KEY = "voice:active_conv:{user_id}"
-_AC = AUDIO_CHUNKS_KEY = "voice:audio_chunks:{user_id}:{segment_id}"
-_LR = LLM_RATE_KEY = "voice:llm_rate:{user_id}"
+_S = "voice:session:{user_id}"
+_A = "voice:active_conv:{user_id}"
+_AC = "voice:audio_chunks:{user_id}:{segment_id}"
+_LR = "voice:llm_rate:{user_id}"
+_WR = "voice:ws_connect_rate:{user_id}"
 
 
 class VoiceSessionService:
-
     async def create_session(self, user_id: int, mode: str = "voice_chat") -> bool:
         key = _S.format(user_id=user_id)
         if await redis_get(key):
-            logger.warning("Voice session exists: user_id=%s", user_id)
             return False
-        ttl = (
-            settings.VOICE_AMBIENT_SESSION_TTL
-            if mode == "ambient"
-            else settings.VOICE_SESSION_TTL
-        )
-        await redis_setex(
-            key,
-            ttl,
-            json.dumps({
-                "state": "active",
-                "started_at": time.time(),
-                "upstream_connected": False,
-                "mode": mode,
-            }),
-        )
-        logger.info("Voice session created: user_id=%s, mode=%s, ttl=%d", user_id, mode, ttl)
+        ttl = settings.VOICE_AMBIENT_SESSION_TTL if mode == "ambient" else settings.VOICE_SESSION_TTL
+        await redis_setex(key, ttl, json.dumps({
+            "state": "active", "started_at": time.time(), "upstream_connected": False, "mode": mode}))
+        logger.info("Voice session created: user_id=%s, mode=%s", user_id, mode)
         return True
 
     async def get_session(self, user_id: int) -> Optional[dict[str, Any]]:
@@ -48,12 +33,8 @@ class VoiceSessionService:
 
     async def refresh_session(self, user_id: int) -> None:
         from core.redis import redis_expire
-
-        # 根据会话模式选择 TTL
         session = await self.get_session(user_id)
-        ttl = settings.VOICE_SESSION_TTL
-        if session and session.get("mode") == "ambient":
-            ttl = settings.VOICE_AMBIENT_SESSION_TTL
+        ttl = settings.VOICE_AMBIENT_SESSION_TTL if session and session.get("mode") == "ambient" else settings.VOICE_SESSION_TTL
         await redis_expire(_S.format(user_id=user_id), ttl)
 
     async def update_session(self, user_id: int, **updates: Any) -> None:
@@ -88,12 +69,8 @@ class VoiceSessionService:
     async def get_audio_chunks(self, user_id: int, segment_id: str) -> list[bytes]:
         redis = await get_redis()
         try:
-            return [
-                base64.b64decode(c)
-                for c in await redis.lrange(
-                    _AC.format(user_id=user_id, segment_id=segment_id), 0, -1
-                )
-            ]
+            return [base64.b64decode(c) for c in await redis.lrange(
+                _AC.format(user_id=user_id, segment_id=segment_id), 0, -1)]
         finally:
             await redis.aclose()
 
@@ -101,13 +78,18 @@ class VoiceSessionService:
         await redis_delete(_AC.format(user_id=user_id, segment_id=segment_id))
 
     async def check_llm_rate_limit(self, user_id: int) -> bool:
+        return await self._check_rate_limit(_LR.format(user_id=user_id), 60, 60)
+
+    async def check_ws_rate_limit(self, user_id: int) -> bool:
+        return await self._check_rate_limit(_WR.format(user_id=user_id), 10, 60)
+
+    async def _check_rate_limit(self, key: str, limit: int, ttl: int) -> bool:
         redis = await get_redis()
         try:
-            key = _LR.format(user_id=user_id)
             count = await redis.incr(key)
             if count == 1:
-                await redis.expire(key, 60)
-            return count <= 60
+                await redis.expire(key, ttl)
+            return count <= limit
         finally:
             await redis.aclose()
 
