@@ -39,23 +39,27 @@ class VoicePipeline:
 
     @staticmethod
     async def run_pipeline(user_id: int, text: str, segment_id: str, consumer: Any,
-                           mode: str = "voice_chat", speaker_id: Optional[str] = None) -> None:
+                           mode: str = "voice_chat", speaker_id: Optional[str] = None,
+                           connection_user_id: int | None = None) -> None:
+        conn_uid = connection_user_id or user_id
         if mode == "ambient":
             await voice_session_service.set_active_conversation(user_id)
-        lock = _get_lock(user_id)
+        lock = _get_lock(conn_uid)
         if lock.locked():
             logger.info("Barge-in: user=%s, seg=%s", user_id, segment_id)
-            await VoicePipeline.cancel(user_id)
+            await VoicePipeline.cancel(conn_uid)
             try:
                 await asyncio.wait_for(lock.acquire(), timeout=2.0)
                 lock.release()
             except asyncio.TimeoutError:
                 logger.warning("Barge-in lock timeout: user=%s", user_id)
         async with lock:
-            await VoicePipeline._run_inner(user_id, text, segment_id, consumer, mode)
+            await VoicePipeline._run_inner(user_id, text, segment_id, consumer, mode,
+                                           connection_user_id=conn_uid)
 
     @staticmethod
-    async def _run_inner(user_id: int, text: str, segment_id: str, consumer: Any, mode: str) -> None:
+    async def _run_inner(user_id: int, text: str, segment_id: str, consumer: Any, mode: str,
+                         connection_user_id: int | None = None) -> None:
         request_id = uuid.uuid4().hex
         response_id = f"voice_{request_id[:16]}"
         start_time = time.monotonic()
@@ -113,10 +117,13 @@ class VoicePipeline:
                 except Exception:
                     pass
 
+        conn_uid = connection_user_id or user_id
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         await consumer._send_json(response_event("response.end", response_id, segment_id, duration_ms=elapsed_ms))
         if not error_occurred:
-            await voice_persist_service.persist_audio_attachment(user_id, segment_id, request_id)
+            await voice_persist_service.persist_audio_attachment(
+                user_id, segment_id, request_id,
+                cache_user_id=conn_uid if conn_uid != user_id else None)
 
     @staticmethod
     async def _setup_tts(user_id: int, mode: str, consumer: Any) -> Optional[TTSPipelineManager]:

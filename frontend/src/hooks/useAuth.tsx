@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { trigger401Redirect, resetAuthGuard, isAuthRedirecting } from '@/services/authGuard';
 import { useChatStore } from '@/stores/chatStore';
+import { useMemberStore } from '@/stores/memberStore';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 
@@ -24,6 +25,7 @@ interface UserInfo {
   user_id: number;
   username: string;
   type: 'admin' | 'user';
+  member_type: 'member' | 'guest';
 }
 
 // SSO 登出原因 → 提示文案 + 延迟
@@ -184,11 +186,23 @@ export function useAuth() {
       if (response.ok) {
         const data = await response.json();
         if (data.code === 'SUCCESS' && data.data) {
+          const memberType = data.data.member_type || 'guest';
           setUser({
             user_id: data.data.user_id,
             username: data.data.username,
             type: data.data.type || 'user',
+            member_type: memberType,
           });
+
+          // 015-family-multiuser: 初始化成员状态
+          if (memberType === 'member') {
+            const { setAuthUserId, loadMembers, restoreTargetFromStorage } = useMemberStore.getState();
+            setAuthUserId(data.data.user_id);
+            await loadMembers();
+            restoreTargetFromStorage();
+          } else {
+            useMemberStore.getState().setAuthUserId(data.data.user_id);
+          }
         }
         setIsAuthenticated(true);
         return true;
@@ -213,6 +227,8 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     disconnectSSE();
+    // 015-family-multiuser: 清除成员切换状态
+    useMemberStore.getState().clearTarget();
     setIsAuthenticated(false);
     setUser(null);
 

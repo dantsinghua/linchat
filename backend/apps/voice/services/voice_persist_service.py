@@ -46,10 +46,14 @@ class VoicePersistService:
             logger.warning("MinIO compensating delete failed: %s", storage_path)
 
     @staticmethod
-    async def persist_audio_attachment(user_id: int, segment_id: str, request_id: str) -> None:
+    async def persist_audio_attachment(
+        user_id: int, segment_id: str, request_id: str,
+        cache_user_id: int | None = None,
+    ) -> None:
         from apps.voice.services.voice_session_service import voice_session_service
+        cache_uid = cache_user_id or user_id
         try:
-            pcm_chunks = await voice_session_service.get_audio_chunks(user_id, segment_id)
+            pcm_chunks = await voice_session_service.get_audio_chunks(cache_uid, segment_id)
             if not pcm_chunks:
                 return
             wav_data = voice_persist_service.merge_pcm_to_wav(pcm_chunks)
@@ -64,7 +68,7 @@ class VoicePersistService:
             except Exception:
                 await voice_persist_service.delete_from_minio(storage_path)
                 raise
-            await voice_session_service.clear_audio_chunks(user_id, segment_id)
+            await voice_session_service.clear_audio_chunks(cache_uid, segment_id)
             logger.info("Audio persisted: user=%s, seg=%s, path=%s", user_id, segment_id, storage_path)
         except Exception:
             logger.exception("Audio persist failed: user=%s, seg=%s", user_id, segment_id)

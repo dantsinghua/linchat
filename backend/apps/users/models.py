@@ -4,6 +4,7 @@
 参考: data-model.md#2.1 用户表（sys_user）
 """
 from django.db import models
+from django.utils import timezone
 
 
 class SysUser(models.Model):
@@ -39,6 +40,25 @@ class SysUser(models.Model):
         choices=TYPE_CHOICES,
         default=TYPE_USER,
         verbose_name="用户类型",
+    )
+
+    # ========== 多用户业务类型 (015-family-multiuser) ==========
+    MEMBER_TYPE_MEMBER = "member"
+    MEMBER_TYPE_GUEST = "guest"
+    MEMBER_TYPE_CHOICES = [
+        (MEMBER_TYPE_MEMBER, "成员"),
+        (MEMBER_TYPE_GUEST, "访客"),
+    ]
+    member_type = models.CharField(
+        max_length=20,
+        choices=MEMBER_TYPE_CHOICES,
+        default=MEMBER_TYPE_MEMBER,
+        verbose_name="业务类型（member/guest）",
+    )
+    guest_expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="访客有效期截止时间",
     )
 
     # ========== 账户状态 ==========
@@ -106,8 +126,6 @@ class SysUser(models.Model):
 
     def is_locked(self) -> bool:
         """检查账户是否被锁定"""
-        from django.utils import timezone
-
         if self.lock_until and self.lock_until > timezone.now():
             return True
         return False
@@ -119,3 +137,13 @@ class SysUser(models.Model):
     def is_admin(self) -> bool:
         """检查是否为管理员"""
         return self.type == self.TYPE_ADMIN
+
+    def is_member(self) -> bool:
+        """是否为家庭成员"""
+        return self.member_type == self.MEMBER_TYPE_MEMBER
+
+    def is_guest_expired(self) -> bool:
+        """访客是否已过期"""
+        if self.member_type != self.MEMBER_TYPE_GUEST or not self.guest_expires_at:
+            return False
+        return timezone.now() >= self.guest_expires_at

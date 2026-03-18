@@ -1,4 +1,5 @@
-"""用户认证视图 — 验证码 / 登录 / 登出 / 当前用户"""
+"""用户认证视图 — 验证码 / 登录 / 登出 / 当前用户 / 成员管理"""
+
 import json
 import logging
 
@@ -11,8 +12,13 @@ from rest_framework import status
 from apps.common.exceptions import AuthException
 from apps.common.middleware import clear_token_cookie, set_token_cookie
 from apps.common.responses import api_response, error_response
-from apps.users.serializers import LoginRequestSerializer
-from apps.users.services import AuthService, CaptchaService
+from apps.users.exceptions import UsernameExistsError, VoiceprintRegistrationError
+from apps.users.serializers import (
+    CreateMemberSerializer,
+    LoginRequestSerializer,
+    MemberListSerializer,
+)
+from apps.users.services import AuthService, CaptchaService, MemberService
 
 logger = logging.getLogger(__name__)
 
@@ -131,4 +137,85 @@ class MeView(View):
             "user_id": user_id,
             "username": getattr(request, "username", None),
             "type": getattr(request, "user_type", "user"),
+            "member_type": getattr(request, "member_type", "member"),
         })
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class MemberListCreateView(View):
+    """GET/POST /api/v1/members/"""
+
+    async def get(self, request: HttpRequest) -> JsonResponse:
+        """获取家庭成员列表"""
+        member_type = getattr(request, "member_type", None)
+        if member_type != "member":
+            return error_response(
+                message="权限不足", code="FORBIDDEN",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+
+        include_expired = request.GET.get("include_expired", "").lower() in ("true", "1")
+        members = await MemberService.list_members(include_expired=include_expired)
+        data = [MemberListSerializer(m).data for m in members]
+        return api_response(data=data)
+
+    async def post(self, request: HttpRequest) -> JsonResponse:
+        """创建家庭成员"""
+        member_type = getattr(request, "member_type", None)
+        if member_type != "member":
+            return error_response(
+                message="权限不足", code="FORBIDDEN",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+
+        # 解析 multipart/form-data
+        serializer = CreateMemberSerializer(data={
+            **request.POST.dict(),
+            "audio": request.FILES.get("audio"),
+        })
+        if not serializer.is_valid():
+            first_error = next(iter(serializer.errors.values()))[0]
+            return error_response(
+                message=str(first_error), code="VALIDATION_ERROR",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = await MemberService.create_member(
+                username=serializer.validated_data["username"],
+                password_encrypted=serializer.validated_data["password"],
+                member_type=serializer.validated_data["member_type"],
+                audio_file=serializer.validated_data["audio"],
+                created_by_user_id=request.user_id,
+            )
+            data = {
+                "user_id": user.user_id,
+                "username": user.username,
+                "member_type": user.member_type,
+                "status": user.status,
+                "guest_expires_at": (
+                    user.guest_expires_at.isoformat() if user.guest_expires_at else None
+                ),
+            }
+            return api_response(data=data, message="用户创建成功", status_code=201)
+        except UsernameExistsError as e:
+            return error_response(
+                message=str(e), code=e.error_code,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        except VoiceprintRegistrationError as e:
+            return error_response(
+                message=str(e), code=e.error_code,
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        except ValueError as e:
+            return error_response(
+                message=str(e), code="VALIDATION_ERROR",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception:
+            logger.exception("创建成员失败")
+            return error_response(
+                message="创建失败，请稍后重试",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

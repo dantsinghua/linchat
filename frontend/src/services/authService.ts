@@ -48,7 +48,12 @@ export async function login(
     return response.data;
   } catch (error) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const msg = (error as any).response?.data?.message;
+    const responseData = (error as any).response?.data;
+    // 015-family-multiuser: 账号过期特殊提示
+    if (responseData?.code === 'ACCOUNT_EXPIRED') {
+      throw new Error('账号已过期，请联系家庭成员');
+    }
+    const msg = responseData?.message;
     if (msg) throw new Error(msg);
     if (error instanceof Error && !error.message.includes('status code')) throw error;
     throw new Error('登录失败，请重试');

@@ -27,15 +27,17 @@ async def chat(request: HttpRequest) -> StreamingHttpResponse:
     if error:
         return error
 
-    user_id = request.user_id
+    user_id = request.target_user_id
     content = validated["content"]
     attachment_uuids = validated.get("attachments")
 
     if attachment_uuids:
         from core.redis import get_redis
 
+        # 多模态限流使用登录用户 ID（限流针对登录用户）
+        login_user_id = request.user_id
         rate_limit = getattr(settings, "MULTIMODAL_RATE_LIMIT_SECONDS", 60)
-        key = f"user:{user_id}:multimodal_rate_limit"
+        key = f"user:{login_user_id}:multimodal_rate_limit"
         redis = await get_redis()
         if not await redis.set(key, "1", nx=True, ex=rate_limit):
             ttl = await redis.ttl(key)
@@ -55,7 +57,7 @@ def get_messages(request: Request) -> Response:
     if not serializer.is_valid():
         return ApiResponse.validation_error(message=first_validation_error(serializer))
 
-    user_id = request.user_id
+    user_id = request.target_user_id
     limit = serializer.validated_data.get("limit", 50)
     before_sequence = serializer.validated_data.get("before_sequence")
 
@@ -71,7 +73,7 @@ def get_messages(request: Request) -> Response:
 
 @api_view(["GET"])
 def get_generating_message(request: Request) -> Response:
-    user_id = request.user_id
+    user_id = request.target_user_id
     message = async_to_sync(HistoryService.get_generating_message)(user_id)
     return ApiResponse.success(data={"message": MessageResponseSerializer(message).data if message else None})
 
@@ -82,7 +84,7 @@ def stop_generation(request: Request) -> Response:
     if not serializer.is_valid():
         return ApiResponse.validation_error(message=first_validation_error(serializer))
 
-    user_id = request.user_id
+    user_id = request.target_user_id
     request_id = serializer.validated_data["request_id"]
     success = async_to_sync(ChatService.stop_generation)(user_id, request_id)
 
@@ -96,7 +98,7 @@ async def resume_generation(request: HttpRequest) -> StreamingHttpResponse:
     if error:
         return error
 
-    user_id = request.user_id
+    user_id = request.target_user_id
     request_id = validated["request_id"]
     stream = ChatService.resume_generation(user_id=user_id, request_id=request_id)
     return make_sse_response(stream, user_id, "Resume generation")
@@ -107,7 +109,7 @@ async def reconnect_stream(request: HttpRequest) -> StreamingHttpResponse:
     if error:
         return error
 
-    user_id = request.user_id
+    user_id = request.target_user_id
     request_id = validated["request_id"]
     stream = ChatService.reconnect_stream(user_id=user_id, request_id=request_id)
     return make_sse_response(stream, user_id, "Reconnect stream")

@@ -46,5 +46,9 @@ app.conf.beat_schedule = {
         "task": "media.retry_failed_doc_embeddings",
         "schedule": 300.0,  # 每 5 分钟
     },
+    "expire-guests": {
+        "task": "users.expire_guests",
+        "schedule": crontab(minute=0),  # 每小时整点执行
+    },
 }
 app.conf.timezone = "Asia/Shanghai"

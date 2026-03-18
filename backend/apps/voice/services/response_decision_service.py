@@ -26,7 +26,8 @@ class DecisionResult(Enum):
 class ResponseDecisionService:
 
     async def decide(self, transcription_text: str, speaker_id: Optional[str],
-                     user_id: int, mode: str = "ambient") -> tuple[DecisionResult, str]:
+                     user_id: int, mode: str = "ambient",
+                     speaker_identified: bool = False) -> tuple[DecisionResult, str]:
         text = transcription_text.strip()
         if not text:
             return DecisionResult.RECORD_ONLY, "empty_text"
@@ -47,9 +48,10 @@ class ResponseDecisionService:
                         return decision, f"llm_{reason}"
         if await voice_session_service.is_active_conversation(user_id):
             return DecisionResult.RESPOND, "active_conversation"
-        recent = await self._get_recent_speaker_count(user_id)
-        if recent >= 2:
-            return DecisionResult.RECORD_ONLY, "multi_speaker"
+        if not speaker_identified:
+            recent = await self._get_recent_speaker_count(user_id)
+            if recent >= 2:
+                return DecisionResult.RECORD_ONLY, "multi_speaker"
         if self._check_question_features(text):
             return DecisionResult.RESPOND, "question_detected"
         return DecisionResult.RECORD_ONLY, "default"

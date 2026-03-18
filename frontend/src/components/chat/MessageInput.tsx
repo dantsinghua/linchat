@@ -32,6 +32,14 @@ interface MessageInputProps {
   failedAttachments?: MediaAttachment[] | null;
   /** 语音模式是否开启 */
   voiceMode?: boolean;
+  /** 成员类型（member 时显示头像按钮） */
+  memberType?: 'member' | 'guest';
+  /** 打开成员切换模态框 */
+  onOpenMemberModal?: () => void;
+  /** 当前操作用户的首字母 */
+  currentAvatarLetter?: string;
+  /** 当前操作用户的头像背景色 */
+  currentAvatarColor?: string;
   onSend: (content: string, attachments?: MediaAttachment[]) => Promise<void>;
   onStop: () => Promise<void>;
   onClearFailedContent?: () => void;
@@ -55,6 +63,10 @@ export const MessageInput = memo(function MessageInput({
   failedContent,
   failedAttachments,
   voiceMode = false,
+  memberType,
+  onOpenMemberModal,
+  currentAvatarLetter,
+  currentAvatarColor,
   onSend,
   onStop,
   onClearFailedContent,
@@ -71,6 +83,10 @@ export const MessageInput = memo(function MessageInput({
       disabled={disabled}
       failedContent={failedContent}
       failedAttachments={failedAttachments}
+      memberType={memberType}
+      onOpenMemberModal={onOpenMemberModal}
+      currentAvatarLetter={currentAvatarLetter}
+      currentAvatarColor={currentAvatarColor}
       onSend={onSend}
       onStop={onStop}
       onClearFailedContent={onClearFailedContent}
@@ -85,6 +101,10 @@ const MessageInputInner = memo(function MessageInputInner({
   disabled = false,
   failedContent,
   failedAttachments,
+  memberType,
+  onOpenMemberModal,
+  currentAvatarLetter,
+  currentAvatarColor,
   onSend,
   onStop,
   onClearFailedContent,
@@ -316,8 +336,21 @@ const MessageInputInner = memo(function MessageInputInner({
 
         {/* 操作按钮行: 附件 + 发送/停止 */}
         <div className="mt-2 flex items-center justify-between">
-          {/* 左侧: 附件按钮 */}
+          {/* 左侧: 头像按钮 + 附件按钮 */}
           <div className="flex items-center gap-1">
+            {/* 成员头像按钮 (T027) — 仅 member 类型用户显示 */}
+            {memberType === 'member' && onOpenMemberModal && (
+              <button
+                type="button"
+                onClick={onOpenMemberModal}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white transition-opacity hover:opacity-80"
+                style={{ backgroundColor: currentAvatarColor || '#3B82F6' }}
+                title="切换用户"
+              >
+                {currentAvatarLetter || '?'}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleOpenPicker}

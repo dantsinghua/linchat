@@ -16,8 +16,13 @@ from django.utils import timezone
 
 from apps.common.exceptions import TokenExpiredException
 from apps.users.crypto import generate_token_hash, sm4_decrypt
-from core.redis import (get_token_key, sync_redis_delete, sync_redis_expire,
-                        sync_redis_get)
+from core.redis import (
+    get_token_key,
+    sync_redis_delete,
+    sync_redis_expire,
+    sync_redis_get,
+    sync_redis_setex_json,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +66,98 @@ class TokenAuthMiddleware:
             logger.warning(f"Token verification failed: {e}")
             return self._unauthorized_response("认证失败")
 
+        # --- 检查点 A: 认证用户状态（过期访客拦截）---
+        member_type = user_info.get("member_type")
+        if not member_type:
+            # token_info 缺少 member_type，从数据库查询并回填 Redis
+            from apps.users.models import SysUser
+
+            try:
+                user_obj = SysUser.objects.get(
+                    user_id=request.user_id, status=1
+                )
+                member_type = user_obj.member_type
+            except SysUser.DoesNotExist:
+                member_type = "member"
+            # 回填 Redis token 数据
+            user_info["member_type"] = member_type
+            token_key = get_token_key(request.token_hash)
+            remaining_ttl = self._get_key_ttl_sync(token_key)
+            if remaining_ttl and remaining_ttl > 0:
+                sync_redis_setex_json(
+                    token_key, remaining_ttl, user_info
+                )
+
+        if member_type == "guest":
+            from apps.users.models import SysUser
+
+            try:
+                guest_user = SysUser.objects.get(
+                    user_id=request.user_id, status=1
+                )
+                if guest_user.is_guest_expired():
+                    logger.warning(
+                        "过期访客 %s 尝试使用存量 Token 访问",
+                        request.user_id,
+                    )
+                    return self._unauthorized_response("账号已过期")
+            except SysUser.DoesNotExist:
+                pass
+
+        request.member_type = member_type
+
+        # --- 检查点 B: 目标用户解析（X-Target-User-Id）---
+        target_user_id_header = request.META.get("HTTP_X_TARGET_USER_ID")
+        if target_user_id_header and member_type == "member":
+            from apps.users.models import SysUser
+
+            try:
+                target_uid = int(target_user_id_header)
+            except (ValueError, TypeError):
+                return self._bad_request_response(
+                    "TARGET_USER_INVALID",
+                    "X-Target-User-Id 格式无效",
+                )
+
+            if target_uid == request.user_id:
+                # 目标就是自己，无需额外校验
+                request.target_user_id = request.user_id
+            else:
+                try:
+                    target_user = SysUser.objects.get(
+                        user_id=target_uid, status=1
+                    )
+                except SysUser.DoesNotExist:
+                    logger.warning(
+                        "用户 %s 尝试切换到不存在或已禁用的目标用户 %s",
+                        request.user_id,
+                        target_uid,
+                    )
+                    return self._bad_request_response(
+                        "TARGET_USER_INVALID",
+                        "目标用户不存在或已禁用",
+                    )
+
+                if target_user.is_guest_expired():
+                    logger.warning(
+                        "用户 %s 尝试切换到已过期的访客 %s",
+                        request.user_id,
+                        target_uid,
+                    )
+                    return self._bad_request_response(
+                        "TARGET_USER_INVALID",
+                        "目标用户已过期",
+                    )
+
+                logger.info(
+                    "用户 %s 切换到目标用户 %s",
+                    request.user_id,
+                    target_uid,
+                )
+                request.target_user_id = target_uid
+        else:
+            request.target_user_id = request.user_id
+
         return self.get_response(request)
 
     def _verify_token_sync(self, token: str) -> dict:
@@ -102,6 +199,23 @@ class TokenAuthMiddleware:
 
         token_info["last_active_time"] = now.isoformat()
         return token_info
+
+    def _get_key_ttl_sync(self, key: str) -> int | None:
+        """同步获取键的剩余 TTL（秒）"""
+        from core.redis import SyncRedisClient
+
+        client = SyncRedisClient.get_client()
+        ttl = client.ttl(key)
+        return ttl if ttl > 0 else None
+
+    def _bad_request_response(
+        self, code: str, message: str
+    ) -> JsonResponse:
+        """返回 400 错误响应"""
+        return JsonResponse(
+            {"code": code, "message": message, "data": None},
+            status=400,
+        )
 
     def _unauthorized_response(self, message: str) -> JsonResponse:
         resp = JsonResponse(

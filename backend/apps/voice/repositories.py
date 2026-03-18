@@ -37,6 +37,10 @@ class SpeakerProfileRepository:
     def update_quality_score(self, user_id: int, quality_score: float) -> int:
         return SpeakerProfile.objects.filter(user_id=user_id).update(quality_score=quality_score)
 
+    @sync_to_async
+    def any_exists(self) -> bool:
+        return SpeakerProfile.objects.exists()
+
 
 class RegisteredDeviceRepository:
     @sync_to_async

@@ -12,11 +12,11 @@
 | `test_repositories.py` | SpeakerProfile/RegisteredDevice/VoiceSettings Repo CRUD |
 | `test_speaker_service.py` | 声纹注册/删除/识别（Gateway HTTP mock） |
 | `test_device_service.py` | 设备注册/撤销/Token 认证/SM4 加密（UUID + token_prefix） |
-| `test_response_decision.py` | ResponseDecisionService 7 条决策链（唤醒词/模糊匹配/紧急停止/活跃对话） |
-| `test_asr_stream_client.py` | ASR WebSocket 客户端（连接/配置/音频转发/事件回调/断开） |
-| `test_tts_stream_client.py` | TTS WebSocket 客户端（连接/text.delta/audio.done/超时） |
+| `test_response_decision.py` | ResponseDecisionService 8 级决策链（紧急停止/唤醒词精确+模糊/LLM 意图/活跃对话/多 speaker/问句特征/默认） |
+| `test_asr_stream_client.py` | ASRStreamClient(BaseWSClient)（连接/配置/音频转发/事件回调/断开） |
+| `test_tts_stream_client.py` | TTSStreamClient(BaseWSClient)（连接/text.delta/audio.done/超时） |
 | `test_tts_pipeline_manager.py` | TTSPipelineManager（安慰递进/错误播报/cancel/shutdown/段间 gap） |
-| `test_voice_pipeline.py` | VoicePipeline（Agent+TTSPipelineManager 编排/持久化/barge-in/取消/ambient 模式/RECORD_ONLY 清理） |
+| `test_voice_pipeline.py` | VoicePipeline（Agent+TTSPipelineManager 编排/voice_persist_service 持久化/barge-in/取消/ambient 模式/RECORD_ONLY 清理） |
 | `test_utterance_aggregator.py` | UtteranceAggregator（单/多段聚合/timer 重置/max_buffer 自动 flush/状态流转/destroy） |
 | `test_tts_router.py` | TTSRouter（send_binary/send_control/get_on_audio_callback/group_name 格式） |
 | `test_response_decision_llm.py` | LLM 意图分类增强（高/低置信度/超时/关闭/非 ambient 跳过/优先级交互，默认模式已改为 ambient） |
@@ -37,7 +37,7 @@ cd /home/dantsinghua/work/linchat/backend && source ../linchat/bin/activate && p
 
 | Mock 目标 | 用途 |
 |-----------|------|
-| `websockets.connect` | Gateway ASR/TTS WebSocket 连接 |
+| `websockets.connect` | Gateway ASR/TTS WebSocket 连接（BaseWSClient 底层） |
 | `apps.voice.services.speaker_service.httpx.AsyncClient` | 声纹 Gateway HTTP 请求 |
 | `apps.graph.services.agent_service.AgentService` | Agent 推理 |
 | `apps.graph.services.inference_service.InferenceService` | 推理任务管理 |

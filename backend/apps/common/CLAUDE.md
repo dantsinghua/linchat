@@ -6,7 +6,7 @@
 
 ## 模块职责
 
-纯工具模块，无数据模型。为所有 App 提供基础设施：认证中间件、异常体系、响应格式、SSE 工具、Gateway 调用、存储封装、速率限制、Token 计数。
+纯工具模块，无数据模型。为所有 App 提供基础设施：认证中间件、异常体系、响应格式、SSE 工具、Gateway 调用、存储封装、速率限制、Token 计数、异步任务工具。
 
 ---
 
@@ -14,6 +14,7 @@
 
 | 文件 | 职责 |
 |------|------|
+| `async_utils.py` | 异步任务取消工具：`cancel_task(task)` 异步取消 + `cancel_task_sync(task)` 同步取消（仅调 cancel，不 await），统一处理 None/CancelledError |
 | `middleware.py` | `TokenAuthMiddleware` -- Cookie SM4 Token 认证（同步中间件）、`set_token_cookie()`/`clear_token_cookie()` |
 | `websocket_auth.py` | `WebSocketTokenAuthMiddleware` -- ASGI WebSocket Cookie Token 认证（SM4 解密 + Redis 验证 + 滑动过期），失败发送 4001 关闭码 |
 | `exceptions.py` | 自定义异常层级（Auth/LLM/Business/ExternalService）、`map_llm_exception()` 异常映射、DRF `custom_exception_handler` |
@@ -29,6 +30,22 @@
 | `views.py` | `EventsView` -- ASGI 异步 SSE 事件流视图（Redis Pub/Sub 订阅 + 30s 心跳） |
 | `urls.py` | 路由: `GET /api/v1/events` |
 | `apps.py` | Django App 配置 |
+
+---
+
+## async_utils.py 详情
+
+```python
+async def cancel_task(task: Optional[asyncio.Task]) -> None
+    # 异步取消：task.cancel() + await（吞 CancelledError），支持 None 入参
+    # 用于 cleanup 路径的优雅取消
+
+def cancel_task_sync(task: Optional[asyncio.Task]) -> None
+    # 同步取消：仅调用 task.cancel()，不 await
+    # 用于非 async 上下文或不需要等待取消完成的场景
+```
+
+**使用场景**: voice 模块 Consumer Mixin 中统一取消 asyncio.Task（segment_timer、idle_check、pipeline_task 等），替代各处重复的 `if task: task.cancel()` 代码。
 
 ---
 
@@ -98,3 +115,4 @@ WebSocket 连接 → 提取 Cookie 中的 linchat_token
 3. `make_sse_response()` 依赖 `apps.chat.services.types.StreamChunk` 数据类
 4. 新代码应直接 import `apps.common.storage`/`apps.common.sse`，避免经过 chat 旧兼容层
 5. `MinioService` 为懒初始化单例（`minio_service` 全局实例），首次调用 `.client` 属性时创建连接
+6. `cancel_task()` / `cancel_task_sync()` 用于统一异步任务取消，voice 模块各 Mixin 广泛使用

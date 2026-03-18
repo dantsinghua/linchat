@@ -11,6 +11,7 @@ urlpatterns = [
     # API v1 路由（注意顺序：具体前缀必须在通用前缀之前）
     path("api/v1/", include([
         path("auth/", include("apps.users.urls")),
+        path("members/", include("apps.users.member_urls")),
         path("chat/media/", include("apps.media.urls")),
         path("chat/documents/", include("apps.media.document_urls")),
         path("chat/inference/", include("apps.graph.urls")),

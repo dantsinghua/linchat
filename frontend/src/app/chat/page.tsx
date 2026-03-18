@@ -15,6 +15,9 @@ import dynamic from 'next/dynamic';
 import { MessageInput } from '@/components/chat/MessageInput';
 import { MessageList } from '@/components/chat/MessageList';
 import { NetworkError } from '@/components/chat/NetworkError';
+import { MemberSwitchModal } from '@/components/members/MemberSwitchModal';
+import { CreateMemberWizard } from '@/components/members/CreateMemberWizard';
+import { getAvatarColor, getAvatarLetter } from '@/components/members/avatarUtils';
 import {
   ContextStatusBar,
   MonitorSidebar,
@@ -24,6 +27,7 @@ import {
 import { useChatStream } from '@/hooks/useChatStream';
 import { useAuth } from '@/hooks/useAuth';
 import { useChatStore } from '@/stores/chatStore';
+import { useMemberStore } from '@/stores/memberStore';
 import { useVoiceStore } from '@/stores/voiceStore';
 
 // T055b: 语音容器动态导入，拆分 useVoiceMode + VoiceModePanel 到独立 chunk
@@ -36,7 +40,16 @@ export default function ChatPage() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const [monitorOpen, setMonitorOpen] = useState(true);
+  const [memberModalOpen, setMemberModalOpen] = useState(false);
+  const [createWizardOpen, setCreateWizardOpen] = useState(false);
   const { data: monitorData, tokenHistory, contextHistory } = useContextMonitor();
+
+  // 015-family-multiuser: 成员状态
+  const targetUserId = useMemberStore((s) => s.targetUserId);
+  const targetUsername = useMemberStore((s) => s.targetUsername);
+  const authUserId = useMemberStore((s) => s.authUserId);
+  const isViewingOther = useMemberStore((s) => s.isViewingOther);
+  const loadMembers = useMemberStore((s) => s.loadMembers);
 
   // 语音模式开关状态通过 voiceStore 读取（轻量级，不引入 useVoiceMode 重依赖）
   const voiceModeActive = useVoiceStore((s) => s.voiceMode);
@@ -56,6 +69,7 @@ export default function ChatPage() {
     stop,
     resume,
     loadMore,
+    reload,
     clearFailedContent,
   } = useChatStream();
 
@@ -75,15 +89,70 @@ export default function ChatPage() {
   }, [failedContent, failedAttachments, clearFailedContent, send]);
 
   // 语音模式切换：直接操作 voiceStore
-  const handleToggleVoiceMode = useCallback(() => {
+  // T050: 进入语音模式前检查是否在查看他人视角，若是则先切回自身
+  const handleToggleVoiceMode = useCallback(async () => {
+    if (!voiceModeActive && useMemberStore.getState().isViewingOther()) {
+      console.warn('[LinChat] 语音模式需使用本人声纹，已切换回自身视角');
+      await stop();
+      useMemberStore.getState().clearTarget();
+      await reload();
+    }
     setVoiceMode(!voiceModeActive);
-  }, [voiceModeActive, setVoiceMode]);
+  }, [voiceModeActive, setVoiceMode, stop, reload]);
 
   // 处理登出
   const handleLogout = useCallback(async () => {
     await logout();
     router.push('/login');
   }, [logout, router]);
+
+  // 015-family-multiuser: 成员切换相关
+  const handleOpenMemberModal = useCallback(() => {
+    setMemberModalOpen(true);
+  }, []);
+
+  const handleMemberSelect = useCallback(async (userId: number, username: string) => {
+    const { authUserId, isViewingOther: checkViewingOther, setTargetUser, clearTarget } = useMemberStore.getState();
+    // 切换到自己且当前未查看他人时忽略操作
+    if (userId === authUserId && !checkViewingOther()) {
+      setMemberModalOpen(false);
+      return;
+    }
+    // 中断活跃 SSE 流
+    await stop();
+    // 切换目标用户（或回到自己）
+    if (userId === authUserId) {
+      clearTarget();
+    } else {
+      setTargetUser(userId, username);
+    }
+    // 重新加载聊天历史
+    await reload();
+    setMemberModalOpen(false);
+  }, [stop, reload]);
+
+  const handleOpenCreateWizard = useCallback(() => {
+    setMemberModalOpen(false);
+    setCreateWizardOpen(true);
+  }, []);
+
+  // 015-family-multiuser: 回到自己
+  const handleBackToSelf = useCallback(async () => {
+    await stop();
+    useMemberStore.getState().clearTarget();
+    await reload();
+  }, [stop, reload]);
+
+  const handleMemberCreated = useCallback(() => {
+    setCreateWizardOpen(false);
+    loadMembers();
+  }, [loadMembers]);
+
+  // 计算当前头像信息
+  const currentAvatarUserId = isViewingOther() && targetUserId ? targetUserId : (authUserId ?? 0);
+  const currentAvatarUsername = isViewingOther() && targetUsername ? targetUsername : (user?.username ?? '');
+  const currentAvatarLetter = getAvatarLetter(currentAvatarUsername);
+  const currentAvatarColor = getAvatarColor(currentAvatarUserId);
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
@@ -104,9 +173,16 @@ export default function ChatPage() {
             <div className="flex items-center gap-4">
               {/* 用户信息 */}
               {user && (
-                <span className="text-sm text-gray-600 dark:text-gray-300">
-                  {user.username}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600 dark:text-gray-300">
+                    {user.username}
+                  </span>
+                  {user.member_type === 'guest' && (
+                    <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-xs font-medium text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300">
+                      访客
+                    </span>
+                  )}
+                </div>
               )}
 
               {/* 模型配置入口 - 仅管理员可见 */}
@@ -158,6 +234,22 @@ export default function ChatPage() {
           </div>
         </header>
 
+        {/* 015-family-multiuser: 代查模式提示条 */}
+        {isViewingOther() && targetUsername && (
+          <div className="flex items-center justify-center gap-3 border-b bg-blue-50 px-4 py-2 text-sm text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300">
+            <svg className="h-4 w-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            <span>正在查看 <strong>{targetUsername}</strong> 的对话</span>
+            <button
+              onClick={handleBackToSelf}
+              className="rounded-md bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-200 dark:bg-blue-800 dark:text-blue-200 dark:hover:bg-blue-700"
+            >
+              回到自己
+            </button>
+          </div>
+        )}
+
         {/* 网络错误提示 */}
         <NetworkError
           error={error}
@@ -188,6 +280,10 @@ export default function ChatPage() {
               failedContent={failedContent}
               failedAttachments={failedAttachments}
               voiceMode={voiceModeActive}
+              memberType={user?.member_type}
+              onOpenMemberModal={handleOpenMemberModal}
+              currentAvatarLetter={currentAvatarLetter}
+              currentAvatarColor={currentAvatarColor}
               onSend={send}
               onStop={stop}
               onClearFailedContent={clearFailedContent}
@@ -210,6 +306,21 @@ export default function ChatPage() {
         data={monitorData}
         tokenHistory={tokenHistory}
         contextHistory={contextHistory}
+      />
+
+      {/* 015-family-multiuser: 成员切换模态框 */}
+      <MemberSwitchModal
+        isOpen={memberModalOpen}
+        onClose={() => setMemberModalOpen(false)}
+        onSelect={handleMemberSelect}
+        onCreateUser={handleOpenCreateWizard}
+      />
+
+      {/* 015-family-multiuser: 创建成员向导 */}
+      <CreateMemberWizard
+        isOpen={createWizardOpen}
+        onClose={() => setCreateWizardOpen(false)}
+        onCreated={handleMemberCreated}
       />
     </div>
   );

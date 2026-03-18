@@ -57,10 +57,16 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
         self._last_activity: float = time.time()
         self._idle_check_task: Optional[asyncio.Task] = None
         self._configured: bool = False
-        self._mode: str = "voice_chat"
+        self._mode: str = "ambient"
         self._closed: bool = False
         self._segment_timer_task: Optional[asyncio.Task] = None
         self._aggregator = None
+        self._speaker_aggregators: dict[int, Any] = {}
+        self._diarize_enabled: bool = False
+        self._pending_text: Optional[str] = None
+        self._pending_speaker_user_id: Optional[int] = None
+        self._is_speaking: bool = False
+        self._pipeline_task: Optional[asyncio.Task] = None
         await self.accept()
         from apps.voice.services.tts_router import TTSRouter
         await self.channel_layer.group_add(TTSRouter.group_name(self.user_id), self.channel_name)
@@ -77,6 +83,11 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
         aggregator = getattr(self, "_aggregator", None)
         if aggregator:
             aggregator.destroy()
+        for agg in getattr(self, "_speaker_aggregators", {}).values():
+            agg.destroy()
+        self._speaker_aggregators = {}
+        self._pending_text = None
+        self._pending_speaker_user_id = None
         await cancel_task(getattr(self, "_idle_check_task", None))
         cancel_task_sync(getattr(self, "_segment_timer_task", None))
         if user_id:

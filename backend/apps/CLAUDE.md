@@ -9,7 +9,7 @@
 | App | 关键模型 | 说明 |
 |-----|----------|------|
 | `chat` | Message, LangGraphExecution | 消息收发、SSE 流式响应、推理取消 |
-| `common` | 无 | Token 中间件、异常体系、响应格式、SSE 事件、Gateway 调用（Langfuse 单例）、Rate Limiter、MinIO 存储封装（storage/） |
+| `common` | 无 | Token 中间件、异常体系、响应格式、SSE 事件、Gateway 调用（Langfuse 单例）、Rate Limiter、MinIO 存储封装（storage/）、异步任务工具（async_utils） |
 | `context` | 无 | Prompt 构建（PromptBuilder + builder_helpers）、上下文裁剪（Trimmer）、Token 预算管理、监控 API（ContextMonitor）、16 个 Jinja2 模板 |
 | `graph` | 无 | LangGraph Agent 创建/执行（AgentService）、6 个 SubAgent（搜索/记忆/代码/HA/多模态/文档）、推理取消（InferenceService）、GPU 锁互斥 |
 | `media` | MediaAttachment, DocumentChunkEmbedding | **010 新增 — 从 chat 分离**。媒体上传/下载、文档解析（Gateway）+ RAG 向量分块（011 新增）、过期清理任务、音频工具（PCM→WAV） |
@@ -36,7 +36,18 @@ voice（独立 WebSocket 入口，依赖 graph/chat/media/users）
 
 ---
 
-## 010-voice-agent-pipeline 关键变更
+## 重要重构记录
+
+### voice 模块代码精简重构（2026-03-11）
+
+1. **新增公共工具**: `apps/common/async_utils.py`（异步任务取消工具，消除 8+ 处重复代码）
+2. **新增 WebSocket 基类**: `voice/services/ws_client_base.py`（BaseWSClient，ASR/TTS 客户端共用连接/心跳/接收循环）
+3. **新增协议消息工具**: `voice/services/voice_messages.py`（error_msg/response_event/delta_msg/build_agent_error）
+4. **voice_persist_service 扩展**: 新增 `persist_audio_attachment()`（从 VoicePipeline 迁入）和 `record_only_ambient()`（从 VoicePipeline 迁入）
+5. **voice_session_service 扩展**: 新增 `check_ws_rate_limit()`（从 consumers.py 提取）和 `check_llm_rate_limit()`（从 voice_pipeline.py 提取）
+6. **代码量**: 14 个文件变更，2404 行 → ~1500 行（减少 38%），所有服务文件 ≤ 150 行
+
+### 010-voice-agent-pipeline 关键变更
 
 1. **media app 新增**: 从 chat 分离独立的媒体管理模块（models/repositories/services/views/tasks）
 2. **voice Consumer 重构**: 单文件 → 3 Mixin 架构（SessionMixin/EventMixin/InferenceMixin）

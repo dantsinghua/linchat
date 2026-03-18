@@ -639,6 +639,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 | **012-doc-parse-progress** | `specs/012-doc-parse-progress/spec.md` | ✅ 已完成 |
 | **013-tts-comfort-queue** | `specs/013-tts-comfort-queue/spec.md` | ✅ 已完成 |
 | **014-jarvis-ambient-voice** | `specs/014-jarvis-ambient-voice/spec.md` | ✅ 已完成 |
+| **015-family-multiuser** | `specs/015-family-multiuser/spec.md` | ✅ 已完成 |
 
 ---
 
@@ -647,7 +648,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 - 宪法文件: [.specify/memory/constitution.md](.specify/memory/constitution.md)
 - 代码示例: [docs/constitution-examples.md](docs/constitution-examples.md)
 - Gateway 集成指南: [docs/linchat-integration-guide.md](docs/linchat-integration-guide.md)
-- 当前特性规范: [specs/014-jarvis-ambient-voice/spec.md](specs/014-jarvis-ambient-voice/spec.md)
+- 当前特性规范: [specs/015-family-multiuser/spec.md](specs/015-family-multiuser/spec.md)
 
 ---
 
@@ -665,6 +666,8 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 - N/A（无新数据模型，运行时管道变更） (013-tts-comfort-queue)
 - Python 3.11+ (后端) + TypeScript 5.0+ (前端 — 仅 ambient 模式类型定义) + Django 4.2+ / channels / websockets 12.0+ / httpx / asyncio / LangGraph (014-jarvis-ambient-voice)
 - PostgreSQL (Message 持久化) / Redis (聚合缓冲状态 + Channels 分组) (014-jarvis-ambient-voice)
+- Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+ / DRF 3.14+ / uvicorn 0.30+ / Celery 5.3+ (后端) / Next.js 14+ / React 18+ / Zustand (前端) (015-family-multiuser)
+- PostgreSQL 15 (SysUser 扩展字段) / Redis DB0 (Token 信息扩展 member_type) / Redis DB2 (Celery beat) (015-family-multiuser)
 
 ## Recent Changes
 - 010-voice-agent-pipeline: Added Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, channels (WebSocket), websockets (Gateway ASR WS 客户端 + TTS 流式 WS 客户端), LangGraph, LangChain, Langfuse

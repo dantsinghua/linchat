@@ -4,7 +4,8 @@ from datetime import datetime
 from typing import Optional
 
 from asgiref.sync import sync_to_async
-from django.db.models import F
+from django.db.models import BooleanField, Case, F, When
+from django.utils import timezone
 
 from apps.users.models import SysUser
 
@@ -84,6 +85,34 @@ class UserRepository:
     def add_tokens(user_id: int, tokens: int) -> None:
         SysUser.objects.filter(user_id=user_id).update(
             total_tokens=F("total_tokens") + tokens
+        )
+
+    @staticmethod
+    @sync_to_async
+    def list_members(include_expired: bool = False) -> list[SysUser]:
+        """查询家庭成员列表。
+
+        Args:
+            include_expired: 是否包含已过期的访客。
+
+        Returns:
+            用户列表，附带 is_expired 标注，过期用户排末尾。
+        """
+        queryset = SysUser.objects.filter(status=1).annotate(
+            is_expired=Case(
+                When(
+                    member_type="guest",
+                    guest_expires_at__lte=timezone.now(),
+                    then=True,
+                ),
+                default=False,
+                output_field=BooleanField(),
+            ),
+        )
+        if not include_expired:
+            queryset = queryset.filter(is_expired=False)
+        return list(
+            queryset.order_by("is_expired", "created_time")
         )
 
 

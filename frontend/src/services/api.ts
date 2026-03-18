@@ -17,6 +17,7 @@ import axios, {
 
 import { ApiError, ApiResponse } from '@/types';
 import { isAuthRedirecting, trigger401Redirect } from '@/services/authGuard';
+import { useMemberStore } from '@/stores/memberStore';
 
 // API 基础 URL
 // 生产环境: /linchat/api/v1 (nginx 重写为 /api/v1)
@@ -44,6 +45,13 @@ apiClient.interceptors.request.use(
     if (isAuthRedirecting()) {
       return Promise.reject(new axios.Cancel('Auth redirecting'));
     }
+
+    // 015-family-multiuser: 代查模式自动注入目标用户 Header
+    const memberState = useMemberStore.getState();
+    if (memberState.isViewingOther()) {
+      config.headers['X-Target-User-Id'] = String(memberState.targetUserId);
+    }
+
     return config;
   },
   (error: AxiosError) => {
@@ -60,6 +68,18 @@ apiClient.interceptors.response.use(
     // 处理 401 未授权错误
     if (error.response?.status === 401) {
       trigger401Redirect();
+    }
+
+    // 015-family-multiuser: 目标用户无效时自动清除代查状态
+    if (
+      error.response?.status === 400 &&
+      error.response.data?.code === 'TARGET_USER_INVALID'
+    ) {
+      const { clearTarget } = useMemberStore.getState();
+      clearTarget();
+      console.warn(
+        `[LinChat] ${error.response.data?.message || '目标用户无效'}`
+      );
     }
 
     // 处理 429 频率限制

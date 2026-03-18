@@ -29,7 +29,7 @@ backend/
 | App | 关键模型 | 说明 |
 |-----|----------|------|
 | `chat` | Message, LangGraphExecution | 消息收发、SSE 流式响应、推理取消 |
-| `common` | 无 | Token 中间件、异常体系、响应格式、SSE 事件、Gateway 调用（Langfuse 单例）、Rate Limiter、MinIO 存储封装 |
+| `common` | 无 | Token 中间件、异常体系、响应格式、SSE 事件、Gateway 调用（Langfuse 单例）、Rate Limiter、MinIO 存储封装、异步任务工具（async_utils） |
 | `context` | 无 | Prompt 构建（PromptBuilder + builder_helpers）、上下文裁剪（Trimmer）、Token 预算、监控 API、16 个 Jinja2 模板 |
 | `graph` | 无 | LangGraph Agent 创建/执行、6 个 SubAgent（搜索/记忆/代码/HA/多模态/文档）、推理取消、GPU 锁 |
 | `media` | MediaAttachment, DocumentChunkEmbedding | 媒体上传/下载、文档解析（Gateway）+ RAG 向量分块（1024 维 pgvector）、过期清理任务 |
@@ -55,11 +55,11 @@ backend/
 
 ```
 ESP 设备/浏览器 (PCM 音频) → WebSocket → VoiceConsumer (3 Mixin 架构)
-  → ASRStreamClient → Gateway ASR (长期存活, 心跳 30s/60s)
+  → ASRStreamClient(BaseWSClient) → Gateway ASR (长期存活, 心跳 30s/60s)
   → [voice_chat] transcription → VoicePipeline → Agent → TTSPipelineManager → 前端播放
   → [ambient]    transcription → UtteranceAggregator (3s 聚合) → ResponseDecisionService
                                   → RESPOND: VoicePipeline → TTSRouter (group_send) → 浏览器播放
-                                  → RECORD_ONLY: 保存消息（上限 20 条自动清理）
+                                  → RECORD_ONLY: voice_persist_service.record_only_ambient()（上限 20 条自动清理）
                                   → STOP: 取消管道 + 重置聚合器
 ```
 

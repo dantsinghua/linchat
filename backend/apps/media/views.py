@@ -37,7 +37,7 @@ def upload_media(request: Request) -> Response:
 
 @api_view(["GET"])
 def get_media(request: Request, uuid: str) -> Response:
-    user_id = request.user_id
+    user_id = request.target_user_id
     attachment = async_to_sync(MediaService.get_attachment_any_user)(uuid)
     if not attachment:
         return ApiResponse.not_found(message="附件不存在")

@@ -10,6 +10,7 @@
 
 import { memo, useEffect, useRef, useState } from 'react';
 import type { AlertLevel, ContextStatus, MonitorData } from '@/types';
+import { useChatStore } from '@/stores/chatStore';
 
 /* ------------------------------------------------------------------ */
 /*  Color Palette                                                      */
@@ -116,6 +117,18 @@ export function useContextMonitor() {
     output: [],
   });
   const [contextHistory, setContextHistory] = useState<number[]>([]);
+
+  // 回复完成后归零输入输出 tokens
+  const isGenerating = useChatStore((s) => s.isGenerating);
+  const prevGeneratingRef = useRef(false);
+  useEffect(() => {
+    if (prevGeneratingRef.current && !isGenerating && data) {
+      const zeroed: MonitorData = { ...data, input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+      setData(zeroed);
+      saveCachedMonitor(zeroed, tokenHistory, contextHistory);
+    }
+    prevGeneratingRef.current = isGenerating;
+  }, [isGenerating]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 客户端 mount 后从 sessionStorage 恢复缓存数据（避免 SSR hydration 不匹配）
   useEffect(() => {

@@ -1,10 +1,22 @@
 import base64, logging
+from dataclasses import dataclass
 from typing import Optional
 import httpx
 from django.conf import settings
 from apps.voice.repositories import speaker_profile_repo
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DiarizeSegment:
+    speaker_user_id: int       # 反查到的 SysUser.id（0 表示未识别）
+    username: str              # 用户名（空字符串表示未识别）
+    gateway_speaker_id: str    # 原始 speaker ID（spk_xxx 或 speaker_N）
+    text: str                  # ASR 转写文本
+    start_ms: int
+    end_ms: int
+    confidence: float
 
 
 class SpeakerService:
@@ -77,6 +89,70 @@ class SpeakerService:
             logger.error("Gateway speaker delete timeout: gw=%s", gateway_speaker_id)
         except httpx.HTTPError as e:
             logger.error("Gateway speaker delete error: gw=%s, err=%s", gateway_speaker_id, e)
+
+
+    async def diarize_audio(self, pcm_chunks: list[bytes]) -> list[DiarizeSegment]:
+        """调用 Gateway diarize API，返回有效用户的分段列表。
+
+        无效/未注册说话人的 segments 已被过滤掉。
+        """
+        from apps.voice.services.voice_persist_service import voice_persist_service
+        duration = voice_persist_service.calculate_duration(pcm_chunks)
+        if duration < settings.VOICE_SPEAKER_MIN_AUDIO_SECONDS:
+            logger.info("Diarize skip: audio too short (%.1fs)", duration)
+            return []
+        wav_data = voice_persist_service.merge_pcm_to_wav(pcm_chunks)
+        audio_b64 = base64.b64encode(wav_data).decode("ascii")
+        try:
+            async with httpx.AsyncClient(timeout=settings.VOICE_DIARIZE_TIMEOUT) as client:
+                resp = await client.post(
+                    f"{settings.LLM_GATEWAY_URL}/v1/voice/diarize",
+                    headers={"Authorization": f"Bearer {settings.LLM_GATEWAY_API_KEY}"},
+                    json={
+                        "audio": audio_b64,
+                        "threshold": settings.VOICE_DIARIZE_MATCH_THRESHOLD,
+                        "cluster_threshold": settings.VOICE_DIARIZE_CLUSTER_THRESHOLD,
+                    },
+                )
+            if resp.status_code != 200:
+                logger.warning("Diarize API error: status=%d", resp.status_code)
+                return []
+            data = resp.json()
+        except httpx.TimeoutException:
+            logger.warning("Diarize API timeout (%.1fs)", settings.VOICE_DIARIZE_TIMEOUT)
+            return []
+        except Exception:
+            logger.exception("Diarize API error")
+            return []
+
+        segments = data.get("segments", [])
+        valid: list[DiarizeSegment] = []
+        for seg in segments:
+            speaker = seg.get("speaker", "")
+            confidence = seg.get("confidence", 0.0)
+            text = seg.get("text", "").strip()
+            # 未注册声纹返回 speaker_N（自动编号），已注册返回真实 gateway_speaker_id
+            if speaker.startswith("speaker_") or confidence <= 0:
+                continue
+            info = await self.identify_speaker(speaker)
+            if not info:
+                continue
+            user_id = info["user_id"]
+            from apps.users.models import SysUser
+            from asgiref.sync import sync_to_async
+            user = await sync_to_async(SysUser.objects.filter(user_id=user_id).first)()
+            if not user or not user.is_active() or user.is_guest_expired():
+                logger.info("Diarize skip inactive/expired user: uid=%s, spk=%s", user_id, speaker)
+                continue
+            valid.append(DiarizeSegment(
+                speaker_user_id=user_id, username=info["username"],
+                gateway_speaker_id=speaker, text=text,
+                start_ms=seg.get("start_ms", 0), end_ms=seg.get("end_ms", 0),
+                confidence=confidence,
+            ))
+        logger.info("Diarize result: total=%d, valid=%d, duration=%.1fs",
+                     len(segments), len(valid), duration)
+        return valid
 
 
 class SpeakerRegistrationError(Exception):

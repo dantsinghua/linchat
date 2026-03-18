@@ -93,5 +93,14 @@ class VoiceSessionService:
         finally:
             await redis.aclose()
 
+    async def add_recent_speaker(self, owner_user_id: int, speaker_user_id: int) -> None:
+        key = f"voice:recent_speakers:{owner_user_id}"
+        r = await get_redis()
+        try:
+            await r.sadd(key, str(speaker_user_id))
+            await r.expire(key, 60)
+        finally:
+            await r.aclose()
+
 
 voice_session_service = VoiceSessionService()

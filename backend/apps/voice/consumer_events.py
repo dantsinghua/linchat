@@ -23,6 +23,7 @@ class EventMixin:
             await handler(event)
 
     async def _on_vad_speech_start(self, event: dict[str, Any]) -> None:
+        self._is_speaking = True
         self._current_segment_id = str(uuid.uuid4())[:8]
         self._last_activity = time.time()
         await voice_session_service.set_active_conversation(self.user_id)
@@ -31,6 +32,7 @@ class EventMixin:
             "segment_id": self._current_segment_id, "timestamp": event.get("timestamp")}})
 
     async def _on_vad_speech_end(self, event: dict[str, Any]) -> None:
+        self._is_speaking = False
         from apps.common.async_utils import cancel_task_sync
         cancel_task_sync(getattr(self, "_segment_timer_task", None))
         await self._send_json({"type": "vad.speech_end", "data": {
@@ -52,15 +54,30 @@ class EventMixin:
         await self._start_voice_pipeline(segment_id, text)
 
     async def _handle_ambient_transcription(self, text: str, segment_id: str) -> None:
+        import asyncio as _asyncio
         from apps.voice.services.response_decision_service import ResponseDecisionService
         from apps.voice.services.voice_pipeline import VoicePipeline
+
+        # 停止词预检（零延迟，用 streaming ASR text）
         if ResponseDecisionService._check_emergency_stop(text):
             aggregator = getattr(self, "_aggregator", None)
             if aggregator:
                 aggregator.reset()
+            for agg in getattr(self, "_speaker_aggregators", {}).values():
+                agg.reset()
             await VoicePipeline.cancel(self.user_id)
             await self._send_json({"type": "decision.result", "data": {"decision": "STOP", "reason": "emergency_stop"}})
             return
+
+        # 判断是否启用 diarize（系统中有注册声纹才启用）
+        if getattr(self, "_diarize_enabled", False):
+            _asyncio.create_task(self._diarize_and_aggregate(text, segment_id))
+        else:
+            # 原有流程不变 — 无声纹注册时完全兼容
+            await self._legacy_aggregate(text, segment_id)
+
+    async def _legacy_aggregate(self, text: str, segment_id: str) -> None:
+        """原有 ambient 聚合流程（无声纹识别）— 100% 向后兼容"""
         aggregator = getattr(self, "_aggregator", None)
         if aggregator:
             await aggregator.add(text)
@@ -70,6 +87,45 @@ class EventMixin:
         else:
             logger.warning("Ambient no aggregator: user=%s, fallback", self.user_id)
             await self._start_voice_pipeline(segment_id, text)
+
+    async def _diarize_and_aggregate(self, streaming_text: str, segment_id: str) -> None:
+        """后台任务：diarize 识别说话人 + per-speaker 聚合"""
+        try:
+            from apps.voice.services.speaker_service import speaker_service
+            from apps.voice.services.voice_session_service import voice_session_service
+
+            pcm_chunks = await voice_session_service.get_audio_chunks(self.user_id, segment_id)
+            if not pcm_chunks:
+                logger.info("Diarize skip: no audio chunks, seg=%s", segment_id)
+                return
+
+            valid_segments = await speaker_service.diarize_audio(pcm_chunks)
+
+            if not valid_segments:
+                # 降级回退 — diarize 没匹配到有效说话人，用 streaming ASR text + 原有流程
+                logger.info("Diarize fallback: no valid speakers, using streaming text, seg=%s", segment_id)
+                aggregator = self._get_or_create_aggregator(self.user_id)
+                await aggregator.add(streaming_text)
+                await self._send_json({"type": "speaker.unidentified", "data": {
+                    "segment_id": segment_id, "text_preview": streaming_text[:50]}})
+                return
+
+            # 遍历有效 segments，按说话人聚合
+            for seg in valid_segments:
+                if not seg.text.strip():
+                    continue
+                await voice_session_service.add_recent_speaker(self.user_id, seg.speaker_user_id)
+                await self._send_json({"type": "speaker.identified", "data": {
+                    "segment_id": segment_id, "user_id": seg.speaker_user_id,
+                    "username": seg.username, "confidence": seg.confidence, "text": seg.text}})
+                aggregator = self._get_or_create_aggregator(seg.speaker_user_id)
+                await aggregator.add(seg.text)
+
+        except Exception:
+            # 异常降级 — diarize 失败时回退到 streaming ASR text
+            logger.exception("Diarize error, fallback to streaming: seg=%s", segment_id)
+            aggregator = self._get_or_create_aggregator(self.user_id)
+            await aggregator.add(streaming_text)
 
     async def _on_transcription_failed(self, event: dict[str, Any]) -> None:
         await self._send_json({"type": "transcription.failed", "data": {

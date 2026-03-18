@@ -346,7 +346,7 @@ export function useVoiceMode(): UseVoiceModeReturn {
       const has = resp.data != null;
       storeSetHasSpeakerProfile(has);
     } catch {
-      // 检查失败不阻塞，降级使用 voice_chat 模式
+      // 检查失败不阻塞，仍使用 ambient 模式
       storeSetHasSpeakerProfile(false);
     }
 
@@ -369,7 +369,8 @@ export function useVoiceMode(): UseVoiceModeReturn {
     if (!isConnected) return;
 
     const { hasSpeakerProfile: hasSpeaker } = useVoiceStore.getState();
-    const voiceMode = hasSpeaker ? 'voice_chat_enriched' : 'voice_chat';
+    // T051: 语音模式统一为 ambient，不再区分 voice_chat/voice_chat_enriched
+    const voiceMode = 'ambient';
 
     const state = sessionStateRef.current;
     if (state === 'configuring') {

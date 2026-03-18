@@ -17,6 +17,7 @@ export interface ApiResponse<T = unknown> {
 export interface User {
   user_id: number;
   username: string;
+  member_type?: 'member' | 'guest';  // 015-family-multiuser
 }
 
 export interface LoginRequest {

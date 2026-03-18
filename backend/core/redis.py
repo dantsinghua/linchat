@@ -48,6 +48,12 @@ def sync_redis_expire(key: str, seconds: int) -> bool:
     return client.expire(key, seconds)
 
 
+def sync_redis_setex_json(key: str, seconds: int, value: dict | list) -> bool:
+    """同步设置带过期时间的 JSON 值"""
+    client = SyncRedisClient.get_client()
+    return client.setex(key, seconds, json.dumps(value, ensure_ascii=False))
+
+
 class RedisClient:
     """Redis 客户端封装
 

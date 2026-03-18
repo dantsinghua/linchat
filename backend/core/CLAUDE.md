@@ -98,4 +98,11 @@
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
 | #1626 | 8:33 AM | 🔵 | LLM Configuration Usage Across LinChat Backend | ~340 |
+
+### Mar 14, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1871 | 7:56 PM | 🔵 | Voice features routed through LLM Gateway WebSocket endpoints | ~236 |
+| #1870 | " | 🔵 | LLM Gateway configuration in backend settings | ~285 |
 </claude-mem-context>
