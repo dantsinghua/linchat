@@ -1,5 +1,3 @@
-"""LangGraph 工具集"""
-
 import logging
 
 from django.conf import settings
@@ -12,7 +10,9 @@ from apps.graph.tools.search import SEARCH_TOOLS
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["CONTEXT_TOOLS", "HA_TOOLS", "MEMORY_TOOLS", "SEARCH_TOOLS", "REPL_TOOLS", "cap_tool_result"]
+from apps.graph.tools.user_id import get_user_id  # noqa: F401, E402
+
+__all__ = ["CONTEXT_TOOLS", "HA_TOOLS", "MEMORY_TOOLS", "SEARCH_TOOLS", "REPL_TOOLS", "cap_tool_result", "get_user_id"]
 
 
 def cap_tool_result(text: str, tool_name: str) -> str:

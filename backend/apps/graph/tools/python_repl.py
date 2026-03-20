@@ -1,9 +1,3 @@
-"""Python 代码执行工具 — 进程级沙箱
-
-user_id 通过 RunnableConfig 隐式注入 [R-004]。
-安全限制：环境变量清空、30秒超时、输出截断 4096 字符。
-"""
-
 import asyncio
 import logging
 import tempfile
@@ -11,17 +5,12 @@ import tempfile
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from apps.graph.tools.user_id import get_user_id as _get_user_id
+
 logger = logging.getLogger(__name__)
 
 MAX_OUTPUT_LENGTH = 4096
 EXEC_TIMEOUT = 30
-
-
-def _get_user_id(config: RunnableConfig) -> int:
-    user_id = config.get("configurable", {}).get("user_id")
-    if user_id is None:
-        raise ValueError("user_id not found in RunnableConfig")
-    return int(user_id)
 
 
 @tool

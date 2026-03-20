@@ -41,13 +41,11 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
             self.user_id = user_id
             self.username = self.scope.get("username", "")
             self._is_device_connection = False
-
         if not await voice_session_service.check_ws_rate_limit(self.user_id):
             await self.accept()
             await self.send(text_data=json.dumps(error_msg("WS_RATE_LIMIT", "连接过于频繁，请稍后重试", False)))
             await self.close(code=4029)
             return
-
         self._asr_client: Optional[ASRStreamClient] = None
         self._current_response_id: Optional[str] = None
         self._accumulated_content: str = ""
@@ -80,14 +78,12 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
                 await self.channel_layer.group_discard(TTSRouter.group_name(user_id), self.channel_name)
             except Exception:
                 pass
-        aggregator = getattr(self, "_aggregator", None)
-        if aggregator:
-            aggregator.destroy()
-        for agg in getattr(self, "_speaker_aggregators", {}).values():
+        agg = getattr(self, "_aggregator", None)
+        if agg:
             agg.destroy()
-        self._speaker_aggregators = {}
-        self._pending_text = None
-        self._pending_speaker_user_id = None
+        for a in getattr(self, "_speaker_aggregators", {}).values():
+            a.destroy()
+        self._speaker_aggregators, self._pending_text, self._pending_speaker_user_id = {}, None, None
         await cancel_task(getattr(self, "_idle_check_task", None))
         cancel_task_sync(getattr(self, "_segment_timer_task", None))
         if user_id:
@@ -115,12 +111,10 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
             await self._send_error("INVALID_JSON", "无效的 JSON 格式")
             return
         msg_type, data = message.get("type"), message.get("data", {})
-        handlers = {
-            "session.configure": self._handle_session_configure,
+        handlers = {"session.configure": self._handle_session_configure,
             "session.reconnect": self._handle_session_reconnect,
             "session.close": lambda d: self._handle_session_close(),
-            "response.cancel": self._handle_response_cancel,
-        }
+            "response.cancel": self._handle_response_cancel}
         handler = handlers.get(msg_type)
         if handler:
             await handler(data)

@@ -18,7 +18,8 @@ from apps.users.serializers import (
     LoginRequestSerializer,
     MemberListSerializer,
 )
-from apps.users.services import AuthService, CaptchaService, MemberService
+from apps.users.member_service import MemberService
+from apps.users.services import AuthService, CaptchaService
 
 logger = logging.getLogger(__name__)
 

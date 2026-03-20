@@ -107,7 +107,7 @@ class TestMemberListView:
         usernames = [m["username"] for m in body["data"]]
         assert "mv_test_expired" in usernames
 
-    @patch("apps.users.services.httpx.AsyncClient")
+    @patch("apps.users.member_service.httpx.AsyncClient")
     def test_post_create_success(self, mock_client_cls):
         """POST 成功创建成员（mock Gateway）"""
         mock_client = AsyncMock()

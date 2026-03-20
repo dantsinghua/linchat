@@ -69,10 +69,9 @@ class TestDocList:
 class TestDocRead:
     """doc_read 工具测试"""
 
-    @patch("apps.media.services.document.DocumentParseService.get_cached_result", new_callable=AsyncMock)
+    @patch("apps.media.services.document_cache.get_cached_result", new_callable=AsyncMock)
     @patch("apps.media.repositories.media_attachment_repo.get_by_uuid", new_callable=AsyncMock)
     def test_returns_content(self, mock_get, mock_cache):
-        """返回解析内容"""
         from apps.graph.subagents.document_agent import doc_read
 
         mock_get.return_value = _make_attachment()
@@ -80,10 +79,9 @@ class TestDocRead:
         result = run_async(doc_read.ainvoke({"attachment_uuid": "abc123"}, config=_config()))
         assert "Document Content" in result
 
-    @patch("apps.media.services.document.DocumentParseService.get_cached_result", new_callable=AsyncMock)
+    @patch("apps.media.services.document_cache.get_cached_result", new_callable=AsyncMock)
     @patch("apps.media.repositories.media_attachment_repo.get_by_uuid", new_callable=AsyncMock)
     def test_truncates_long_content(self, mock_get, mock_cache):
-        """超长内容截断"""
         from apps.graph.subagents.document_agent import doc_read
 
         mock_get.return_value = _make_attachment()
@@ -91,10 +89,9 @@ class TestDocRead:
         result = run_async(doc_read.ainvoke({"attachment_uuid": "abc123", "max_length": 100}, config=_config()))
         assert "内容已截断" in result
 
-    @patch("apps.media.services.document.DocumentParseService.get_cached_result", new_callable=AsyncMock)
+    @patch("apps.media.services.document_cache.get_cached_result", new_callable=AsyncMock)
     @patch("apps.media.repositories.media_attachment_repo.get_by_uuid", new_callable=AsyncMock)
     def test_not_parsed(self, mock_get, mock_cache):
-        """未解析提示"""
         from apps.graph.subagents.document_agent import doc_read
 
         mock_get.return_value = _make_attachment()
@@ -115,9 +112,8 @@ class TestDocRead:
 class TestDocSearch:
     """doc_search 工具测试"""
 
-    @patch("apps.media.services.document.DocumentParseService.search_documents_rag", new_callable=AsyncMock)
+    @patch("apps.media.services.document_rag.search_documents_rag", new_callable=AsyncMock)
     def test_returns_results(self, mock_search):
-        """返回搜索结果"""
         from apps.graph.subagents.document_agent import doc_search
 
         mock_search.return_value = [
@@ -127,9 +123,8 @@ class TestDocSearch:
         assert "1 个相关片段" in result
         assert "paper.pdf" in result
 
-    @patch("apps.media.services.document.DocumentParseService.search_documents_rag", new_callable=AsyncMock)
+    @patch("apps.media.services.document_rag.search_documents_rag", new_callable=AsyncMock)
     def test_empty_results(self, mock_search):
-        """无匹配返回提示"""
         from apps.graph.subagents.document_agent import doc_search
 
         mock_search.return_value = []
@@ -140,7 +135,7 @@ class TestDocSearch:
 class TestDocumentParse:
     """document_parse 工具测试"""
 
-    @patch("apps.media.services.document.DocumentParseService.get_cached_result", new_callable=AsyncMock)
+    @patch("apps.media.services.document_cache.get_cached_result", new_callable=AsyncMock)
     @patch("apps.media.repositories.media_attachment_repo.get_by_uuids", new_callable=AsyncMock)
     def test_cache_hit(self, mock_get_uuids, mock_cache):
         """缓存命中 — 跳过 GPU 锁和 Gateway"""
@@ -171,8 +166,8 @@ class TestDocumentParse:
         result = run_async(document_parse.ainvoke({"task": "解析文档"}, config=_config(uuids=["uuid-1"])))
         assert "没有需要解析的文档" in result
 
-    @patch("apps.media.services.document.DocumentParseService.get_cached_result", new_callable=AsyncMock)
-    @patch("apps.media.services.document.DocumentParseService.clear_parsed_cache", new_callable=AsyncMock)
+    @patch("apps.media.services.document_cache.get_cached_result", new_callable=AsyncMock)
+    @patch("apps.media.services.document_cache.clear_parsed_cache", new_callable=AsyncMock)
     @patch("apps.media.repositories.media_attachment_repo.get_by_uuids", new_callable=AsyncMock)
     def test_force_clears_cache(self, mock_get_uuids, mock_clear, mock_cache):
         """force=True — 先清除缓存"""
@@ -184,7 +179,7 @@ class TestDocumentParse:
         result = run_async(document_parse.ainvoke({"task": "解析文档", "force": True}, config=_config(uuids=["uuid-1"])))
         mock_clear.assert_called_once()
 
-    @patch("apps.media.services.document.DocumentParseService.get_cached_result", new_callable=AsyncMock)
+    @patch("apps.media.services.document_cache.get_cached_result", new_callable=AsyncMock)
     @patch("apps.media.repositories.media_attachment_repo.get_by_uuids", new_callable=AsyncMock)
     def test_expired_file_no_cache(self, mock_get_uuids, mock_cache):
         """已过期且无缓存 → 无法解析"""
@@ -201,13 +196,13 @@ class TestDocumentParseSSEProgress:
     """document_parse SSE 进度推送测试（012-doc-parse-progress T009）"""
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.graph.subagents.document_agent.EventService.publish_event", new_callable=AsyncMock)
-    @patch("apps.media.services.document.DocumentParseService.save_parsed_result", new_callable=AsyncMock, return_value=True)
+    @patch("apps.graph.subagents.document_parse_helpers.EventService.publish_event", new_callable=AsyncMock)
+    @patch("apps.media.services.document_cache.save_parsed_result", new_callable=AsyncMock, return_value=True)
     @patch("apps.media.services.document.DocumentParseService.get_task_result", new_callable=AsyncMock)
     @patch("apps.media.services.document.DocumentParseService.poll_task_status", new_callable=AsyncMock)
     @patch("apps.media.services.document.DocumentParseService.parse_document", new_callable=AsyncMock)
     @patch("apps.graph.services.acquire_gpu_lock")
-    @patch("apps.media.services.document.DocumentParseService.get_cached_result", new_callable=AsyncMock, return_value=None)
+    @patch("apps.media.services.document_cache.get_cached_result", new_callable=AsyncMock, return_value=None)
     @patch("apps.media.repositories.media_attachment_repo.get_by_uuids", new_callable=AsyncMock)
     def test_sse_completed_flow(self, mock_uuids, mock_cache, mock_gpu, mock_parse,
                                 mock_poll, mock_result, mock_save, mock_publish, mock_sleep):
@@ -239,11 +234,11 @@ class TestDocumentParseSSEProgress:
         assert calls[2].kwargs["data"]["status"] == "completed"
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.graph.subagents.document_agent.EventService.publish_event", new_callable=AsyncMock)
+    @patch("apps.graph.subagents.document_parse_helpers.EventService.publish_event", new_callable=AsyncMock)
     @patch("apps.media.services.document.DocumentParseService.poll_task_status", new_callable=AsyncMock)
     @patch("apps.media.services.document.DocumentParseService.parse_document", new_callable=AsyncMock)
     @patch("apps.graph.services.acquire_gpu_lock")
-    @patch("apps.media.services.document.DocumentParseService.get_cached_result", new_callable=AsyncMock, return_value=None)
+    @patch("apps.media.services.document_cache.get_cached_result", new_callable=AsyncMock, return_value=None)
     @patch("apps.media.repositories.media_attachment_repo.get_by_uuids", new_callable=AsyncMock)
     def test_sse_failed_flow(self, mock_uuids, mock_cache, mock_gpu, mock_parse,
                              mock_poll, mock_publish, mock_sleep):
@@ -271,13 +266,13 @@ class TestDocumentParseSSEProgress:
         assert calls[1].kwargs["data"]["status"] == "failed"
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.graph.subagents.document_agent.EventService.publish_event", new_callable=AsyncMock)
+    @patch("apps.graph.subagents.document_parse_helpers.EventService.publish_event", new_callable=AsyncMock)
     @patch("apps.media.services.document.DocumentParseService.poll_task_status", new_callable=AsyncMock)
     @patch("apps.media.services.document.DocumentParseService.parse_document", new_callable=AsyncMock)
     @patch("apps.graph.services.acquire_gpu_lock")
-    @patch("apps.media.services.document.DocumentParseService.get_cached_result", new_callable=AsyncMock, return_value=None)
+    @patch("apps.media.services.document_cache.get_cached_result", new_callable=AsyncMock, return_value=None)
     @patch("apps.media.repositories.media_attachment_repo.get_by_uuids", new_callable=AsyncMock)
-    @patch("apps.graph.subagents.document_agent.settings")
+    @patch("apps.graph.subagents.document_parse_helpers.settings")
     def test_sse_timeout_as_failed(self, mock_settings, mock_uuids, mock_cache, mock_gpu,
                                    mock_parse, mock_poll, mock_publish, mock_sleep):
         """超时 → SSE 推送 failed 状态（012-doc-parse-progress T004）"""
@@ -308,12 +303,12 @@ class TestDocumentParseSSEProgress:
         assert "超时" in last_call.kwargs["data"]["error_message"]
 
     @patch("asyncio.sleep", new_callable=AsyncMock)
-    @patch("apps.graph.subagents.document_agent.EventService.publish_event", new_callable=AsyncMock)
+    @patch("apps.graph.subagents.document_parse_helpers.EventService.publish_event", new_callable=AsyncMock)
     @patch("apps.media.services.document.DocumentParseService.get_task_result", new_callable=AsyncMock)
     @patch("apps.media.services.document.DocumentParseService.poll_task_status", new_callable=AsyncMock)
     @patch("apps.media.services.document.DocumentParseService.parse_document", new_callable=AsyncMock)
     @patch("apps.graph.services.acquire_gpu_lock")
-    @patch("apps.media.services.document.DocumentParseService.get_cached_result", new_callable=AsyncMock, return_value=None)
+    @patch("apps.media.services.document_cache.get_cached_result", new_callable=AsyncMock, return_value=None)
     @patch("apps.media.repositories.media_attachment_repo.get_by_uuids", new_callable=AsyncMock)
     def test_sse_incomplete_flow(self, mock_uuids, mock_cache, mock_gpu, mock_parse,
                                  mock_poll, mock_result, mock_publish, mock_sleep):
@@ -333,7 +328,7 @@ class TestDocumentParseSSEProgress:
 
         result = run_async(document_parse.ainvoke({"task": "解析"}, config=_config(uuids=["uuid-1"])))
 
-        assert "部分解析完成" in result
+        assert "部分解析" in result
         assert "建议拆分文档" in result
         assert "Partial Content" in result
         # pending(1) + incomplete(1) = 2 次

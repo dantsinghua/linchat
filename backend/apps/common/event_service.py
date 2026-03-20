@@ -53,8 +53,14 @@ class SSEEvent:
         return "\n".join(lines) + "\n"
 
 
+def build_doc_parse_event(task_id: str, status: str, progress: dict, file_name: str,
+                          suggestion: str = None, error_message: str = None) -> dict:
+    evt = EventType.DOC_PARSE_PROGRESS.value
+    return {"type": evt, "task_id": task_id, "status": status, "progress": progress,
+            "file_name": file_name, "suggestion": suggestion, "error_message": error_message}
+
+
 class EventService:
-    """事件推送服务"""
 
     @staticmethod
     async def publish_logout_event(user_id: int, reason: LogoutReason) -> bool:

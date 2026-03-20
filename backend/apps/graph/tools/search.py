@@ -1,9 +1,3 @@
-"""网络搜索工具 — Brave Search API + Redis 限流
-
-user_id 通过 RunnableConfig 隐式注入 [R-004]。
-限流策略：1次/秒/用户 + 2000次/月（全局）。
-"""
-
 import calendar
 import logging
 from datetime import datetime, timezone
@@ -13,14 +7,9 @@ from django.conf import settings
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from apps.graph.tools.user_id import get_user_id as _get_user_id
+
 logger = logging.getLogger(__name__)
-
-
-def _get_user_id(config: RunnableConfig) -> int:
-    user_id = config.get("configurable", {}).get("user_id")
-    if user_id is None:
-        raise ValueError("user_id not found in RunnableConfig")
-    return int(user_id)
 
 
 def _end_of_month_ts() -> int:

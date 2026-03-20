@@ -1,35 +1,20 @@
-"""LangGraph 记忆工具集 — Agent 可调用的 4 个记忆操作工具
-
-双模式支持：Django 环境调用真实服务，独立模式（langgraph dev）返回 Mock。
-
-user_id 通过 RunnableConfig 隐式注入，LLM 不可见也不可篡改 [R-004]。
-"""
-
 import logging
 from typing import Optional
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from apps.graph.tools.user_id import get_user_id as _get_user_id
+
 logger = logging.getLogger(__name__)
 
 
 def _is_django_mode() -> bool:
-    """检测是否在 Django 环境中运行"""
     try:
         import django
-
         return django.apps.apps.ready
     except Exception:
         return False
-
-
-def _get_user_id(config: RunnableConfig) -> int:
-    """从 RunnableConfig 中提取 user_id，缺失时抛出异常"""
-    user_id = config.get("configurable", {}).get("user_id")
-    if user_id is None:
-        raise ValueError("user_id not found in RunnableConfig")
-    return int(user_id)
 
 
 @tool

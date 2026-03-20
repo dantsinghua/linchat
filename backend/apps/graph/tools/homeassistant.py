@@ -120,18 +120,7 @@ DIAG_DISPATCH = {
 async def ha_diagnose(
     diagnose_type: str, entity_id: str | None = None, config: RunnableConfig = None,
 ) -> str:
-    """诊断 Home Assistant 设备或系统问题。
-
-    Args:
-        diagnose_type: 诊断类型:
-            - health: 系统健康检查（版本、运行状态）
-            - device: 单设备诊断（可达性、最近状态变化）
-            - offline_scan: 扫描所有不可达设备
-            - automations: 检查自动化规则状态
-            - error_log: 获取最近错误日志
-        entity_id: 设备诊断时必填
-        config: LangChain 运行配置（自动注入）
-    """
+    """诊断 Home Assistant 设备或系统问题。"""
     try:
         user_id = _get_user_id(config)
     except ValueError as e:

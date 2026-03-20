@@ -21,7 +21,7 @@ from django.utils import timezone
 from apps.users.crypto import sm3_hash, sm4_encrypt, verify_password
 from apps.users.exceptions import UsernameExistsError, VoiceprintRegistrationError
 from apps.users.models import SysUser
-from apps.users.services import MemberService
+from apps.users.member_service import MemberService
 from apps.voice.models import SpeakerProfile
 
 _list_members = async_to_sync(MemberService.list_members)
@@ -104,7 +104,7 @@ class TestMemberServiceCreate:
         ).delete()
         SysUser.objects.filter(username__startswith="msvc_create_").delete()
 
-    @patch("apps.users.services.httpx.AsyncClient")
+    @patch("apps.users.member_service.httpx.AsyncClient")
     def test_create_member_success(self, mock_client_cls):
         """mock Gateway 成功 → SysUser + SpeakerProfile 同时创建"""
         mock_client = AsyncMock()
@@ -131,7 +131,7 @@ class TestMemberServiceCreate:
         assert profile.gateway_speaker_id == "spk_test_12345"
         assert profile.quality_score == 0.85
 
-    @patch("apps.users.services.httpx.AsyncClient")
+    @patch("apps.users.member_service.httpx.AsyncClient")
     def test_create_member_gateway_fail_no_residual(self, mock_client_cls):
         """mock Gateway 失败 → 数据库无残留"""
         mock_client = AsyncMock()
@@ -153,7 +153,7 @@ class TestMemberServiceCreate:
         assert not SysUser.objects.filter(username="msvc_create_fail").exists()
         assert not SpeakerProfile.objects.filter(name="msvc_create_fail").exists()
 
-    @patch("apps.users.services.httpx.AsyncClient")
+    @patch("apps.users.member_service.httpx.AsyncClient")
     def test_create_member_password_sm4_to_sm3(self, mock_client_cls):
         """SM4 加密密码 → SM3 哈希存储"""
         mock_client = AsyncMock()
@@ -174,7 +174,7 @@ class TestMemberServiceCreate:
         # 验证密码是 SM3 哈希
         assert verify_password(plaintext, user.password_hash)
 
-    @patch("apps.users.services.httpx.AsyncClient")
+    @patch("apps.users.member_service.httpx.AsyncClient")
     def test_create_guest_expires_at_7days(self, mock_client_cls):
         """guest 类型自动设置 guest_expires_at 为 7 天后"""
         mock_client = AsyncMock()

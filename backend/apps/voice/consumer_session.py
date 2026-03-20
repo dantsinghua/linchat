@@ -34,6 +34,15 @@ class SessionMixin:
         mode = data.get("mode", "ambient")
         return mode if mode in ("voice_chat", "ambient") else "ambient"
 
+    async def _handle_asr_failure(self, asr_err: str, *, close_session: bool = True) -> None:
+        if asr_err == "configure":
+            code, msg = "GATEWAY_CONFIGURE_FAILED", "语音服务配置失败"
+        else:
+            code, msg = "GATEWAY_CONNECT_FAILED", "语音服务连接失败，请稍后重试"
+        await self._send_error(code, msg, recoverable=False)
+        if close_session:
+            await voice_session_service.close_session(self.user_id)
+
     async def _handle_session_configure(self, data: dict[str, Any]) -> None:
         mode = self._normalize_mode(data)
         created = await voice_session_service.create_session(self.user_id, mode=mode)
@@ -42,36 +51,29 @@ class SessionMixin:
                 "data": {"message": "检测到其他标签页的活跃语音会话，已自动接管"}})
             await voice_session_service.close_session(self.user_id)
             await voice_session_service.create_session(self.user_id, mode=mode)
-
         asr_err = await self._connect_and_configure_asr()
         if asr_err:
-            code = "GATEWAY_CONFIGURE_FAILED" if asr_err == "configure" else "GATEWAY_CONNECT_FAILED"
-            msg = "语音服务配置失败" if asr_err == "configure" else "语音服务连接失败，请稍后重试"
-            await self._send_error(code, msg, recoverable=False)
-            await voice_session_service.close_session(self.user_id)
+            await self._handle_asr_failure(asr_err)
             return
-
         self._mode = mode
         await voice_session_service.update_session(
             self.user_id, upstream_connected=True, asr_session_id=self._asr_client.session_id)
         self._configured = True
         self._start_idle_check()
-
         if self._mode == "ambient":
             from apps.voice.services.utterance_aggregator import UtteranceAggregator
             self._aggregator = UtteranceAggregator(on_aggregated=self._on_utterance_aggregated)
             self._speaker_aggregators = {}
             from apps.voice.repositories import speaker_profile_repo
             self._diarize_enabled = await speaker_profile_repo.any_exists()
-
-        configured_data: dict[str, Any] = {"status": "active", "session_id": self._asr_client.session_id, "mode": self._mode,
+        configured_data: dict[str, Any] = {
+            "status": "active", "session_id": self._asr_client.session_id, "mode": self._mode,
             **({"features": {"utterance_aggregation": True, "llm_decision": settings.VOICE_DECISION_USE_LLM,
-                             "cross_device_tts": True, "speaker_diarize": getattr(self, "_diarize_enabled", False)}}
+                "cross_device_tts": True, "speaker_diarize": getattr(self, "_diarize_enabled", False)}}
                if self._mode == "ambient" else {})}
         await self._send_json({"type": "session.configured", "data": configured_data})
 
     def _get_or_create_aggregator(self, speaker_user_id: int):
-        """获取或创建 per-speaker aggregator（diarize 模式使用）"""
         speaker_aggs = getattr(self, "_speaker_aggregators", {})
         if speaker_user_id not in speaker_aggs:
             from apps.voice.services.utterance_aggregator import UtteranceAggregator
@@ -101,19 +103,12 @@ class SessionMixin:
                 else:
                     self._pending_text = aggregated_msg.text
                 self._pending_speaker_user_id = speaker_user_id or None
-                logger.info(
-                    "Pipeline busy, buffered: user=%s, speaker=%s, pending='%s'",
-                    self.user_id,
-                    target_uid,
-                    self._pending_text[:80],
-                )
+                logger.info("Pipeline busy, buffered: user=%s, speaker=%s, pending='%s'",
+                    self.user_id, target_uid, self._pending_text[:80])
             else:
                 await self._start_voice_pipeline(
-                    self._current_segment_id or "agg",
-                    aggregated_msg.text,
-                    speaker_id=None,
-                    pipeline_user_id=target_uid if is_identified else None,
-                )
+                    self._current_segment_id or "agg", aggregated_msg.text,
+                    speaker_id=None, pipeline_user_id=target_uid if is_identified else None)
         elif decision.value == "RECORD_ONLY":
             from apps.voice.services.voice_persist_service import voice_persist_service
             await voice_persist_service.record_only_ambient(user_id=target_uid, text=aggregated_msg.text)

@@ -31,10 +31,9 @@ _ATTR_FMT = [("brightness", lambda v: f"亮度: {v}/255 ({round(v/255*100)}%)" i
     ("volume_level", lambda v: f"音量: {int(v*100)}%" if v is not None else "音量: N/A")]
 
 def _get_user_id(config: Any) -> int:
+    from apps.graph.tools.user_id import get_user_id
     if config is None: raise ValueError("config is required for HA tools")
-    uid = config.get("configurable", {}).get("user_id")
-    if uid is None: raise ValueError("user_id not found in RunnableConfig")
-    return int(uid)
+    return get_user_id(config)
 async def _check_rate_limit(user_id: int, tool_type: str) -> str | None:
     limit, key = RATE_LIMITS.get(tool_type, 10), f"ha:{tool_type}:rate:{user_id}"
     r: aioredis.Redis = aioredis.from_url(settings.REDIS_URL)

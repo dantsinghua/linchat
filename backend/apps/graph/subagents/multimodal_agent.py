@@ -4,7 +4,8 @@ from django.conf import settings
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from apps.context.loader import render
-from apps.graph.subagents.base import _get_user_id, run_subagent
+from apps.graph.subagents.base import run_subagent
+from apps.graph.tools.user_id import get_user_id as _get_user_id
 
 logger = logging.getLogger(__name__)
 
