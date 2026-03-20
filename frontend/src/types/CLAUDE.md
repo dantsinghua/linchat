@@ -23,7 +23,7 @@
 - `ApiError`: 错误响应 `{ code, message, retry_after?, remaining_seconds? }`
 
 **用户类型:**
-- `User`: `{ user_id, username }`
+- `User`: `{ user_id, username, type?, member_type? }`（015 新增 member_type: 'owner'|'member'|'guest'）
 - `LoginRequest`: 登录请求参数
 - `CaptchaResponse`: 验证码响应 `{ captcha_id, captcha_image }`
 

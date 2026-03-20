@@ -13,6 +13,7 @@
 | `test_ha_subagent.py` | HA SubAgent 条件注册（HA_ENABLED 控制）/ 完整控制链路 / 不可达降级 / 认证错误友好提示 |
 | `test_ha_client.py` | HAClient REST API: get_state/get_states/call_service/get_history/get_error_log/check_health/HTTP 错误 |
 | `test_ha_tools.py` | ha_control/ha_query/ha_diagnose 三工具 / Redis 限流 / 黑名单 / 敏感操作分级(L3/L4) / ACTION_MAP 18 项 |
+| `test_document_agent.py` | document_parse_helpers 辅助函数测试（从 document_agent 提取的解析工具） |
 
 ---
 
@@ -39,3 +40,8 @@ cd /home/dantsinghua/work/linchat/backend && source ../linchat/bin/activate && p
 2. `HA_ENABLED` 通过 mock settings 控制，不依赖环境变量
 3. 异步测试使用 `tests.helpers.run_async()` 辅助函数
 4. 敏感操作分级: L3（unlock/garage）需确认，L4（automation）直接拒绝
+
+
+<claude-mem-context>
+
+</claude-mem-context>

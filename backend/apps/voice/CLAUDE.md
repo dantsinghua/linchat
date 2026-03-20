@@ -12,8 +12,8 @@
 |------|------|------|
 | `consumers.py` | 142 | VoiceConsumer 骨架（Mixin 组装 + connect/disconnect/receive + 设备 Token 认证 + WS 连接频率限制 + TTS Channels 分组管理 + `tts_audio_frame`/`tts_control` group handler） |
 | `consumer_events.py` | 88 | EventMixin — ASR 事件分发：vad.speech_start/end、transcription.completed/failed、error → 前端协议翻译；**ambient 分支**: `_handle_ambient_transcription()` 停止词预检 + 聚合器路由 + `aggregation.utterance_added` 事件 |
-| `consumer_inference.py` | 102 | InferenceMixin — VoicePipeline 后台启动（voice_chat/ambient）、空闲超时循环（**ambient 模式跳过**） |
-| `consumer_session.py` | 150 | SessionMixin — ASRStreamClient 连接/配置/断开、cancel、音频帧转发、语音段超时定时器；**ambient**: UtteranceAggregator 初始化 + `_on_utterance_aggregated()` 聚合回调 + `_reconnect_asr()` ASR 自动重连（最多 3 次） |
+| `consumer_inference.py` | 68 | InferenceMixin — VoicePipeline 后台启动（voice_chat/ambient）、空闲超时循环（**ambient 模式跳过**）；精简 docstring 和格式 |
+| `consumer_session.py` | 135 | SessionMixin — ASRStreamClient 连接/配置/断开、cancel、音频帧转发、语音段超时定时器；**ambient**: UtteranceAggregator 初始化 + `_on_utterance_aggregated()` 聚合回调 + `_reconnect_asr()` ASR 自动重连；新增 `_handle_asr_failure()` 统一 ASR 失败处理 |
 | `models.py` | 76 | SpeakerProfile / RegisteredDevice / VoiceSettings |
 | `repositories.py` | 104 | 3 个 Repo（SpeakerProfile/RegisteredDevice/VoiceSettings） |
 | `serializers.py` | 74 | 6 个序列化器（SpeakerProfile/Device/Settings/SettingsUpdate/CreateDevice/CreateSpeaker） |

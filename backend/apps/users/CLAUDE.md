@@ -10,13 +10,15 @@
 |------|------|
 | `models.py` | SysUser 数据模型（表 `sys_user`） |
 | `views.py` | HTTP 视图：CaptchaView / LoginView / LogoutView / MeView / MemberListCreateView |
-| `services.py` | 业务逻辑：CaptchaService / AuthService / MemberService |
+| `services.py` | 认证业务逻辑：CaptchaService / AuthService |
+| `member_service.py` | 家庭成员管理：MemberService（从 services.py 拆分，015 新增） |
 | `repositories.py` | 数据访问层（ORM + @sync_to_async），含 `list_members()` 成员列表查询 |
 | `serializers.py` | LoginRequestSerializer / CreateMemberSerializer / MemberListSerializer |
 | `crypto.py` | 国密工具：SM3 哈希、SM4 加解密、Token 生成 |
 | `exceptions.py` | 自定义异常：UsernameExistsError / VoiceprintRegistrationError |
 | `tasks.py` | Celery 定时任务：`expire_guests`（扫描过期访客设 status=0） |
-| `urls.py` | 路由配置（auth + members） |
+| `urls.py` | 认证路由配置（captcha / login / logout / me） |
+| `member_urls.py` | 成员管理路由配置（GET/POST /api/v1/members/） |
 | `management/commands/init_admin.py` | 初始化管理员命令 |
 | `management/commands/reset_all_data.py` | 全量清库 + 管理员重建命令（015 新增） |
 
@@ -58,9 +60,12 @@
 - `login()` — 完整登录流程（验证码→密码→Token→SSO）
 - `logout()` — 清除 Token
 
-### MemberService（015 新增）
+### MemberService（`member_service.py`，从 services.py 拆分，015 新增）
 - `list_members(include_expired)` — 获取家庭成员列表，支持过滤已过期访客
-- `create_member(username, password_encrypted, member_type, audio_file, created_by_user_id)` — 原子创建成员：校验用户名 → Gateway 声纹注册 → 事务内创建 SysUser + SpeakerProfile
+- `create_member(username, password_encrypted, member_type, audio_file, created_by_user_id)` — 原子创建成员：校验用户名 → SM4 解密密码 → Gateway 声纹注册（含 ffmpeg 音频格式转换）→ 事务内创建 SysUser + SpeakerProfile
+
+辅助函数:
+- `_convert_audio_to_wav16k(audio_data)` — 通过 ffmpeg 将非 WAV 音频转为 PCM16 16kHz mono WAV（Gateway 声纹注册要求格式）
 
 ## 自定义异常（015 新增）
 

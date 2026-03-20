@@ -28,6 +28,18 @@
 | `compaction_context.j2` | 压缩摘要上下文（之前对话的压缩摘要） | `compaction_summary` |
 | `conversation_history.j2` | 对话历史格式化（配对的 user/assistant 轮次） | `turns`（列表，每项含 `user` 和 `assistant` 键） |
 
+### SubAgent Prompt 模板
+
+| 模板 | 用途 | Jinja2 变量 |
+|------|------|-------------|
+| `search_subagent.j2` | 搜索 SubAgent 系统 Prompt | 无 |
+| `memory_subagent.j2` | 记忆 SubAgent 系统 Prompt | 无 |
+| `code_subagent.j2` | 代码 SubAgent 系统 Prompt | 无 |
+| `ha_subagent.j2` | Home Assistant SubAgent 系统 Prompt | 无 |
+| `multimodal_subagent.j2` | 多模态 SubAgent 系统 Prompt | 无 |
+| `document_subagent.j2` | 文档 SubAgent 系统 Prompt（含超长文档两阶段处理策略） | 无 |
+| `voice_intent_classify.j2` | 语音意图分类 Prompt（ambient 模式 LLM 决策） | `aggregated_text` |
+
 ### 任务 Prompt 模板（Celery 定时任务 / Agent 调用时使用）
 
 | 模板 | 用途 | Jinja2 变量 |

@@ -13,13 +13,15 @@
 | `models.py` | MediaAttachment 数据模型（表 `media_attachment`） | 从 chat 分离 |
 | `repositories.py` | MediaAttachmentRepository（CRUD + 过期查询 + 消息关联） | 从 chat 分离 |
 | `serializers.py` | MediaAttachmentSerializer + DocumentParseRequestSerializer | 从 chat 分离 |
-| `views.py` | REST 视图：upload_media、get_media、parse_document、get_parse_task_status/result | 从 chat 分离 |
+| `views.py` | REST 视图：upload_media、get_media、parse_document、get_parse_task_status/result；使用 `request.target_user_id`（015） | 从 chat 分离 |
 | `urls.py` | 媒体路由：`upload/`、`<uuid>/` | |
 | `document_urls.py` | 文档解析路由：`parse/`、`tasks/<task_id>/`、`tasks/<task_id>/result/` | |
 | `tasks.py` | Celery 定时任务：`clean_expired_media`（MinIO 文件清理，连续 10 次失败中止） | 从 chat 分离 |
-| `services/__init__.py` | 导出：MediaService、MediaUploadError、DocumentParseService、DocumentParseError | |
+| `services/__init__.py` | 导出：MediaService、DocumentParseService、get_cached_result、save_parsed_result、clear_parsed_cache、chunk_document、search_documents_rag | |
 | `services/upload.py` | 上传服务：文件校验 + MinIO 存储 + 元数据持久化（补偿删除机制） | 从 chat 分离 |
-| `services/document.py` | 文档解析服务：Gateway 调用（结构化日志）、轮询、SSE 进度通知、任务所有权验证 | 从 chat 分离 |
+| `services/document.py` | 文档解析服务：Gateway 调用、轮询、SSE 进度通知、任务所有权验证 | 精简后 ~275 行 |
+| `services/document_cache.py` | 文档解析结果缓存（Redis + MinIO 双层） | 新增，从 document.py 提取 |
+| `services/document_rag.py` | 文档向量分块 + RAG 搜索（pgvector 1024 维） | 新增，从 document.py 提取 |
 | `services/image.py` | 图片工具：Pillow 获取宽高 | 从 chat 分离 |
 | `services/video.py` | 视频/音频工具：ffprobe 时长检测、ffmpeg 视频预处理 | 从 chat 分离 |
 | `services/audio.py` | 音频工具：PCM 合并 WAV（merge_pcm_to_wav）、时长计算（calculate_duration）、重导出 get_audio_duration | 从 chat 分离 |

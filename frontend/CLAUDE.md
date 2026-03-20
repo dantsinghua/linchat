@@ -19,8 +19,8 @@ frontend/
 │   │   ├── settings/       # 设置组件（ModelConfigCard/Form, VoiceSettingsCard, SpeakerProfileCard, DeviceManageCard）
 │   │   └── ui/             # UI 基础组件库
 │   ├── hooks/              # React Hooks（useChatStream/useVoiceMode/useVoiceWebSocket/usePCMAudioCapture/useAudioRecorder/useDocParse/useVoiceErrorHandler/useAuth）
-│   ├── stores/             # Zustand Store（chatStore/uploadStore/modelStore/voiceStore）
-│   ├── services/           # API 服务层（api/authService/authGuard/chatService/modelService/mediaApi/voiceApi）
+│   ├── stores/             # Zustand Store（chatStore/uploadStore/modelStore/voiceStore/memberStore）
+│   ├── services/           # API 服务层（api/authService/authGuard/chatService/modelService/mediaApi/voiceApi/memberService）
 │   ├── types/              # TypeScript 类型定义（index/media/model/voice/sm-crypto.d）
 │   └── utils/              # 工具函数（crypto SM4 加密）
 ├── public/                 # 静态资源
@@ -34,7 +34,7 @@ frontend/
 |------|------|
 | 框架 | Next.js 14+ / React 18+ / TypeScript 5.0+ |
 | 样式 | Tailwind CSS |
-| 状态 | Zustand（chatStore/uploadStore/modelStore/voiceStore） |
+| 状态 | Zustand（chatStore/uploadStore/modelStore/voiceStore/memberStore） |
 | HTTP | Axios（Cookie 认证、401/429 拦截器） |
 | 加密 | sm-crypto（SM4 对称加密） |
 | 音频 | Web AudioWorklet API（PCM16 采集, 16kHz/单声道/30ms 帧） |
@@ -56,7 +56,7 @@ frontend/
 
 | Hook | 行数 | 用途 |
 |------|------|------|
-| `useChatStream` | ~400 | 核心聊天状态机（发送/停止/恢复/重连/历史加载/乐观更新/失败恢复） |
+| `useChatStream` | ~400 | 核心聊天状态机（发送/停止/恢复/循环重连 reconnectWithRetry/历史加载/乐观更新/失败恢复） |
 | `useVoiceMode` | ~483 | 语音模式总控（8 态状态机: idle→configuring→listening→recording→processing→responding→interrupted→error） |
 | `useVoiceWebSocket` | ~424 | WebSocket 连接管理（16 种下行事件映射、心跳 30s、自动重连 1 次） |
 | `usePCMAudioCapture` | ~307 | AudioWorklet PCM16 采集（16kHz/单声道/每帧 480 samples = 960 bytes） |
@@ -73,6 +73,7 @@ frontend/
 | `uploadStore` | tasks[], completedAttachments[] | 媒体上传任务管理 |
 | `modelStore` | models[], isLoading | 模型配置列表 |
 | `voiceStore` | voiceMode, sessionState, isRecording, settings, hasSpeakerProfile | 语音交互状态 |
+| `memberStore` | targetUserId, targetUsername, members[], authUserId | 成员管理/代查模式（015） |
 
 ## Services 清单
 
@@ -85,6 +86,7 @@ frontend/
 | `modelService.ts` | 模型配置 CRUD |
 | `mediaApi.ts` | 媒体上传（XHR 进度）/下载/推理取消/文档解析 |
 | `voiceApi.ts` | 声纹/设备/语音设置 CRUD（内置 snake_case/camelCase 转换） |
+| `memberService.ts` | 成员列表/创建/声纹注册 API（015-family-multiuser） |
 
 ## 关键类型
 

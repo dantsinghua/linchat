@@ -12,6 +12,7 @@
 | `uploadStore.ts` | 媒体上传状态管理（上传任务队列、进度跟踪、附件收集） |
 | `modelStore.ts` | 模型配置状态管理（模型列表、加载状态） |
 | `voiceStore.ts` | 语音状态管理（语音模式开关、会话状态、录音状态、转写文本、WebSocket 连接） |
+| `memberStore.ts` | 成员管理状态（目标用户切换、成员列表、代查模式）— 015-family-multiuser |
 
 ## 关键状态和 Actions
 
@@ -105,7 +106,8 @@
 - `uploadStore.ts` 依赖 `@/types/media`（UploadTask、UploadProgress、MediaAttachment）
 - `modelStore.ts` 依赖 `@/types/model`（ModelConfig）
 - `voiceStore.ts` 依赖 `@/types/voice`（VoiceSessionState, RecordingMode, VoiceSettings）
-- 四个 Store 之间无直接依赖
+- `memberStore.ts` 依赖 `@/services/memberService`（API 调用）
+- 五个 Store 之间无直接依赖
 
 ## 测试方法
 

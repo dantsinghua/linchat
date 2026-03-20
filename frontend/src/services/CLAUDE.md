@@ -15,6 +15,7 @@
 | `modelService.ts` | 模型配置 API（获取列表、获取单个、更新配置） |
 | `mediaApi.ts` | 媒体文件 API（XHR 上传带进度、下载、取消推理、文档解析任务） |
 | `voiceApi.ts` | 语音 API（声纹管理、设备管理、语音设置） |
+| `memberService.ts` | 成员管理 API（获取成员列表、创建成员、声纹注册）— 015-family-multiuser |
 
 ## 关键函数说明
 
@@ -88,8 +89,9 @@ services (api.ts / chatService.ts / mediaApi.ts / ...)
 
 ## 依赖关系
 
-- `api.ts` 被 `authService.ts`、`chatService.ts`、`modelService.ts`、`mediaApi.ts` 依赖
+- `api.ts` 被 `authService.ts`、`chatService.ts`、`modelService.ts`、`mediaApi.ts`、`memberService.ts` 依赖
 - `authGuard.ts` 被 `api.ts`（拦截器）和 `chatService.ts`（SSE 流）依赖
+- `memberService.ts` 依赖 `api.ts`（HTTP 请求）
 - 所有服务依赖 `@/types` 中的类型定义
 
 ## 测试方法

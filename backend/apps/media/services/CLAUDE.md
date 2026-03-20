@@ -10,9 +10,11 @@
 
 | 文件 | 职责 | 全局实例 |
 |------|------|---------|
-| `__init__.py` | 导出 MediaService、MediaUploadError、DocumentParseService、DocumentParseError | — |
+| `__init__.py` | 导出 MediaService、MediaUploadError、DocumentParseService、DocumentParseError、缓存函数、RAG 函数 | — |
 | `upload.py` | 文件校验（类型/大小/时长）、MinIO 存储、元数据持久化、补偿删除 | `media_service` |
-| `document.py` | 文档解析：Gateway 调用、轮询、SSE 进度通知、任务所有权验证 | `document_parse_service` |
+| `document.py` | 文档解析：Gateway 调用、轮询、SSE 进度通知、任务所有权验证（含向后兼容委托方法） | `document_parse_service` |
+| `document_cache.py` | 解析结果缓存：MinIO 存储/读取解析结果、DB 字段更新、Embedding 任务分发、缓存清理（含向量分块） | 无（纯函数） |
+| `document_rag.py` | 文档 RAG 检索：Markdown 语义分块、混合搜索（向量 + 关键词 + 全文兜底） | 无（纯函数） |
 | `image.py` | 图片尺寸读取（Pillow） | 无（纯函数） |
 | `video.py` | 视频/音频时长检测（ffprobe）、视频预处理（ffmpeg 降分辨率+帧率） | 无（纯函数） |
 | `audio.py` | PCM 合并 WAV（merge_pcm_to_wav）、时长计算（calculate_duration）、重导出 get_audio_duration | 无（纯函数） |
@@ -47,6 +49,38 @@
 
 后台轮询: `_poll_and_notify()` — asyncio.create_task，每 DOC_PARSE_POLL_INTERVAL 秒检查一次，最多 DOC_PARSE_POLL_MAX_WAIT 秒，通过 EventService.publish_event 推送 SSE 进度。
 
+向后兼容: `document.py` 中保留了 `get_cached_result`、`save_parsed_result`、`clear_parsed_cache`、`chunk_document`、`search_documents_rag` 委托方法，内部转发到 `document_cache.py` / `document_rag.py`。
+
+---
+
+## 解析结果缓存（document_cache.py）
+
+从 `document.py` 拆分，负责解析结果的持久化缓存与清理。
+
+| 函数 | 说明 |
+|------|------|
+| `get_cached_result(attachment)` | 优先读取 DB `parsed_content` 字段，若为空则从 MinIO `parsed_content_path` 回退读取 |
+| `save_parsed_result(attachment, content)` | 将解析结果上传 MinIO（路径 `parsed/{user_id}/{date}/{uuid}.md`）→ 更新 DB 缓存字段 → 异步分发 `generate_document_embeddings` Celery 任务 |
+| `clear_parsed_cache(attachment)` | 删除 MinIO 文件 + 清除 DocumentChunkEmbedding 向量分块 + 重置 DB 缓存字段 |
+
+补偿机制: DB 写入失败时自动删除已上传的 MinIO 文件。Embedding 分发失败不阻塞（non-blocking）。
+
+---
+
+## 文档 RAG 检索（document_rag.py）
+
+从 `document.py` 拆分，负责文档内容分块与混合搜索。
+
+| 函数 | 说明 |
+|------|------|
+| `chunk_document(content, chunk_size=800, overlap=100)` | Markdown 语义分块：按标题拆 section → 按段落合并 → 超长段落滑动窗口切分（overlap 字符重叠） |
+| `search_documents_rag(user_id, query, mode="hybrid", limit=5)` | 混合搜索：支持 `semantic`（向量）、`keyword`（关键词）、`hybrid`（加权融合）三种模式 |
+
+搜索策略:
+- **hybrid 模式**: 向量权重 `DOC_VECTOR_WEIGHT`（默认 0.7）+ 关键词权重 `DOC_KEYWORD_WEIGHT`（默认 0.3），加权排序
+- **降级兜底**: 向量搜索失败时降级为关键词搜索；分块搜索无结果时兜底 `fulltext_search_parsed_content` 全文匹配
+- **Embedding 生成**: 复用 `apps.memory.services.EmbeddingClient`
+
 ---
 
 ## 音频工具（audio.py）
@@ -66,3 +100,8 @@
 | `get_video_duration(file_bytes)` | ffprobe 检测视频时长 |
 | `get_audio_duration(file_bytes)` | ffprobe 检测音频时长 |
 | `preprocess_video(file_bytes, max_width, fps)` | ffmpeg 视频预处理（降分辨率/帧率，去音轨） |
+
+
+<claude-mem-context>
+
+</claude-mem-context>

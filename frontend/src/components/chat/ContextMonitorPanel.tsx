@@ -395,7 +395,7 @@ export const MonitorSidebar = memo(function MonitorSidebar({
     );
   }
 
-  const bd = data.breakdown as unknown as Record<string, number>;
+  const bd = (data.breakdown ?? {}) as unknown as Record<string, number>;
   const contextSegments = Object.entries(CONTEXT_COLORS)
     .map(([key, meta]) => ({
       color: meta.color,

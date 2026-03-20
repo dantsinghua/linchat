@@ -11,11 +11,11 @@ backend/
 │   ├── chat/              # 聊天核心（消息收发、SSE 流式、推理取消）
 │   ├── common/            # 通用工具（中间件、异常、响应格式、SSE、Gateway、tokenizer、storage/）
 │   ├── context/           # Prompt 构建与上下文裁剪（16 个 Jinja2 模板）、Token 预算管理、监控 API
-│   ├── graph/             # LangGraph Agent（Agent 工厂、6 个 SubAgent、工具链、推理取消）
-│   ├── media/             # 媒体附件（上传/下载、文档解析+RAG 向量分块、过期清理）
+│   ├── graph/             # LangGraph Agent（Agent 工厂、6 个 SubAgent、工具链、推理取消、services/helpers/ 拆分）
+│   ├── media/             # 媒体附件（上传/下载、文档解析+RAG 向量分块+缓存、过期清理）
 │   ├── memory/            # 用户记忆（CRUD、向量搜索、Embedding、定时总结）
 │   ├── models/            # LLM 模型配置（tool/multimodal/embedding CRUD、SM4 加密密钥）
-│   ├── users/             # 用户认证（验证码、登录/登出、Token、SSO）
+│   ├── users/             # 用户认证（验证码、登录/登出、Token、SSO、成员管理 member_service）
 │   └── voice/             # 语音交互（WebSocket 流、ASR→Agent→TTS 管道、声纹、设备、ambient 监听）
 ├── tests/                 # 68 个测试文件，按模块组织: chat/ common/ context/ apps/graph/ media/ memory/ models/ users/ voice/ integration/ performance/
 ├── scripts/               # 工具脚本（init_minio.py）
@@ -115,15 +115,9 @@ pytest --cov=apps --cov-report=term-missing  # 覆盖率
 <claude-mem-context>
 # Recent Activity
 
-### Feb 12, 2026
+### Mar 20, 2026
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #995 | 4:25 PM | 🔵 | Backend Environment Configuration Review | ~375 |
-
-### Mar 11, 2026
-
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #1625 | 8:32 AM | 🔵 | Current LLM Configuration in LinChat Backend | ~260 |
+| #1997 | 9:02 AM | 🔵 | Linchat Backend Configured to Use LLM Gateway and DeepSeek Model | ~377 |
 </claude-mem-context>

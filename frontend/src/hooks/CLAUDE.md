@@ -8,9 +8,10 @@
 
 | 文件 | 用途 |
 |------|------|
-| `useChatStream.ts` | 聊天流式响应管理（发送、停止、恢复、重连、历史加载、错误处理） |
+| `useChatStream.ts` | 聊天流式响应管理（发送、停止、恢复、循环重连、历史加载、错误处理） |
 | `useAudioRecorder.ts` | 语音录音封装（MediaRecorder API、时长限制 1-60 秒、格式输出 audio/webm） |
-| `useDocParse.ts` | 文档解析生命周期管理（SSE 进度事件监听、结果获取、最大 8000 字符截断） |
+| `useAuth.tsx` | 认证 Hook（登录/登出/SSE 事件监听，分发 context_status 和 doc_parse_progress 事件） |
+| `useDocParse.ts` | 文档解析生命周期管理（SSE 进度事件监听、REST 轮询降级、5 分钟超时保护） |
 | `useVoiceMode.ts` | 语音模式核心状态机（整合 WebSocket、PCM 采集、Store 同步） |
 | `useVoiceWebSocket.ts` | 语音 WebSocket 连接管理（连接/断开/消息收发/心跳/重连） |
 | `usePCMAudioCapture.ts` | AudioWorklet PCM16 音频采集（16kHz / 单声道 / 30ms 低延迟帧） |
@@ -54,7 +55,7 @@ idle → sending → generating → done/interrupted/error
 
 - **乐观更新**: `send()` 先创建临时用户/助手消息插入列表，SSE 流返回后用真实 ID 替换
 - **失败恢复**: 发送失败时回滚消息列表，将内容和附件保存到 `failedContent` / `failedAttachments`
-- **页面刷新重连**: `loadHistory()` 加载消息后检测 status=2 的生成中消息，自动调用 `reconnectStream()`
+- **循环重连 (`reconnectWithRetry`)**: 统一重连函数，最多 12 次循环重连（12 x ~45s ≈ 9 分钟），覆盖文档解析等长耗时工具的多次 SSE 超时断开。每次重连前先通过 `getGeneratingMessage()` 检查后端状态，确认仍在生成时才发起 `reconnectStream()`。`send()` 的 `onError` 和 `loadHistory()` 的刷新重连均复用此函数
 - **Gateway 错误处理**: 检测 SSE error 事件的 `data.gateway_error`，E3002 设置 `gatewayRetryAfter` 倒计时
 - **挂载/卸载**: `useEffect` 挂载时加载历史，卸载时 `abort()` 取消请求
 
@@ -66,15 +67,29 @@ idle → sending → generating → done/interrupted/error
 
 **约束:** 最短 1 秒，最长 60 秒（`MEDIA_LIMITS.MAX_DURATION_SECONDS`），到达上限自动停止。
 
+### useAuth
+
+认证 Hook，管理登录状态和 SSE 事件监听。
+
+**SSE 事件分发:**
+
+- `context_status`: 上下文监控事件，通过 `window.CustomEvent` 分发给监控面板
+- `doc_parse_progress`: 文档解析进度事件，写入 `chatStore.docParseProgress` 并通过 `window.CustomEvent` 分发给 `useDocParse`；终态（completed/incomplete/failed）延迟自动清除
+- `logout`: SSO 单点登出（SSO_CONFLICT / TOKEN_EXPIRED / ADMIN_KICK）
+
+**返回值:** `isAuthenticated`, `user`, `checkAuth()`, `onLoginSuccess()`, `logout()`
+
 ### useDocParse
 
 管理文档解析的完整生命周期。
 
-**流程:** `parse(attachmentUuid)` -> 创建任务 -> 监听 `window.CustomEvent('doc_parse_progress')` -> 完成后自动获取 Markdown 结果
+**流程:** `parse(attachmentUuid, pages?)` -> 创建任务 -> 监听 `window.CustomEvent('doc_parse_progress')` -> 完成后自动获取 Markdown 结果
+
+**鲁棒性:** 5 分钟超时保护（SSE 终态事件丢失时自动标记失败）+ 10s REST 轮询降级（SSE 断线期间通过 `getDocParseStatus()` 兜底检测状态）
 
 **返回值:** `status`（idle/pending/processing/completed/failed）、`progress`、`result`、`error`、`parse()`、`reset()`、`statusText`
 
-**约束:** 结果最大 8000 字符，超出截断并追加 `[内容已截断]`。
+**约束:** 结果最大 8000 字符，超出截断并追加 `[内容已截断]`；页数超限（E6006）特殊提示。
 
 ### useVoiceMode (483 行)
 
@@ -142,9 +157,16 @@ ChatPage
 useChatStream (核心 Hook)
   ├── chatService (SSE 流 / REST API)
   ├── mediaApi (cancelInference)
+  ├── reconnectWithRetry (循环重连，send/loadHistory 共用)
   └── chatStore (状态管理)
         ↓ 状态
     MessageList / MessageInput / NetworkError (UI 组件)
+
+useAuth (认证 + SSE 事件中枢)
+  ├── SSE /events 长连接
+  ├── context_status → CustomEvent → ContextMonitorPanel
+  ├── doc_parse_progress → chatStore + CustomEvent → useDocParse
+  └── logout → 路由跳转
 
 ChatPage
   ↓ VoiceModeContainer (动态导入)
@@ -158,7 +180,8 @@ useVoiceMode (核心状态机)
 
 - `useChatStream` -> `chatService`、`mediaApi`（cancelInference）、`chatStore`、`authGuard`、`NetworkError`（getErrorMessage）
 - `useAudioRecorder` -> `@/types/media`（MEDIA_LIMITS）
-- `useDocParse` -> `mediaApi`（createDocParseTask、getDocParseResult）
+- `useAuth` -> `authGuard`、`chatStore`（docParseProgress）、`memberStore`
+- `useDocParse` -> `mediaApi`（createDocParseTask、getDocParseResult、getDocParseStatus）
 - `useVoiceMode` -> `useVoiceWebSocket`, `usePCMAudioCapture`, `voiceStore`
 - `useVoiceWebSocket` -> 无外部依赖
 - `usePCMAudioCapture` -> 无外部依赖

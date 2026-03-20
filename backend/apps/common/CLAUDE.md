@@ -15,11 +15,11 @@
 | 文件 | 职责 |
 |------|------|
 | `async_utils.py` | 异步任务取消工具：`cancel_task(task)` 异步取消 + `cancel_task_sync(task)` 同步取消（仅调 cancel，不 await），统一处理 None/CancelledError |
-| `middleware.py` | `TokenAuthMiddleware` -- Cookie SM4 Token 认证（同步中间件）、`set_token_cookie()`/`clear_token_cookie()` |
+| `middleware.py` | `TokenAuthMiddleware` -- Cookie SM4 Token 认证（同步中间件）、`set_token_cookie()`/`clear_token_cookie()`、`_resolve_target_user()` 多用户 target_user_id 解析（015） |
 | `websocket_auth.py` | `WebSocketTokenAuthMiddleware` -- ASGI WebSocket Cookie Token 认证（SM4 解密 + Redis 验证 + 滑动过期），失败发送 4001 关闭码 |
 | `exceptions.py` | 自定义异常层级（Auth/LLM/Business/ExternalService）、`map_llm_exception()` 异常映射、DRF `custom_exception_handler` |
 | `responses.py` | `api_response()`/`error_response()` (JsonResponse) + `ApiResponse` 类 (DRF Response) |
-| `event_service.py` | `EventService` -- Redis Pub/Sub SSE 事件推送（EventType: logout/message/heartbeat/context_status/inference_cancel/doc_parse_progress）、`SSEEvent` 格式化 |
+| `event_service.py` | `EventService` -- Redis Pub/Sub SSE 事件推送（EventType: logout/message/heartbeat/context_status/inference_cancel/doc_parse_progress）、`SSEEvent` 格式化、`build_doc_parse_event()` 构造函数 |
 | `gateway_utils.py` | Gateway HTTP 工具集（见下方详情） |
 | `tokenizer.py` | tiktoken Token 计数：`count_tokens()`、`count_messages_tokens()`（cl100k_base 编码，单例模式） |
 | `decorators.py` | `async_csrf_exempt` -- 异步兼容 CSRF 豁免装饰器 |

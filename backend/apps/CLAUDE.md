@@ -54,3 +54,13 @@ voice（独立 WebSocket 入口，依赖 graph/chat/media/users）
 3. **voice services 重构**: gateway_client.py/voice_context_service.py 删除，新增 asr_stream_client.py/tts_stream_client.py/voice_pipeline.py/voice_persist_service.py
 4. **context builder_helpers**: 辅助函数从 builder.py 提取到 builder_helpers.py
 5. **graph 服务拆分**: agent_service 辅助函数提取到 agent_helpers.py，新增 context_service.py/inference_service.py/gpu_lock.py/cancel_monitor.py
+
+### 后端代码精简重构（2026-03-20，commit 3389aac）
+
+1. **agent_helpers.py 拆分为 helpers/ 包**: errors.py（Token 提取+错误检测）、finalize.py（消息收尾）、monitor.py（Langfuse+监控推送）、prompt.py（Prompt 构建+记忆召回）
+2. **document_agent.py 拆分**: 新增 document_parse_helpers.py（文档解析辅助函数）
+3. **document.py 拆分**: 新增 document_cache.py（解析缓存）、document_rag.py（向量分块+RAG）
+4. **services.py 拆分**: 新增 member_service.py（MemberService 家庭成员管理，015-family-multiuser）
+5. **公共工具提取**: tools/user_id.py（统一 6 处重复的 user_id 提取逻辑）
+6. **中间件优化**: middleware.py 合并双查逻辑 + `_resolve_target_user()` 多用户支持
+7. **voice 精简**: consumer_inference.py 150→68 行、consumer_session.py 新增 `_handle_asr_failure()`

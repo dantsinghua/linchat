@@ -60,6 +60,85 @@ export function useChatStream(): UseChatStreamReturn {
     return controller;
   }, []);
 
+  /** 循环重连：覆盖长耗时工具（文档解析等）的多次 SSE 超时断开 */
+  const reconnectWithRetry = useCallback(async (
+    messageId: number,
+    requestId: string,
+    controller: AbortController,
+    onFinalError: (err: string) => void,
+  ) => {
+    const MAX_RETRIES = 12; // 12 × ~45s ≈ 9 分钟
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      if (controller.signal.aborted) return;
+      if (attempt > 1) {
+        await new Promise((r) => setTimeout(r, 2000));
+        if (controller.signal.aborted) return;
+      }
+
+      // 检查后端状态
+      try {
+        const generating = await getGeneratingMessage();
+        if (!generating || generating.message_id !== messageId) {
+          // 消息不存在或不匹配 → 从 DB 加载最新
+          const history = await getMessages(1);
+          const latest = history.messages?.[0];
+          if (latest && latest.message_id === messageId) {
+            store.updateMessage(messageId, {
+              content: latest.content,
+              status: latest.status as MessageStatus,
+            });
+          }
+          resetStream();
+          return;
+        }
+        if (generating.status !== 2) {
+          // 已完成/中断/失败
+          store.updateMessage(messageId, {
+            content: generating.content || '',
+            status: generating.status as MessageStatus,
+          });
+          resetStream();
+          return;
+        }
+      } catch { /* 查询失败，继续尝试重连 */ }
+
+      // 后端仍在生成 → 重连 SSE 流
+      // 清空内容（后端重连会重发全量）
+      store.updateMessage(messageId, { content: '' });
+
+      let streamBroken = false;
+      await reconnectStream(requestId, {
+        onChunk: (c) => store.appendContent(messageId, c.content),
+        onDone: () => {
+          store.updateMessage(messageId, { status: 1 as MessageStatus });
+          resetStream();
+        },
+        onError: (err) => {
+          if (err === '__SSE_STREAM_BROKEN__') {
+            streamBroken = true;
+          } else {
+            onFinalError(err);
+          }
+        },
+        onInterrupted: () => {
+          store.updateMessage(messageId, { status: 3 as MessageStatus });
+          resetStream();
+          toast.info('响应已中断，如有需要请复制已显示内容');
+        },
+      }, controller.signal);
+
+      if (!store.isGenerating) return; // onDone/onInterrupted 已处理
+      if (!streamBroken) return; // onFinalError 已处理
+
+      // 流又断了，继续下一轮重连
+      console.warn(`[reconnectWithRetry] 第 ${attempt}/${MAX_RETRIES} 次重连后流再次断开，继续重试...`);
+    }
+
+    // 超过最大重试次数
+    onFinalError('长时间任务超时，请刷新页面查看结果');
+  }, [store, resetStream]);
+
   /** 加载历史消息 + 自动重连生成中的流 */
   const loadHistory = useCallback(async () => {
     if (isAuthRedirecting()) return;
@@ -82,47 +161,24 @@ export function useChatStream(): UseChatStreamReturn {
         store.setIsGenerating(true);
         reqIdRef.current = msg.request_id;
         store.setCurrentRequestId(msg.request_id);
-        store.updateMessage(msg.message_id, { content: '' });
 
-        await reconnectStream(msg.request_id, {
-          onChunk: (c) => store.appendContent(msg.message_id, c.content),
-          onDone: () => {
-            store.updateMessage(msg.message_id, { status: 1 as MessageStatus });
-            resetStream();
-          },
-          onError: async (err) => {
-            if (err === '__SSE_STREAM_BROKEN__') {
-              // 重连流也断了 → 重新加载最新消息
-              try {
-                const history = await getMessages(1);
-                const latest = history.messages?.[0];
-                if (latest && latest.message_id === msg.message_id) {
-                  store.updateMessage(msg.message_id, {
-                    content: latest.content,
-                    status: latest.status as MessageStatus,
-                  });
-                  resetStream();
-                  return;
-                }
-              } catch { /* 降级走错误流程 */ }
-            }
+        await reconnectWithRetry(
+          msg.message_id,
+          msg.request_id,
+          newAbort(),
+          (err) => {
             store.setError(getErrorMessage(err));
             store.updateMessage(msg.message_id, { status: 0 as MessageStatus });
             resetStream();
           },
-          onInterrupted: () => {
-            store.updateMessage(msg.message_id, { status: 3 as MessageStatus });
-            resetStream();
-            toast.info('响应已中断，如有需要请复制已显示内容');
-          },
-        }, newAbort().signal);
+        );
       }
     } catch (err) {
       store.setError(getErrorMessage((err as Error).message || '加载历史消息失败'));
     } finally {
       store.setIsLoadingHistory(false);
     }
-  }, [store, resetStream, newAbort]);
+  }, [store, resetStream, newAbort, reconnectWithRetry]);
 
   /** 加载更多历史消息（向上滚动） */
   const loadMore = useCallback(async () => {
@@ -224,41 +280,9 @@ export function useChatStream(): UseChatStreamReturn {
         },
         onError: async (err, data) => {
           store.setIsCompacting(false);
-          if (err === '__SSE_STREAM_BROKEN__' && realId) {
-            // SSE 流异常断开，但已有消息 ID，尝试恢复
-            try {
-              const generating = await getGeneratingMessage();
-              if (generating && generating.message_id === realId && generating.request_id) {
-                // 后端仍在生成 → 自动重连
-                await reconnectStream(generating.request_id, {
-                  onChunk: (c) => store.appendContent(realId!, c.content),
-                  onDone: (msgId) => {
-                    store.updateMessage(msgId || realId!, { status: 1 as MessageStatus });
-                    resetStream();
-                  },
-                  onError: (reconnErr) => {
-                    handleFail(reconnErr);
-                  },
-                  onInterrupted: (msgId) => {
-                    store.updateMessage(msgId || realId!, { status: 3 as MessageStatus });
-                    resetStream();
-                    toast.info('响应已中断，如有需要请复制已显示内容');
-                  },
-                }, controller.signal);
-                return;
-              }
-              // 后端已完成但流断了 → 重新加载该消息
-              const history = await getMessages(1);
-              const latest = history.messages?.[0];
-              if (latest && latest.message_id === realId) {
-                store.updateMessage(realId, {
-                  content: latest.content,
-                  status: latest.status as MessageStatus,
-                });
-                resetStream();
-                return;
-              }
-            } catch { /* 恢复失败，走正常错误流程 */ }
+          if (err === '__SSE_STREAM_BROKEN__' && realId && reqIdRef.current) {
+            await reconnectWithRetry(realId, reqIdRef.current, controller, (e) => handleFail(e));
+            return;
           }
           handleFail(err, data);
         },
@@ -278,7 +302,7 @@ export function useChatStream(): UseChatStreamReturn {
         resetStream();
       }
     }
-  }, [store, resetStream, newAbort]);
+  }, [store, resetStream, newAbort, reconnectWithRetry]);
 
   /** 停止生成（T039: 同时调用推理取消 API） */
   const stop = useCallback(async () => {

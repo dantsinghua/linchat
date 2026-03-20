@@ -38,6 +38,7 @@ ChatPage (flex h-screen)
 - `useAuth()`: user 用户信息、logout 登出方法
 - `useState`: monitorOpen 侧边栏开关状态（默认开启）
 - `voiceStore`: voiceMode 语音模式开关
+- `memberStore`: targetUserId/targetUsername/isViewingOther 成员切换状态（015-family-multiuser）
 
 ### 错误处理与重试
 

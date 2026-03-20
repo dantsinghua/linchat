@@ -27,7 +27,7 @@
 | 文件 | 职责 |
 |------|------|
 | `models.py` | Message + LangGraphExecution 模型定义；从 `apps.media.models` 导入 MediaAttachment（兼容层） |
-| `views.py` | 6 个端点（chat/messages/generating/stop/resume/reconnect）；SSE 工具从 `apps.common.sse` 导入 |
+| `views.py` | 6 个端点（chat/messages/generating/stop/resume/reconnect）；使用 `request.target_user_id` 支持多用户代查（015）；SSE 工具从 `apps.common.sse` 导入 |
 | `urls.py` | 6 条路由（chat 核心路由，媒体/推理/文档路由已迁移到 media 和 graph） |
 | `serializers.py` | ChatRequest/HistoryQuery/MessageResponse/RequestId 序列化器；从 `apps.media.serializers` 导入 MediaAttachmentSerializer（兼容层） |
 | `repositories.py` | MessageRepository + ExecutionRepository；从 `apps.media.repositories` 导入 MediaAttachmentRepository（兼容层） |

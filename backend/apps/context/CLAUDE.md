@@ -57,11 +57,12 @@
 
 ---
 
-## 模板文件 (templates/) — 16 个 Jinja2 模板
+## 模板文件 (templates/) — 23 个 Jinja2 模板
 
 核心: `system_base.j2`, `behavior.j2`, `reasoning.j2`, `tool_usage.j2`
 可选模块: `code_assist.j2`, `creative_writing.j2`, `data_analysis.j2`
 上下文块: `memory_context.j2`, `memory_empty.j2`, `compaction_context.j2`, `compaction_task.j2`, `tool_context.j2`, `conversation_history.j2`
+SubAgent: `search_subagent.j2`, `memory_subagent.j2`, `code_subagent.j2`, `ha_subagent.j2`, `multimodal_subagent.j2`, `document_subagent.j2`（含超长文档两阶段处理策略）, `voice_intent_classify.j2`
 记忆任务: `daily_summary.j2`, `monthly_summary.j2`, `cronmem_extract.j2`
 
 ---

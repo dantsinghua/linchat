@@ -15,7 +15,8 @@ tests/apps/
 │   ├── test_ha_subagent.py
 │   ├── test_ha_tools.py
 │   ├── test_subagent_autonomy.py
-│   └── test_subagents.py
+│   ├── test_subagents.py
+│   └── test_document_agent.py
 └── models/
     └── __init__.py (空)
 ```
