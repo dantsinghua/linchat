@@ -116,3 +116,21 @@ WebSocket 连接 → 提取 Cookie 中的 linchat_token
 4. 新代码应直接 import `apps.common.storage`/`apps.common.sse`，避免经过 chat 旧兼容层
 5. `MinioService` 为懒初始化单例（`minio_service` 全局实例），首次调用 `.client` 属性时创建连接
 6. `cancel_task()` / `cancel_task_sync()` 用于统一异步任务取消，voice 模块各 Mixin 广泛使用
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 13, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1053 | 11:03 AM | 🔵 | gateway_utils.py Imports Constitutional Exception Classes | ~569 |
+| #1045 | 11:00 AM | 🔵 | Gateway Utils Already Defines Required LLM Exception Classes | ~577 |
+
+### Mar 30, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #2034 | 3:05 PM | 🔵 | DeerFlow Package Structure and Integration Points | ~712 |
+</claude-mem-context>

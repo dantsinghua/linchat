@@ -110,4 +110,10 @@ from apps.graph.subagents import get_subagent_tools
 | #1630 | 8:34 AM | 🔵 | LLM Initialization from Database Configuration | ~438 |
 | #1628 | 8:33 AM | 🔵 | Model Configuration Consumption in Graph Agents | ~380 |
 | #1626 | " | 🔵 | LLM Configuration Usage Across LinChat Backend | ~340 |
+
+### Mar 30, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #2033 | 3:05 PM | 🔵 | DeerFlow vs LinChat Agent Architecture Comparison | ~580 |
 </claude-mem-context>

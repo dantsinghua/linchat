@@ -9,8 +9,120 @@
 ## 项目概述
 
 **项目名称**: 大模型聊天平台 (LinChat)
-**项目类型**: 企业级多租户 AI 聊天应用
+**项目类型**: 企业级多模态 AI Agent 聊天应用（家庭场景）
 **开发模式**: 规范驱动开发 (Speckit)
+**公网地址**: `https://www.greydan.xin/linchat`
+**代码规模**: 后端 ~13k LOC (304 .py) + 前端 ~13k LOC (206 .ts/.tsx) + 1462 测试函数
+
+---
+
+## 系统架构与核心逻辑
+
+> 详细文档见 `docs/` 目录（project-overview-pdr.md, system-architecture.md, codebase-summary.md 等）
+
+### 产品能力
+
+| 能力 | 实现 | 特性 |
+|------|------|------|
+| 文本聊天 | SSE 流式 + LangGraph Agent | 001 |
+| 上下文记忆 | pgvector 混合搜索 (0.7向量+0.3关键词) | 004 |
+| 监控面板 | ContextMonitor (token/工具/记忆) | 005 |
+| 6 个 SubAgent | search/memory/code/HA/multimodal/document | 006-008, 011 |
+| 语音交互 | WebSocket ASR→Agent→TTS 全双工 | 009-010, 013-014 |
+| 文档 RAG | Gateway 解析→语义分块→pgvector 检索 | 011-012 |
+| 家庭多用户 | 成员管理+声纹+上下文切换 | 015 |
+
+### 源码目录结构
+
+```
+linchat/
+├── backend/                   # Django 后端
+│   ├── core/                  # settings.py(507行), celery.py, redis.py, asgi.py
+│   ├── apps/
+│   │   ├── chat/              # Message/Execution 模型, SSE 流式, 推理取消
+│   │   ├── common/            # 中间件, 异常体系, SSE 事件, MinIO 存储
+│   │   ├── context/           # PromptBuilder, Token 预算, 23 个 Jinja2 模板
+│   │   ├── graph/             # LangGraph Agent, 6 SubAgent, 工具, 推理服务
+│   │   │   ├── services/      # AgentService(246), ContextService(149), InferenceService
+│   │   │   ├── subagents/     # search, memory, code, ha, multimodal, document
+│   │   │   └── tools/         # web_search, mem_*, python_exec, ha_*, doc_*
+│   │   ├── media/             # 媒体上传, 文档解析+RAG, pgvector 分块
+│   │   ├── memory/            # 用户记忆 CRUD, Embedding, 混合搜索
+│   │   ├── models/            # LLM ModelConfig, SM4 加密
+│   │   ├── users/             # 认证(SM3/SM4), 成员管理(015)
+│   │   └── voice/             # WebSocket 语音, ASR/TTS 管道, 声纹, 环境监听
+│   └── tests/                 # 89 文件, 1462+ 测试函数 (pytest + pytest-asyncio)
+├── frontend/src/
+│   ├── app/                   # 5 页面: chat, settings, login, 401, home
+│   ├── components/            # 30+ 组件 (chat/voice/settings/members/auth)
+│   ├── hooks/                 # 8 Hook: useChatStream, useVoiceMode(515行/8态FSM), useAuth
+│   ├── stores/                # 5 Zustand: chat, voice, upload, model, member
+│   ├── services/              # 8 API: chat(SSE), media(XHR), voice(WS), member
+│   └── types/                 # Message, Voice, Media, Model 类型定义
+├── scripts/services.sh        # ⚠️ 唯一的应用服务管理入口
+├── docker-compose.yml         # 9 Docker 服务
+├── specs/                     # 15 个 Speckit 特性规范 (全部已完成)
+└── docs/                      # 项目文档 (17 个 .md)
+```
+
+### 核心数据流
+
+```
+用户消息 → ChatViewSet(SSE) → ChatService → AgentService.execute()
+  → PromptBuilder(记忆召回+历史裁剪) → create_chat_agent(LangGraph)
+    → 主Agent → SubAgent(tool_call) → LLM Gateway(kimi-k2.5)
+    → astream_events(v2) → StreamChunk → SSE → 前端实时渲染
+  → finalize_message(持久化+Langfuse trace+监控推送)
+```
+
+### 数据模型 (11 个)
+
+| 模型 | App | 关键 |
+|------|-----|------|
+| `Message` | chat | user_id, role, content, status(0-3), tokens, is_voice |
+| `LangGraphExecution` | chat | request_id, status, duration_ms, langfuse_trace_id |
+| `MediaAttachment` | media | file_type, s3_path, expires_at (7天) |
+| `DocumentChunkEmbedding` | media | chunk_text, embedding (1024 dims) |
+| `UserMemory` + `UserMemoryEmbedding` | memory | content, type, embedding (1024 dims) |
+| `ModelConfig` | models | model_type(tool/multimodal/embedding), api_key(SM4) |
+| `SysUser` | users | password_hash(SM3), api_token, member_type |
+| `SpeakerProfile` / `RegisteredDevice` / `VoiceSettings` | voice | 声纹/设备/语音配置 |
+
+### Docker 服务 (9 个)
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| PostgreSQL 15 (pgvector+pg_jieba) | 5432 | 主数据库 |
+| Redis Stack | 6379 | DB0缓存/DB1Langfuse/DB2Celery/DB3Channels |
+| ClickHouse 24.3 | 127.0.0.1:8123 | Langfuse 分析库 |
+| MinIO | 127.0.0.1:9010 | 对象存储 |
+| Langfuse Web + Worker | 127.0.0.1:3100 | LLM 可观测性 |
+| Home Assistant | 8124 | 智能家居 |
+| Node-RED | 127.0.0.1:1880 | 自动化规则 |
+
+### Celery 定时任务
+
+| 任务 | 频率 |
+|------|------|
+| retry_failed_embeddings | 每 5 分钟 |
+| generate_daily_summary | 每天 00:00 |
+| generate_monthly_summary | 每月 1 日 |
+| embedding_health_check | 每小时 |
+| clean_expired_media | 每天 03:00 |
+
+### 详细文档索引
+
+| 文档 | 路径 | 内容 |
+|------|------|------|
+| 项目概述 | [docs/project-overview-pdr.md](docs/project-overview-pdr.md) | 产品能力、技术栈、里程碑 |
+| 系统架构 | [docs/system-architecture.md](docs/system-architecture.md) | Mermaid 架构图、数据流、安全 |
+| 代码库摘要 | [docs/codebase-summary.md](docs/codebase-summary.md) | 模块详解、数据模型、依赖 |
+| 编码规范 | [docs/code-standards.md](docs/code-standards.md) | Python/TS 规范、架构约束 |
+| 部署指南 | [docs/deployment-guide.md](docs/deployment-guide.md) | 启动流程、services.sh、故障排查 |
+| API 参考 | [docs/api-reference.md](docs/api-reference.md) | REST/SSE/WebSocket 端点 |
+| 测试指南 | [docs/testing-guide.md](docs/testing-guide.md) | pytest/Jest/Playwright 体系 |
+| 配置指南 | [docs/configuration-guide.md](docs/configuration-guide.md) | settings.py 全量配置参考 |
+| 变更日志 | [docs/changelog.md](docs/changelog.md) | git log 自动生成 |
 
 ---
 
@@ -655,19 +767,19 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 *本文件随项目演进持续更新，版本与宪法文件同步。*
 
 
-## Active Technologies
-- Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, channels (WebSocket), websockets (Gateway ASR WS 客户端 + TTS 流式 WS 客户端), LangGraph, LangChain, Langfuse (010-voice-agent-pipeline)
-- PostgreSQL 15 (Message, MediaAttachment, LangGraphExecution), Redis (语音会话状态/音频帧缓存/频率限制), MinIO (音频文件) (010-voice-agent-pipeline)
-- Python 3.11+ / Django 4.2+ / DRF 3.14+ + LangGraph, LangChain, pgvector, Celery 5.3+, MinIO, Redis, httpx, Jinja2, websockets (011-document-subagent-rag)
-- PostgreSQL 15 (pgvector extension), Redis (缓存/频率限制), MinIO (对象存储) (011-document-subagent-rag)
-- Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+, LangGraph, httpx (后端) / Next.js 14+, React 18+, Zustand (前端) (012-doc-parse-progress)
-- Redis (SSE Pub/Sub 通道，已有) (012-doc-parse-progress)
-- Python 3.11+ + Django 4.2+, asyncio, websockets 12.0+ (Gateway TTS WS) (013-tts-comfort-queue)
-- N/A（无新数据模型，运行时管道变更） (013-tts-comfort-queue)
-- Python 3.11+ (后端) + TypeScript 5.0+ (前端 — 仅 ambient 模式类型定义) + Django 4.2+ / channels / websockets 12.0+ / httpx / asyncio / LangGraph (014-jarvis-ambient-voice)
-- PostgreSQL (Message 持久化) / Redis (聚合缓冲状态 + Channels 分组) (014-jarvis-ambient-voice)
-- Python 3.11+ (后端) / TypeScript 5.0+ (前端) + Django 4.2+ / DRF 3.14+ / uvicorn 0.30+ / Celery 5.3+ (后端) / Next.js 14+ / React 18+ / Zustand (前端) (015-family-multiuser)
-- PostgreSQL 15 (SysUser 扩展字段) / Redis DB0 (Token 信息扩展 member_type) / Redis DB2 (Celery beat) (015-family-multiuser)
+## 技术栈速查
 
-## Recent Changes
-- 010-voice-agent-pipeline: Added Python 3.11+ (后端) + Django 4.2+, DRF 3.14+, uvicorn 0.30+, channels (WebSocket), websockets (Gateway ASR WS 客户端 + TTS 流式 WS 客户端), LangGraph, LangChain, Langfuse
+| 层级 | 技术 | 版本 |
+|------|------|------|
+| 后端框架 | Django + DRF + uvicorn | 4.2+ / 3.14+ / 0.30+ |
+| AI Agent | LangGraph + LangChain + Langfuse | 0.2+ / 0.2+ / 3.12+ |
+| 前端框架 | Next.js + React + TypeScript | 14+ / 18+ / 5.0+ |
+| 状态管理 | Zustand (5 Store) | 4.5+ |
+| 主数据库 | PostgreSQL + pgvector + pg_jieba | 15 |
+| 缓存/消息 | Redis (4 DB) + Channels | 5.0+ / 4.0+ |
+| 任务队列 | Celery (Redis DB2 Broker) | 5.3+ |
+| 对象存储 | MinIO (S3 兼容) | latest |
+| WebSocket | Channels + websockets | 4.0+ / 12.0+ |
+| 加密 | gmssl (SM3+SM4) + sm-crypto | 3.2+ |
+| 监控 | Langfuse + ClickHouse | v3 |
+| 样式 | Tailwind CSS | 3.4+ |

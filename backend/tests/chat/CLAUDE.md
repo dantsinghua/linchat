@@ -18,7 +18,7 @@
 | `test_media_cleanup_task.py` | Celery 媒体过期清理任务（批量/失败中止/CRITICAL 日志） |
 | `test_minio_service.py` | MinioService 对象存储 CRUD/预签名 URL/上传字节流 |
 | `test_inference_service.py` | InferenceService Redis SETNX/TTL/任务序列化反序列化 |
-| `test_inference_cancel.py` | 推理取消流程（Pub/Sub 信号/轮询回退/request_id 校验） |
+| `test_inference_cancel.py` | 推理取消流程（Pub/Sub 信号/轮询回退/request_id 校验）；导入路径已更新为 `apps.graph.services.cancel_monitor`（monitor_cancel_signal / poll_cancel_signal） |
 | `test_model_routing.py` | 多模态模型路由（文本→默认/图片/视频/音频→minicpm-o） |
 | `test_video_processing.py` | 视频预处理（ffmpeg/ffprobe mock）+ video_url 消息构建 |
 | `test_audio_processing.py` | 音频多模态消息处理（WebM/WAV/MP3/MIME/时长检测） |

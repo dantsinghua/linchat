@@ -31,7 +31,7 @@
 
 | 方法 | 说明 |
 |------|------|
-| `send_message(user_id, content, attachment_uuids)` | 参数校验 -> 生成 request_id(uuid4.hex) -> thread_id -> AgentService.execute() -> yield StreamChunk |
+| `send_message(user_id, content, attachment_uuids)` | 参数校验 → 生成 request_id(uuid4.hex) → thread_id(get_thread_id) → AgentService.execute() → yield StreamChunk |
 | `stop_generation(user_id, request_id)` | signal_stop(request_id) 发送停止信号 |
 | `resume_generation(user_id, request_id)` | 校验消息状态 STATUS_INTERRUPTED -> update_status -> AgentService.resume() |
 | `reconnect_stream(user_id, request_id)` | 轮询增量内容（0.5s 间隔，最长 5 分钟 / 600 次），检查 stop_event 存在性 |
@@ -93,3 +93,22 @@ types.py
 3. ChatService/HistoryService 所有方法为 `@staticmethod`，通过类直接调用
 4. 延迟导入（函数体内 import）用于避免 `apps.graph` 循环依赖
 5. `__init__.py` 导出所有公共 API（含兼容层），保持 `from apps.chat.services import X` 可用
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 13, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1052 | 11:02 AM | 🔵 | upload_image() Adds Redundant Type Validation After Generic validate_file | ~550 |
+| #1051 | " | 🔵 | upload() Method Confirms Three-Phase Validation Without Transaction Protection | ~574 |
+| #1050 | " | 🔵 | media_service.py upload_image() Shows Same Atomicity Pattern Bug | ~564 |
+| #1044 | 11:00 AM | ⚖️ | Code Review Findings for Multimodal Feature Require Comprehensive Fix Plan | ~728 |
+
+### Mar 30, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #2034 | 3:05 PM | 🔵 | DeerFlow Package Structure and Integration Points | ~712 |
+</claude-mem-context>
