@@ -118,7 +118,7 @@ def record_gateway_span(
             "request_id": request_id or "",
         }
         if error: metadata["error"] = error
-        span = langfuse.start_span(
+        span = langfuse.start_observation(
             name=f"gateway_{request_type}", metadata=metadata,
             level="ERROR" if error else "DEFAULT",
         )
