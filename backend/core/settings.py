@@ -317,6 +317,8 @@ MONITOR_PUSH_INTERVAL = float(os.getenv("MONITOR_PUSH_INTERVAL", "0.5"))
 
 # ============ Brave Search 配置 ============
 BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "")
+BRAVE_SEARCH_QPS = int(os.getenv("BRAVE_SEARCH_QPS", "1"))
+BRAVE_SEARCH_MONTHLY_QUOTA = int(os.getenv("BRAVE_SEARCH_MONTHLY_QUOTA", "2000"))
 
 # ============ Home Assistant 配置 ============
 # 参考: specs/007-home-assistant-tools/

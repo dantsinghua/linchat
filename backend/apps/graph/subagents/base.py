@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 from typing import Optional
 
 from django.conf import settings
@@ -62,38 +63,58 @@ async def run_subagent(
 ) -> str:
     user_id = _get_user_id(config)
     timeout = timeout or getattr(settings, "SUBAGENT_TIMEOUT", 60)
+    t0 = time.monotonic()
+    logger.info("[SubAgent] START: name=%s, user_id=%d, timeout=%ds, task='%s'", name, user_id, timeout, task[:100])
+
+    t_llm = time.monotonic()
     model = await _get_llm_instance(llm)
+    logger.info("[SubAgent] LLM ready: name=%s, model=%s, cost=%.0fms", name, getattr(model, "model_name", "unknown"), (time.monotonic() - t_llm) * 1000)
+
     all_tools = _merge_tools(tools, get_common_tools())
+    tool_names = [t.name for t in all_tools]
+    logger.info("[SubAgent] tools: name=%s, tools=%s", name, tool_names)
+
     agent = create_react_agent(model=model, tools=all_tools, prompt=prompt, name=name)
     try:
         configurable = {**config.get("configurable", {}), "user_id": user_id}
         run_config: dict = {"configurable": configurable}
         if recursion_limit:
             run_config["recursion_limit"] = recursion_limit
+        t_invoke = time.monotonic()
+        logger.info("[SubAgent] ainvoke START: name=%s", name)
         async with asyncio.timeout(timeout):
             result = await agent.ainvoke(
                 {"messages": [HumanMessage(content=task)]},
                 config=run_config,
             )
+        invoke_ms = (time.monotonic() - t_invoke) * 1000
+        total_ms = (time.monotonic() - t0) * 1000
+        msg_count = len(result.get("messages", []))
+        content_preview = result["messages"][-1].content[:100] if result.get("messages") else "(empty)"
+        logger.info("[SubAgent] END OK: name=%s, user_id=%d, invoke=%.0fms, total=%.0fms, msgs=%d, result='%s'", name, user_id, invoke_ms, total_ms, msg_count, content_preview)
         return result["messages"][-1].content
     except asyncio.TimeoutError:
-        logger.warning("SubAgent timeout: user_id=%d, task=%s", user_id, task[:100])
+        total_ms = (time.monotonic() - t0) * 1000
+        logger.warning("[SubAgent] TIMEOUT: name=%s, user_id=%d, timeout=%ds, elapsed=%.0fms, task='%s'", name, user_id, timeout, total_ms, task[:100])
         return f"该操作执行超时（{timeout}秒），请稍后重试"
     except GraphRecursionError:
+        total_ms = (time.monotonic() - t0) * 1000
         logger.warning(
-            "SubAgent recursion limit: user_id=%d, name=%s, task=%s",
-            user_id, name, task[:100],
+            "[SubAgent] RECURSION LIMIT: name=%s, user_id=%d, elapsed=%.0fms, task='%s'",
+            name, user_id, total_ms, task[:100],
         )
         return (
             "⚠️ 工具调用次数超过限制，无法完成任务。"
             "建议：缩小查询范围，或针对文档的具体章节提问。"
         )
     except LLMRateLimitError:
+        logger.warning("[SubAgent] LLM RATE LIMIT: name=%s, user_id=%d, elapsed=%.0fms", name, user_id, (time.monotonic() - t0) * 1000)
         return "请求过于频繁，请等待后重试"
     except LLMContentFilterError:
         return "消息内容可能包含敏感信息，请修改后重试"
     except LLMQuotaExceededError:
         return "服务配额已用尽，请联系管理员"
     except Exception:
-        logger.exception("SubAgent error: user_id=%d, task=%s", user_id, task[:100])
+        total_ms = (time.monotonic() - t0) * 1000
+        logger.exception("[SubAgent] ERROR: name=%s, user_id=%d, elapsed=%.0fms, task='%s'", name, user_id, total_ms, task[:100])
         return "服务暂时不可用，请稍后重试"
