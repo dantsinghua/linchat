@@ -361,7 +361,7 @@ DOC_PARSE_MAX_FILE_SIZE = int(os.getenv("DOC_PARSE_MAX_FILE_SIZE", str(10 * 1024
 DOC_PARSE_MAX_PAGES = int(os.getenv("DOC_PARSE_MAX_PAGES", "200"))
 DOC_PARSE_POLL_INTERVAL = int(os.getenv("DOC_PARSE_POLL_INTERVAL", "3"))  # 轮询间隔（秒）
 DOC_PARSE_POLL_MAX_WAIT = int(os.getenv("DOC_PARSE_POLL_MAX_WAIT", "900"))  # 最大等待（秒）
-DOC_PARSE_DEFAULT_MODEL = os.getenv("DOC_PARSE_DEFAULT_MODEL", "minicpm-o")
+DOC_PARSE_DEFAULT_MODEL = os.getenv("DOC_PARSE_DEFAULT_MODEL", "qwen3.5-9b")
 DOC_PARSE_MAX_RESULT_LENGTH = int(os.getenv("DOC_PARSE_MAX_RESULT_LENGTH", "6000"))  # 011-document-subagent-rag: document_parse 工具返回结果最大字符数
 
 # 视频预处理配置 (MiniCPM-o 限制: 高分辨率+多帧会导致 vLLM 500 错误)

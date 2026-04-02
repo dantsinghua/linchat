@@ -90,8 +90,11 @@ async def run_subagent(
         invoke_ms = (time.monotonic() - t_invoke) * 1000
         total_ms = (time.monotonic() - t0) * 1000
         msg_count = len(result.get("messages", []))
-        content_preview = result["messages"][-1].content[:100] if result.get("messages") else "(empty)"
-        logger.info("[SubAgent] END OK: name=%s, user_id=%d, invoke=%.0fms, total=%.0fms, msgs=%d, result='%s'", name, user_id, invoke_ms, total_ms, msg_count, content_preview)
+        # Log tool calls from message history
+        tool_calls = [m for m in result.get("messages", []) if getattr(m, "type", "") == "tool"]
+        tool_names_used = [m.name for m in tool_calls] if tool_calls else []
+        content_preview = result["messages"][-1].content[:200] if result.get("messages") else "(empty)"
+        logger.info("[SubAgent] END OK: name=%s, user_id=%d, invoke=%.0fms, total=%.0fms, msgs=%d, tools_used=%s, result='%s'", name, user_id, invoke_ms, total_ms, msg_count, tool_names_used, content_preview)
         return result["messages"][-1].content
     except asyncio.TimeoutError:
         total_ms = (time.monotonic() - t0) * 1000
