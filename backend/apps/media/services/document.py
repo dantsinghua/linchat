@@ -145,7 +145,7 @@ class DocumentParseService:
             "Doc parse start: user=%d, attachment=%s, file=%s, size=%d",
             user_id, attachment_uuid, attachment.file_name, len(file_data),
         )
-        model = getattr(settings, "DOC_PARSE_DEFAULT_MODEL", "minicpm-o")
+        model = getattr(settings, "DOC_PARSE_DEFAULT_MODEL", "qwen3.5-9b")
         result = await DocumentParseService.create_parse_task(file_data=file_data, file_name=attachment.file_name, model=model, pages=pages)
         task_id = result.get("task_id", "")
         try:
