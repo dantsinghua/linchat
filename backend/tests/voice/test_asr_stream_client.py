@@ -72,7 +72,7 @@ class TestASRStreamClientConnect:
         mock_ws = _make_mock_ws([session_created])
 
         with patch(
-            "apps.voice.services.asr_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -93,7 +93,7 @@ class TestASRStreamClientConnect:
         mock_ws.recv = slow_recv
 
         with patch(
-            "apps.voice.services.asr_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -114,7 +114,7 @@ class TestASRStreamClientConfigure:
         mock_ws = _make_mock_ws([session_created])
 
         with patch(
-            "apps.voice.services.asr_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -138,7 +138,7 @@ class TestASRStreamClientConfigure:
         mock_ws = _make_mock_ws([session_created])
 
         with patch(
-            "apps.voice.services.asr_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -165,7 +165,7 @@ class TestASRStreamClientAudio:
         mock_ws = _make_mock_ws([session_created])
 
         with patch(
-            "apps.voice.services.asr_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -185,7 +185,7 @@ class TestASRStreamClientAudio:
         mock_ws = _make_mock_ws([session_created])
 
         with patch(
-            "apps.voice.services.asr_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -219,7 +219,7 @@ class TestASRStreamClientEvents:
         mock_ws = _make_mock_ws([session_created] + events)
 
         with patch(
-            "apps.voice.services.asr_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -247,7 +247,7 @@ class TestASRStreamClientDisconnect:
         mock_ws = _make_mock_ws([session_created])
 
         with patch(
-            "apps.voice.services.asr_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -272,7 +272,7 @@ class TestASRStreamClientDisconnect:
         mock_ws = ClosingMockWS([session_created])
 
         with patch(
-            "apps.voice.services.asr_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):

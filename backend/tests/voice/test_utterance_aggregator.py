@@ -26,9 +26,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from apps.voice.services.utterance_aggregator import (
     AggregatedMessage,
-    AggregatorState,
     UtteranceAggregator,
 )
+
+
+# AggregatorState 枚举已重构为字符串常量，兼容旧测试断言
+class AggregatorState:
+    IDLE = "IDLE"
+    COLLECTING = "COLLECTING"
+    AGGREGATED = "AGGREGATED"
 
 _SETTINGS = "apps.voice.services.utterance_aggregator.settings"
 

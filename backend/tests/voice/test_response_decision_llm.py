@@ -95,8 +95,10 @@ def _patch_base_dependencies(
     wake_words=None,
     is_active=False,
     speaker_count=0,
+    recent_messages=None,
+    memory_summary=None,
 ):
-    """Patch 基础依赖（repo / session / redis），不涉及 LLM 相关
+    """Patch 基础依赖（repo / session / redis / intent context），不涉及 LLM 相关
 
     Returns:
         dict of patch context managers
@@ -119,6 +121,10 @@ def _patch_base_dependencies(
         "redis": patch(
             "apps.voice.services.response_decision_service.get_redis",
             AsyncMock(return_value=_build_redis_mock(speaker_count)),
+        ),
+        "context": patch(
+            "apps.voice.services.response_decision_service.ResponseDecisionService._fetch_intent_context",
+            AsyncMock(return_value=(recent_messages or [], memory_summary)),
         ),
     }
 
@@ -145,6 +151,7 @@ class TestLLMHighConfidenceRespond:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -175,6 +182,7 @@ class TestLLMHighConfidenceRespond:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -214,6 +222,7 @@ class TestLLMHighConfidenceRecordOnly:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -249,6 +258,7 @@ class TestLLMHighConfidenceRecordOnly:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -290,6 +300,7 @@ class TestLLMLowConfidenceFallthrough:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -325,6 +336,7 @@ class TestLLMLowConfidenceFallthrough:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -359,6 +371,7 @@ class TestLLMLowConfidenceFallthrough:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -380,14 +393,14 @@ class TestLLMLowConfidenceFallthrough:
 # ============ LLM 超时穿透 ============
 
 
-class TestLLMTimeoutFallthrough:
-    """LLM 超时 (httpx.TimeoutException) → _classify_intent_llm 返回 None → 穿透"""
+class TestLLMTimeoutSafeDefault:
+    """LLM 超时 (httpx.TimeoutException) → 安全降级 RECORD_ONLY（不穿透规则链）"""
 
     @pytest.mark.asyncio
-    async def test_timeout_fallthrough_to_active_conv(
+    async def test_timeout_returns_record_only_even_with_active_conv(
         self, service, mock_model_config
     ):
-        """LLM 超时 → 穿透，活跃对话命中 RESPOND"""
+        """LLM 超时 → RECORD_ONLY（即使有活跃对话也不穿透）"""
         mock_client = AsyncMock(spec=httpx.AsyncClient)
         mock_client.post = AsyncMock(
             side_effect=httpx.TimeoutException("Connection timed out")
@@ -402,6 +415,7 @@ class TestLLMTimeoutFallthrough:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -415,14 +429,14 @@ class TestLLMTimeoutFallthrough:
                 "打开空调", None, 1, mode="ambient"
             )
 
-        assert result == DecisionResult.RESPOND
-        assert reason == "active_conversation"
+        assert result == DecisionResult.RECORD_ONLY
+        assert reason == "llm_llm_timeout"
 
     @pytest.mark.asyncio
-    async def test_timeout_fallthrough_to_default(
+    async def test_timeout_returns_record_only_default(
         self, service, mock_model_config
     ):
-        """LLM 超时 → 穿透，无活跃对话 → RECORD_ONLY (default)"""
+        """LLM 超时 → RECORD_ONLY + llm_llm_timeout 原因"""
         mock_client = AsyncMock(spec=httpx.AsyncClient)
         mock_client.post = AsyncMock(
             side_effect=httpx.TimeoutException("Read timed out")
@@ -437,6 +451,7 @@ class TestLLMTimeoutFallthrough:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -451,7 +466,7 @@ class TestLLMTimeoutFallthrough:
             )
 
         assert result == DecisionResult.RECORD_ONLY
-        assert reason == "default"
+        assert reason == "llm_llm_timeout"
 
 
 # ============ LLM 未启用 ============
@@ -472,6 +487,7 @@ class TestLLMDisabled:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", False),
             patch(
                 "apps.models.services.model_service.get_active_model",
@@ -498,6 +514,7 @@ class TestLLMDisabled:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", False),
         ):
             result, reason = await service.decide(
@@ -517,6 +534,7 @@ class TestLLMDisabled:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", False),
         ):
             result, reason = await service.decide(
@@ -552,6 +570,7 @@ class TestHTTPConnectionError:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -588,6 +607,7 @@ class TestHTTPConnectionError:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -632,6 +652,7 @@ class TestHTTPConnectionError:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -667,6 +688,7 @@ class TestNonAmbientModeSkipsLLM:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch(
                 "apps.models.services.model_service.get_active_model",
@@ -699,6 +721,7 @@ class TestLLMNoActiveModel:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -753,6 +776,7 @@ class TestLLMInvalidResponse:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -791,6 +815,7 @@ class TestLLMInvalidResponse:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -833,6 +858,7 @@ class TestLLMInvalidResponse:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -876,6 +902,7 @@ class TestLLMInvalidResponse:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
@@ -914,6 +941,7 @@ class TestLLMPriorityInteraction:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch(
                 "apps.models.services.model_service.get_active_model",
@@ -944,6 +972,7 @@ class TestLLMPriorityInteraction:
             base["repo"],
             base["active"],
             base["redis"],
+            base["context"],
             patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
             patch(
                 "apps.models.services.model_service.get_active_model",
@@ -1020,10 +1049,10 @@ class TestClassifyIntentLLMDirect:
         assert confidence == 0.92
 
     @pytest.mark.asyncio
-    async def test_classify_timeout_returns_none(
+    async def test_classify_timeout_returns_record_only(
         self, service, mock_model_config
     ):
-        """超时返回 None"""
+        """超时返回 (RECORD_ONLY, 'llm_timeout', 1.0) 安全降级"""
         mock_client = AsyncMock(spec=httpx.AsyncClient)
         mock_client.post = AsyncMock(
             side_effect=httpx.TimeoutException("timeout")
@@ -1041,7 +1070,11 @@ class TestClassifyIntentLLMDirect:
         ):
             result = await service._classify_intent_llm("测试超时")
 
-        assert result is None
+        assert result is not None
+        decision, reason, confidence = result
+        assert decision == DecisionResult.RECORD_ONLY
+        assert reason == "llm_timeout"
+        assert confidence == 1.0
 
     @pytest.mark.asyncio
     async def test_classify_no_model_returns_none(self, service):
@@ -1173,3 +1206,255 @@ class TestClassifyIntentLLMDirect:
 
         assert len(captured_timeout) == 1
         assert captured_timeout[0] == 2.5
+
+
+# ============ _fetch_intent_context 直接测试 ============
+
+
+class TestFetchIntentContext:
+    """直接测试 _fetch_intent_context 上下文获取"""
+
+    @pytest.fixture
+    def service(self):
+        return ResponseDecisionService()
+
+    @pytest.mark.asyncio
+    async def test_fetches_recent_messages(self, service):
+        """正确获取最近消息并转换为 role/content 字典"""
+        mock_msg1 = MagicMock()
+        mock_msg1.role = "user"
+        mock_msg1.content = "你好"
+        mock_msg2 = MagicMock()
+        mock_msg2.role = "assistant"
+        mock_msg2.content = "你好！有什么可以帮你的？"
+
+        with (
+            patch(
+                "apps.chat.repositories.message_repo.find_latest_by_user",
+                AsyncMock(return_value=[mock_msg2, mock_msg1]),  # -created_time 排序
+            ),
+            patch(
+                "apps.memory.services.MemoryService.retrieve_relevant_memories",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            messages, memory = await service._fetch_intent_context(1, "帮我开灯")
+
+        # 反转后应为时间正序
+        assert len(messages) == 2
+        assert messages[0] == {"role": "user", "content": "你好"}
+        assert messages[1] == {"role": "assistant", "content": "你好！有什么可以帮你的？"}
+        assert memory is None
+
+    @pytest.mark.asyncio
+    async def test_fetches_memory_summary(self, service):
+        """正确获取用户记忆摘要"""
+        memory_text = "[用户记忆]\n1. 用户住在深圳\n2. 喜欢编程"
+
+        with (
+            patch(
+                "apps.chat.repositories.message_repo.find_latest_by_user",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "apps.memory.services.MemoryService.retrieve_relevant_memories",
+                AsyncMock(return_value=memory_text),
+            ),
+        ):
+            messages, memory = await service._fetch_intent_context(1, "我住哪里")
+
+        assert messages == []
+        assert memory == memory_text
+
+    @pytest.mark.asyncio
+    async def test_message_content_truncated(self, service):
+        """超长消息内容被截断到 200 字符"""
+        mock_msg = MagicMock()
+        mock_msg.role = "user"
+        mock_msg.content = "x" * 500
+
+        with (
+            patch(
+                "apps.chat.repositories.message_repo.find_latest_by_user",
+                AsyncMock(return_value=[mock_msg]),
+            ),
+            patch(
+                "apps.memory.services.MemoryService.retrieve_relevant_memories",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            messages, _ = await service._fetch_intent_context(1, "test")
+
+        assert len(messages) == 1
+        assert len(messages[0]["content"]) == 200
+
+    @pytest.mark.asyncio
+    async def test_empty_content_messages_skipped(self, service):
+        """空内容消息被跳过"""
+        mock_msg = MagicMock()
+        mock_msg.role = "user"
+        mock_msg.content = ""
+
+        with (
+            patch(
+                "apps.chat.repositories.message_repo.find_latest_by_user",
+                AsyncMock(return_value=[mock_msg]),
+            ),
+            patch(
+                "apps.memory.services.MemoryService.retrieve_relevant_memories",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            messages, _ = await service._fetch_intent_context(1, "test")
+
+        assert messages == []
+
+    @pytest.mark.asyncio
+    async def test_message_fetch_failure_graceful(self, service):
+        """消息获取失败时优雅降级，不影响记忆获取"""
+        memory_text = "[用户记忆]\n1. 用户名安琳"
+
+        with (
+            patch(
+                "apps.chat.repositories.message_repo.find_latest_by_user",
+                AsyncMock(side_effect=Exception("DB error")),
+            ),
+            patch(
+                "apps.memory.services.MemoryService.retrieve_relevant_memories",
+                AsyncMock(return_value=memory_text),
+            ),
+        ):
+            messages, memory = await service._fetch_intent_context(1, "test")
+
+        assert messages == []
+        assert memory == memory_text
+
+    @pytest.mark.asyncio
+    async def test_memory_fetch_failure_graceful(self, service):
+        """记忆获取失败时优雅降级，不影响消息获取"""
+        mock_msg = MagicMock()
+        mock_msg.role = "user"
+        mock_msg.content = "你好"
+
+        with (
+            patch(
+                "apps.chat.repositories.message_repo.find_latest_by_user",
+                AsyncMock(return_value=[mock_msg]),
+            ),
+            patch(
+                "apps.memory.services.MemoryService.retrieve_relevant_memories",
+                AsyncMock(side_effect=Exception("Embedding error")),
+            ),
+        ):
+            messages, memory = await service._fetch_intent_context(1, "test")
+
+        assert len(messages) == 1
+        assert memory is None
+
+
+# ============ Prompt 包含上下文信息 ============
+
+
+class TestPromptContainsContext:
+    """验证 LLM 请求的 prompt 包含对话上下文和记忆"""
+
+    @pytest.fixture
+    def service(self):
+        return ResponseDecisionService()
+
+    @pytest.fixture
+    def mock_model_config(self):
+        config = MagicMock()
+        config.api_base = "https://api.example.com/v1"
+        config.decrypted_api_key = "sk-test"
+        config.model_name = "test-model"
+        return config
+
+    @pytest.mark.asyncio
+    async def test_prompt_includes_recent_messages(self, service, mock_model_config):
+        """prompt 中包含最近对话内容"""
+        mock_response = _build_llm_response("RESPOND", 0.9, "test")
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        recent = [{"role": "user", "content": "你好小鱼"}, {"role": "assistant", "content": "你好！"}]
+
+        with (
+            patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 5.0),
+            patch(
+                "apps.models.services.model_service.get_active_model",
+                AsyncMock(return_value=mock_model_config),
+            ),
+            patch("httpx.AsyncClient", return_value=mock_client),
+            patch(
+                "apps.voice.services.response_decision_service.ResponseDecisionService._fetch_intent_context",
+                AsyncMock(return_value=(recent, None)),
+            ),
+        ):
+            await service._classify_intent_llm("帮我开灯", user_id=1)
+
+        # 验证 prompt 内容
+        call_args = mock_client.post.call_args
+        body = call_args[1]["json"]
+        prompt_content = body["messages"][0]["content"]
+        assert "你好小鱼" in prompt_content
+        assert "你好！" in prompt_content
+
+    @pytest.mark.asyncio
+    async def test_prompt_includes_memory_summary(self, service, mock_model_config):
+        """prompt 中包含用户记忆"""
+        mock_response = _build_llm_response("RESPOND", 0.9, "test")
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        memory = "[用户记忆]\n1. 用户住在深圳"
+
+        with (
+            patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 5.0),
+            patch(
+                "apps.models.services.model_service.get_active_model",
+                AsyncMock(return_value=mock_model_config),
+            ),
+            patch("httpx.AsyncClient", return_value=mock_client),
+            patch(
+                "apps.voice.services.response_decision_service.ResponseDecisionService._fetch_intent_context",
+                AsyncMock(return_value=([], memory)),
+            ),
+        ):
+            await service._classify_intent_llm("我住哪里", user_id=1)
+
+        call_args = mock_client.post.call_args
+        body = call_args[1]["json"]
+        prompt_content = body["messages"][0]["content"]
+        assert "用户住在深圳" in prompt_content
+
+    @pytest.mark.asyncio
+    async def test_prompt_no_context_when_user_id_zero(self, service, mock_model_config):
+        """user_id=0 时不获取上下文"""
+        mock_response = _build_llm_response("RESPOND", 0.9, "test")
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        mock_fetch = AsyncMock(return_value=([], None))
+
+        with (
+            patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 5.0),
+            patch(
+                "apps.models.services.model_service.get_active_model",
+                AsyncMock(return_value=mock_model_config),
+            ),
+            patch("httpx.AsyncClient", return_value=mock_client),
+            patch(
+                "apps.voice.services.response_decision_service.ResponseDecisionService._fetch_intent_context",
+                mock_fetch,
+            ),
+        ):
+            await service._classify_intent_llm("帮我开灯", user_id=0)
+
+        mock_fetch.assert_not_called()

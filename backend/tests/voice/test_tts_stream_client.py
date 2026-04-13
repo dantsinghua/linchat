@@ -77,7 +77,7 @@ class TestTTSConnect:
         mock_ws = _make_mock_ws([session_msg])
 
         with patch(
-            "apps.voice.services.tts_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -96,7 +96,7 @@ class TestTTSConnect:
         mock_ws = _make_mock_ws([bad_msg])
 
         with patch(
-            "apps.voice.services.tts_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -117,7 +117,7 @@ class TestTTSConfigure:
         mock_ws = _make_mock_ws([session_msg])
 
         with patch(
-            "apps.voice.services.tts_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -143,7 +143,7 @@ class TestTTSTextDelta:
         mock_ws = _make_mock_ws([session_msg])
 
         with patch(
-            "apps.voice.services.tts_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -170,7 +170,7 @@ class TestTTSReceiveLoop:
         mock_ws = _make_mock_ws([session_msg, pcm_data, audio_done])
 
         with patch(
-            "apps.voice.services.tts_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -191,7 +191,7 @@ class TestTTSReceiveLoop:
         mock_ws = _make_mock_ws([session_msg, audio_done])
 
         with patch(
-            "apps.voice.services.tts_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -216,7 +216,7 @@ class TestTTSReceiveLoop:
         mock_ws = _make_mock_ws([session_msg, sentence_start, audio_done])
 
         with patch(
-            "apps.voice.services.tts_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -245,7 +245,7 @@ class TestTTSErrorHandling:
         mock_ws = _make_mock_ws([session_msg, error_event, audio_done])
 
         with patch(
-            "apps.voice.services.tts_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -269,7 +269,7 @@ class TestTTSErrorHandling:
         mock_ws = ClosingMockWS([session_msg])
 
         with patch(
-            "apps.voice.services.tts_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -295,7 +295,7 @@ class TestTTSWaitForDone:
         mock_ws = _make_mock_ws([session_msg])
 
         with patch(
-            "apps.voice.services.tts_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):
@@ -317,7 +317,7 @@ class TestTTSDisconnect:
         mock_ws = _make_mock_ws([session_msg])
 
         with patch(
-            "apps.voice.services.tts_stream_client.websockets.connect",
+            "apps.voice.services.ws_client_base.websockets.connect",
             new_callable=AsyncMock,
             return_value=mock_ws,
         ):

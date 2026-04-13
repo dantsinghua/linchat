@@ -67,7 +67,7 @@ _E = "apps.voice.consumer_events"     # EventMixin: VAD / transcription / error
 _I = "apps.voice.consumer_inference"  # InferenceMixin: pipeline / idle
 
 _VSS_MODULES = [_C, _S, _E]  # consumer_inference 不再导入 voice_session_service
-_REDIS_MODULES = [_C]
+_REDIS_MODULES = [_S]
 
 
 @pytest.fixture
@@ -261,7 +261,7 @@ class TestSessionConfigure:
 
         resp = await _receive_json(communicator)
         assert resp["type"] == "session.configured"
-        assert resp["data"]["mode"] == "voice_chat"
+        assert resp["data"]["mode"] == "ambient"
 
         await communicator.disconnect()
 
@@ -331,7 +331,7 @@ class TestSessionConfigure:
     async def test_configure_invalid_mode_defaults_to_voice_chat(
         self, MockASR, mock_session_svc, mock_get_redis
     ):
-        """无效模式参数回退到 voice_chat"""
+        """无效模式参数回退到 ambient"""
         mock_get_redis.return_value = _mock_redis_no_rate_limit()
         mock_session_svc.create_session = AsyncMock(return_value=True)
         mock_session_svc.update_session = AsyncMock()
@@ -352,7 +352,7 @@ class TestSessionConfigure:
 
         resp = await _receive_json(communicator)
         assert resp["type"] == "session.configured"
-        assert resp["data"]["mode"] == "voice_chat"
+        assert resp["data"]["mode"] == "ambient"
 
         await communicator.disconnect()
 
@@ -919,12 +919,9 @@ class TestSessionConflict:
 class TestWebSocketRateLimit:
     """WebSocket 连接频率限制（10次/分）"""
 
-    async def test_rate_limit_exceeded(self, mock_get_redis):
+    async def test_rate_limit_exceeded(self, mock_session_svc, mock_get_redis):
         """超过 10 次/分 → WS_RATE_LIMIT 错误 + 关闭 4029"""
-        mock_redis = AsyncMock()
-        mock_redis.incr = AsyncMock(return_value=11)
-        mock_redis.expire = AsyncMock(return_value=True)
-        mock_get_redis.return_value = mock_redis
+        mock_session_svc.check_ws_rate_limit = AsyncMock(return_value=False)
 
         communicator = _make_communicator(user_id=42)
         connected, _ = await communicator.connect()
@@ -935,8 +932,9 @@ class TestWebSocketRateLimit:
             assert resp["data"]["code"] == "WS_RATE_LIMIT"
             assert resp["data"]["recoverable"] is False
 
-    async def test_rate_limit_not_exceeded(self, mock_get_redis):
+    async def test_rate_limit_not_exceeded(self, mock_session_svc, mock_get_redis):
         """未超频率限制 → 正常连接"""
+        mock_session_svc.check_ws_rate_limit = AsyncMock(return_value=True)
         mock_get_redis.return_value = _mock_redis_no_rate_limit()
 
         communicator = _make_communicator(user_id=42)
@@ -946,9 +944,10 @@ class TestWebSocketRateLimit:
         await communicator.disconnect()
 
     async def test_rate_limit_redis_error_fallthrough(
-        self, mock_get_redis
+        self, mock_session_svc, mock_get_redis
     ):
         """Redis 异常 → 降级放行"""
+        mock_session_svc.check_ws_rate_limit = AsyncMock(return_value=True)
         mock_get_redis.side_effect = Exception("Redis connection failed")
 
         communicator = _make_communicator(user_id=42)
@@ -958,20 +957,16 @@ class TestWebSocketRateLimit:
         await communicator.disconnect()
 
     async def test_rate_limit_first_connection_sets_expire(
-        self, mock_get_redis
+        self, mock_session_svc, mock_get_redis
     ):
-        """首次连接（count=1）设置 60 秒过期"""
-        mock_redis = AsyncMock()
-        mock_redis.incr = AsyncMock(return_value=1)
-        mock_redis.expire = AsyncMock(return_value=True)
-        mock_get_redis.return_value = mock_redis
+        """首次连接时调用 check_ws_rate_limit 进行频率检查"""
+        mock_session_svc.check_ws_rate_limit = AsyncMock(return_value=True)
+        mock_get_redis.return_value = _mock_redis_no_rate_limit()
 
         communicator = _make_communicator(user_id=42)
         await communicator.connect()
 
-        mock_redis.expire.assert_called_once_with(
-            "voice:ws_connect_rate:42", 60
-        )
+        mock_session_svc.check_ws_rate_limit.assert_called_once_with(42)
 
         await communicator.disconnect()
 

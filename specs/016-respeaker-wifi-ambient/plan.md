@@ -10,13 +10,13 @@
 ## Technical Context
 
 **Language/Version**: Python 3.12（桥接服务复用 LinChat 虚拟环境依赖）
-**Primary Dependencies**: websockets（WebSocket 客户端）、asyncio（异步事件循环）、struct/numpy（音频格式转换）
+**Primary Dependencies**: websockets（WebSocket 客户端）、asyncio（异步事件循环）、struct（音频格式转换）
 **Storage**: 无新增存储，复用现有 PostgreSQL（RegisteredDevice）+ Redis（会话状态）
 **Testing**: pytest（桥接服务单元测试）+ 手动 E2E 验证（需硬件设备）
 **Target Platform**: Linux（dev machine, Ubuntu 22.04）
 **Project Type**: Web 应用扩展 + 独立桥接服务
 **Performance Goals**: UDP→WebSocket 转发延迟 ≤ 200ms
-**Constraints**: 设备与 dev machine 同一局域网（192.168.3.x）
+**Constraints**: reSpeaker 设备在 WiFi 网段 192.168.3.x，dev machine VM 在 192.100.2.100，通过宿主机（192.168.3.119）iptables DNAT 转发 UDP 12345
 **Scale/Scope**: 单设备单用户，家庭场景
 
 ## Constitution Check
@@ -27,7 +27,7 @@
 |------|------|------|
 | 1.1 关注点分离 | ✅ | 桥接服务为独立进程，不修改现有后端分层架构 |
 | 1.2 接口设计标准 | ✅ | 复用现有 WebSocket 协议（ws/voice/），无新增 API |
-| 1.3 数据一致性 | ✅ | 无新增数据模型，复用 RegisteredDevice |
+| 1.3 数据一致性 | ✅ | 扩展现有 VoiceSettings 模型（新增 tts_output_device/ha_speaker_entity_id 字段），需数据库迁移；复用 RegisteredDevice |
 | 1.4 简单设计 | ✅ | 桥接服务职责单一（UDP→WS 转发），LLM 意图分类复用现有框架 |
 | 2.1 Python 规范 | ✅ | 桥接服务遵循 PEP 8 + Black + 类型注解 |
 | 3.1 测试覆盖 | ✅ | 桥接服务核心逻辑（格式转换、重连）单元测试覆盖 |
@@ -58,12 +58,22 @@ scripts/
     ├── bridge.py               # 主入口：UDP 接收 + WS 转发 + 事件循环
     ├── audio_converter.py      # 音频格式转换：32bit/2ch → 16bit/1ch
     ├── config.py               # 配置管理（.env 或命令行参数）
+    ├── firmware/               # ESP32-S3 Arduino 固件
+    │   ├── respeaker_udp_stream.ino  # 主 sketch：WiFi + I2S Master RX + UDP 发送
+    │   └── config.h            # 引脚/WiFi/UDP 配置（已从 PCB 原理图确认）
+    ├── tests/
+    │   └── test_bridge.py      # 单元测试（converter/config/转发/重连）
     └── README.md               # 桥接服务使用说明
 
 backend/
 ├── apps/voice/
+│   ├── consumers.py                      # 修改：ambient 设备独占检测 (FR-013)
+│   ├── models.py                         # 修改：VoiceSettings 新增 tts_output_device/ha_speaker_entity_id (US4)
+│   ├── serializers.py                    # 修改：VoiceSettings 序列化字段 + 验证逻辑 (US4)
 │   └── services/
-│       └── response_decision_service.py  # 修改：LLM 超时默认 RECORD_ONLY
+│       ├── response_decision_service.py  # 修改：LLM 超时默认 RECORD_ONLY
+│       ├── tts_router.py                 # 修改：新增 send_to_ha_speaker()，优先 xiaomi_miot.intelligent_speaker 直传文本 (US4)
+│       └── voice_pipeline.py             # 修改：TTS 输出设备路由 + 降级逻辑 (US4)
 ├── apps/context/
 │   └── templates/
 │       └── voice_intent_classify.j2      # 修改：增强 prompt（上下文+记忆）
@@ -78,12 +88,14 @@ backend/
 
 ## Implementation Phases
 
+> **Phase 映射**：本计划按技术层划分为 Phase 1-5，tasks.md 按 User Story 重组为 Phase 1-7。对应关系：Plan Phase 1（硬件）→ Tasks Phase 2（Foundational）；Plan Phase 2（桥接服务）→ Tasks Phase 3（US1）；Plan Phase 3（LLM 意图）→ Tasks Phase 4（US2）；Plan Phase 4（systemd）→ Tasks Phase 5（US3）；Plan Phase 5（测试）→ 分散到各 Phase Checkpoint。
+
 ### Phase 1: 硬件准备与固件刷写（依赖设备到货）
 
-- 刷入 XVF3800 I2S 固件（USB-DFU，一次性）
-- 刷入 ESP32-S3 UDP 音频流固件（Seeed 官方 Arduino 示例）
-- 配置 WiFi SSID/密码，验证 UDP 包可达 dev machine
-- 用 `nc -lu <port>` 或 Python 脚本验证 UDP 数据接收
+- 刷入 XVF3800 I2S Slave 固件 v1.0.4（`sudo dfu-util -R -e -a 1 -D xmos_firmwares/i2s/respeaker_xvf3800_i2s_dfu_firmware_v1.0.4.bin`，固件文件在 `~/github/reSpeaker_XVF3800_USB_4MIC_ARRAY/xmos_firmwares/i2s/`）
+- 编译烧录 ESP32-S3 Arduino 固件（`scripts/respeaker_bridge/firmware/respeaker_udp_stream.ino`），配置 WiFi SSID/密码和 UDP 目标 IP
+- 验证 I2S 引脚映射：MCLK=GPIO9, BCLK=GPIO8, WS=GPIO7, DATA_IN=GPIO44（PCB 原理图已确认）
+- 用 Python 脚本验证 UDP 数据接收，确认 16kHz/32-bit/2ch 格式和通道含义
 
 ### Phase 2: 桥接服务开发（P1 核心）
 
@@ -96,9 +108,9 @@ backend/
 - 统计日志：每 60 秒输出帧数、字节数、丢帧数
 
 **audio_converter.py** — 格式转换：
-- 输入：32-bit 立体声 PCM（reSpeaker UDP 固件输出）
-- 处理：提取 Channel 1（ASR beam）→ 32-bit 转 16-bit（右移 16 位或 clamp）
-- 输出：16-bit 单声道 PCM（LinChat 要求）
+- 输入：32-bit 立体声 PCM（ESP32-S3 通过 UDP 转发的 XVF3800 I2S 输出）
+- 处理：提取 Channel 1 / 右声道（ASR 自动选择波束，官方文档确认）→ 32-bit 转 16-bit（右移 16 位，以 T006 验证结论为准）
+- 输出：16-bit 单声道 PCM（LinChat 要求的 16kHz/16-bit/mono）
 - 纯 `struct` 模块实现，无外部依赖
 
 **config.py** — 配置管理：
@@ -134,6 +146,7 @@ After=network.target
 
 [Service]
 Type=simple
+WorkingDirectory=/home/dantsinghua/work/linchat/scripts/respeaker_bridge
 ExecStart=/home/dantsinghua/work/linchat/linchat/bin/python \
     /home/dantsinghua/work/linchat/scripts/respeaker_bridge/bridge.py
 Restart=always
@@ -146,7 +159,7 @@ WantedBy=multi-user.target
 
 ### Phase 5: 测试与验证
 
-- 单元测试：audio_converter（格式转换正确性）、config（配置加载）、重连逻辑
+- 单元测试：audio_converter（格式转换正确性）、config（配置加载）、重连逻辑。桥接服务核心逻辑（audio_converter + 重连）覆盖率目标 ≥ 90%
 - 集成测试：桥接服务 → LinChat WebSocket → ASR 转录 → 决策结果
 - E2E 验证：对设备说话 → 看 LinChat 后端日志确认 transcription + decision
 - LLM 意图分类准确率测试：20 条指令/问题 + 20 条闲聊，统计 RESPOND/RECORD_ONLY 准确率
@@ -167,7 +180,8 @@ WantedBy=multi-user.target
 
 | 风险 | 影响 | 缓解 |
 |------|------|------|
-| ESP32 UDP 固件音频格式与文档不符 | 桥接服务无法正确转换 | bridge.py 首包验证格式，异常时日志告警 |
+| ESP32 I2S Master 与 XVF3800 I2S Slave 不兼容 | 无音频输出 | 备选 48kHz Master 固件（v1.0.5/v1.0.7），ESP32 改为 I2S Slave + 桥接服务下采样 |
 | LLM 意图分类 5s 仍超时 | 所有话语默认 RECORD_ONLY | 监控超时率，必要时切换更快的模型或降级到规则链 |
 | WiFi 信号差导致 UDP 大量丢包 | ASR 转录质量下降 | 部署时确保 WiFi 信号覆盖，桥接服务统计丢帧率 |
+| 意图分类需复用主 Agent 数据源 | 需从 chat.repositories 和 memory.services 获取数据 | T015 直接调用 message_repo + memory_service 公共 API，格式化复用 builder_helpers 工具函数 |
 | reSpeaker 硬件故障 | 无音频输入 | 桥接服务 30s 无数据告警，systemd 自动重启 |

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from typing import Any, Optional
 
@@ -7,8 +8,12 @@ from django.conf import settings
 from apps.common.async_utils import cancel_task_sync
 from apps.voice.services.asr_stream_client import ASRStreamClient
 from apps.voice.services.voice_session_service import voice_session_service
+from core.redis import get_redis, redis_delete, redis_get, redis_setex_json
 
 logger = logging.getLogger(__name__)
+
+# Redis 键: 记录用户当前活跃的 ambient 设备连接
+_AMBIENT_CONN_KEY = "voice:ambient_conn:{user_id}"
 
 
 class SessionMixin:
@@ -59,19 +64,78 @@ class SessionMixin:
         await voice_session_service.update_session(
             self.user_id, upstream_connected=True, asr_session_id=self._asr_client.session_id)
         self._configured = True
+        # 设备独占检查：ambient 模式下，设备连接优先于浏览器
+        if self._mode == "ambient":
+            rejected = await self._check_device_exclusive()
+            if rejected:
+                return
         self._start_idle_check()
         if self._mode == "ambient":
             from apps.voice.services.utterance_aggregator import UtteranceAggregator
             self._aggregator = UtteranceAggregator(on_aggregated=self._on_utterance_aggregated)
             self._speaker_aggregators = {}
-            from apps.voice.repositories import speaker_profile_repo
-            self._diarize_enabled = await speaker_profile_repo.any_exists()
+            # [DEPRECATED] diarize 功能暂时废弃
+            # from apps.voice.repositories import speaker_profile_repo
+            # self._diarize_enabled = await speaker_profile_repo.any_exists()
         configured_data: dict[str, Any] = {
             "status": "active", "session_id": self._asr_client.session_id, "mode": self._mode,
             **({"features": {"utterance_aggregation": True, "llm_decision": settings.VOICE_DECISION_USE_LLM,
-                "cross_device_tts": True, "speaker_diarize": getattr(self, "_diarize_enabled", False)}}
+                "cross_device_tts": True}}
                if self._mode == "ambient" else {})}
         await self._send_json({"type": "session.configured", "data": configured_data})
+
+    async def _check_device_exclusive(self) -> bool:
+        """设备独占检查。ambient 模式下设备连接优先于浏览器。
+
+        Returns:
+            True 表示当前连接被拒绝（已发送错误并关闭 ASR），False 表示通过。
+        """
+        key = _AMBIENT_CONN_KEY.format(user_id=self.user_id)
+        raw = await redis_get(key)
+        existing = json.loads(raw) if raw else None
+
+        if existing and existing.get("is_device") and not self._is_device_connection:
+            # 已有设备连接 → 拒绝浏览器
+            await self._send_error("DEVICE_EXCLUSIVE",
+                "设备已在环境监听中，浏览器无法同时使用 ambient 模式", recoverable=False)
+            if self._asr_client and self._asr_client.connected:
+                await self._asr_client.disconnect()
+            self._configured = False
+            return True
+
+        if existing:
+            # 踢掉旧连接（无论旧连接是设备还是浏览器）
+            old_channel = existing.get("channel_name")
+            if old_channel and old_channel != self.channel_name:
+                try:
+                    await self.channel_layer.send(old_channel, {
+                        "type": "force_disconnect",
+                        "reason": "device_exclusive",
+                        "message": "新的设备连接已接管 ambient 模式",
+                    })
+                except Exception:
+                    pass  # 旧连接可能已断开
+
+        # 注册当前连接
+        await self._register_ambient_connection()
+        return False
+
+    async def _register_ambient_connection(self) -> None:
+        """在 Redis 中注册当前 ambient 连接。"""
+        key = _AMBIENT_CONN_KEY.format(user_id=self.user_id)
+        await redis_setex_json(key, settings.VOICE_AMBIENT_SESSION_TTL, {
+            "channel_name": self.channel_name,
+            "is_device": self._is_device_connection,
+        })
+
+    async def _unregister_ambient_connection(self) -> None:
+        """从 Redis 中注销当前 ambient 连接（仅当 key 属于本连接时删除）。"""
+        key = _AMBIENT_CONN_KEY.format(user_id=self.user_id)
+        raw = await redis_get(key)
+        if raw:
+            data = json.loads(raw)
+            if data.get("channel_name") == self.channel_name:
+                await redis_delete(key)
 
     def _get_or_create_aggregator(self, speaker_user_id: int):
         speaker_aggs = getattr(self, "_speaker_aggregators", {})

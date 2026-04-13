@@ -41,7 +41,7 @@ class ResponseDecisionService:
         if mode == "ambient":
             from django.conf import settings as django_settings
             if django_settings.VOICE_DECISION_USE_LLM:
-                llm_result = await self._classify_intent_llm(text)
+                llm_result = await self._classify_intent_llm(text, user_id)
                 if llm_result is not None:
                     decision, reason, confidence = llm_result
                     if confidence >= django_settings.VOICE_DECISION_LLM_THRESHOLD:
@@ -56,7 +56,7 @@ class ResponseDecisionService:
             return DecisionResult.RESPOND, "question_detected"
         return DecisionResult.RECORD_ONLY, "default"
 
-    async def _classify_intent_llm(self, text: str) -> Optional[tuple[DecisionResult, str, float]]:
+    async def _classify_intent_llm(self, text: str, user_id: int = 0) -> Optional[tuple[DecisionResult, str, float]]:
         from django.conf import settings as django_settings
         try:
             from apps.models.services import model_service
@@ -64,7 +64,14 @@ class ResponseDecisionService:
             if not model_config:
                 return None
 
-            prompt = render("voice_intent_classify.j2", text=text)
+            # 获取对话上下文和用户记忆，增强意图分类准确性
+            recent_messages: list[dict[str, str]] = []
+            memory_summary: Optional[str] = None
+            if user_id:
+                recent_messages, memory_summary = await self._fetch_intent_context(user_id, text)
+
+            prompt = render("voice_intent_classify.j2", text=text,
+                            recent_messages=recent_messages, memory_summary=memory_summary)
 
             async with httpx.AsyncClient(timeout=django_settings.VOICE_DECISION_LLM_TIMEOUT) as client:
                 resp = await client.post(
@@ -76,10 +83,39 @@ class ResponseDecisionService:
             result = json_module.loads(resp.json()["choices"][0]["message"]["content"])
             decision = DecisionResult.RESPOND if result.get("decision", "").upper() == "RESPOND" else DecisionResult.RECORD_ONLY
             return decision, result.get("reason", "unknown"), float(result.get("confidence", 0.0))
+        except httpx.TimeoutException:
+            # 超时时安全降级为 RECORD_ONLY，避免穿透到规则链误触发 RESPOND
+            logger.info("LLM intent classify timeout: text=%s", text[:30])
+            return DecisionResult.RECORD_ONLY, "llm_timeout", 1.0
         except Exception as e:
-            if not isinstance(e, httpx.TimeoutException):
-                logger.warning("LLM decision error: text=%s", text[:30], exc_info=True)
+            logger.warning("LLM decision error: text=%s", text[:30], exc_info=True)
             return None
+
+    @staticmethod
+    async def _fetch_intent_context(user_id: int, text: str) -> tuple[list[dict[str, str]], Optional[str]]:
+        """获取最近对话和用户记忆，用于 LLM 意图分类上下文增强。
+
+        Returns:
+            (recent_messages, memory_summary) — 任一失败返回空列表/None，不影响分类流程。
+        """
+        recent_messages: list[dict[str, str]] = []
+        memory_summary: Optional[str] = None
+        try:
+            from apps.chat.repositories import message_repo
+            msgs = await message_repo.find_latest_by_user(user_id, limit=5)
+            # find_latest_by_user 按 -created_time 排序，需反转为时间正序
+            for m in reversed(msgs):
+                content = (m.content or "")[:200]
+                if content:
+                    recent_messages.append({"role": m.role, "content": content})
+        except Exception as e:
+            logger.debug("Failed to fetch recent messages for intent: user=%s, err=%s", user_id, e)
+        try:
+            from apps.memory.services import MemoryService
+            memory_summary = await MemoryService.retrieve_relevant_memories(user_id, text, limit=3)
+        except Exception as e:
+            logger.debug("Failed to fetch memories for intent: user=%s, err=%s", user_id, e)
+        return recent_messages, memory_summary
 
     @staticmethod
     def _check_emergency_stop(text: str) -> bool:

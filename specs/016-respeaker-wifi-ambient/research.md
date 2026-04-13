@@ -64,3 +64,57 @@
 **Alternatives considered**:
 - 共存互斥：实现复杂，需要全局协调器
 - 完全独立：接受重复处理，但 Agent 可能重复执行工具（如重复开灯）
+
+## R7: I2S 引脚映射与固件选型（硬件确认）
+
+**Decision**: 使用 XVF3800 I2S Slave 固件 v1.0.4（16kHz），ESP32-S3 作为 I2S Master。引脚映射从 PCB 丝印和原理图确认。
+
+**确认来源**：
+- PCB 丝印图（`pinout.jpg`）：XIAO ESP32-S3 插座两侧标注了所有 I2S 信号
+- 原理图（`gpio_sk.png`）：XIAO 与 XVF3800 之间的 I2S 连接
+- GitHub 仓库 `host_control/README.md` Output Selection 章节：确认双通道含义
+
+**I2S 引脚映射**：
+
+| I2S 信号 | reSpeaker 丝印 | XIAO 引脚 | ESP32-S3 GPIO | 方向 |
+|----------|---------------|-----------|---------------|------|
+| MCLK | MCLK | D10 | GPIO9 | ESP32→XVF3800 |
+| BCLK | I2S_BCLK | D9 | GPIO8 | ESP32→XVF3800 |
+| WS/LRCK | I2S_LRCK | D8 | GPIO7 | ESP32→XVF3800 |
+| DATA_OUT | I2S_DATAO | D7 | GPIO44 | XVF3800→ESP32（音频输出）|
+| DATA_IN | I2S_DATAI | D6 | GPIO43 | ESP32→XVF3800（AEC 参考）|
+
+**双通道含义（官方文档确认）**：
+- Channel 0（左声道）：AEC + 波束成形 + 后处理（适合会议/通话）
+- Channel 1（右声道）：ASR 自动选择波束（适合语音识别）→ **桥接服务提取此通道**
+
+**固件选型**：
+
+| 固件文件 | 采样率 | XVF3800 角色 | ESP32 角色 | 状态 |
+|---------|--------|-------------|-----------|------|
+| `i2s_dfu_firmware_v1.0.4.bin` | 16kHz | I2S Slave | I2S Master | ⭐ 选用 |
+| `i2s_master_*_v1.0.5_48k.bin` | 48kHz | I2S Master | I2S Slave | 备选（需下采样） |
+| `i2s_master_*_v1.0.7_48k_test5.bin` | 48kHz | I2S Master | I2S Slave | 备选（测试版） |
+
+**Rationale**: v1.0.4 直接输出 16kHz，匹配 LinChat ASR 要求，无需下采样，ESP32 端和桥接服务端代码更简单。固件文件已在本地 `~/github/reSpeaker_XVF3800_USB_4MIC_ARRAY/xmos_firmwares/i2s/`。
+
+**Alternatives considered**:
+- 48kHz Master 固件（v1.0.5/v1.0.7）：XVF3800 提供时钟，ESP32 代码略简单，但需在桥接服务中从 48kHz 下采样到 16kHz，增加复杂度和延迟
+- USB 模式固件：需 USB 物理连接，无法无线部署
+
+## R8: ESP32-S3 Arduino 固件设计
+
+**Decision**: 自行编写 Arduino 固件（`scripts/respeaker_bridge/firmware/`），Seeed 官方仓库不含 ESP32-S3 代码。
+
+**固件架构**：
+- `config.h`：所有可配置参数（WiFi/UDP/I2S 引脚/缓冲区）
+- `respeaker_udp_stream.ino`：WiFi 自动连接 + I2S Master RX + UDP 发送 + 帧统计
+
+**关键设计决策**：
+- ESP32 发送原始 32-bit/2ch PCM，格式转换交给 dev machine 桥接服务（CPU 更强）
+- UDP 包大小 1024 bytes（128 样本 × 8ms），低于 MTU 1500 避免分片
+- WiFi 断线时继续 I2S 读取（防 DMA 溢出），但不发送 UDP
+- APLL 精确时钟生成 MCLK=4.096MHz（16kHz × 256）
+- 每 10 秒输出帧统计日志（帧数/字节数/丢帧数/WiFi RSSI）
+
+**Rationale**: Seeed 的 GitHub 仓库（`respeaker/reSpeaker_XVF3800_USB_4MIC_ARRAY`）仅包含 XMOS 固件和 Python 控制工具，不含 ESP32-S3 I2S/WiFi/UDP 代码。Arduino 固件需从零编写，但逻辑简单（读 I2S → 发 UDP），核心代码约 150 行。

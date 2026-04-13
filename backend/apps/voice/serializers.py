@@ -23,7 +23,10 @@ class RegisteredDeviceSerializer(serializers.ModelSerializer):
 class VoiceSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = VoiceSettings
-        fields = ["wake_words", "recording_mode", "vad_sensitivity"]
+        fields = [
+            "wake_words", "recording_mode", "vad_sensitivity",
+            "tts_output_device", "ha_speaker_entity_id",
+        ]
         read_only_fields = fields
 
 
@@ -33,6 +36,21 @@ class VoiceSettingsUpdateSerializer(serializers.Serializer):
     )
     recording_mode = serializers.ChoiceField(choices=["hold", "toggle"], required=False)
     vad_sensitivity = serializers.FloatField(min_value=0.0, max_value=1.0, required=False)
+    tts_output_device = serializers.ChoiceField(
+        choices=["browser", "ha_speaker"], required=False,
+    )
+    ha_speaker_entity_id = serializers.CharField(
+        max_length=200, required=False, allow_null=True, allow_blank=True,
+    )
+
+    def validate(self, data: dict) -> dict:
+        tts_device = data.get("tts_output_device")
+        entity_id = data.get("ha_speaker_entity_id")
+        if tts_device == "ha_speaker" and not entity_id:
+            raise serializers.ValidationError(
+                {"ha_speaker_entity_id": "ha_speaker 模式下必须指定音箱实体 ID"}
+            )
+        return data
 
 
 class CreateDeviceSerializer(serializers.Serializer):
