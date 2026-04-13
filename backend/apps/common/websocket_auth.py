@@ -25,8 +25,9 @@ class WebSocketTokenAuthMiddleware:
             await self.app(scope, receive, send); return
         token = self._extract_token_from_headers(scope)
         if not token:
-            logger.warning("WebSocket 认证失败: Cookie 中未找到 linchat_token")
-            await self._close_websocket(send); return
+            # 无 Cookie token 时放行，交给 Consumer 处理设备 token 认证（query string）
+            logger.debug("WebSocket 无 Cookie token，交给 Consumer 认证")
+            await self.app(scope, receive, send); return
         try:
             user_info = await self._verify_token_async(token)
         except _WebSocketAuthError as e:
