@@ -60,7 +60,8 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
         self._segment_timer_task: Optional[asyncio.Task] = None
         self._aggregator = None
         self._speaker_aggregators: dict[int, Any] = {}
-        self._diarize_enabled: bool = False
+        # [DEPRECATED] diarize 功能暂时废弃
+        # self._diarize_enabled: bool = False
         self._pending_text: Optional[str] = None
         self._pending_speaker_user_id: Optional[int] = None
         self._is_speaking: bool = False
@@ -86,6 +87,12 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
         self._speaker_aggregators, self._pending_text, self._pending_speaker_user_id = {}, None, None
         await cancel_task(getattr(self, "_idle_check_task", None))
         cancel_task_sync(getattr(self, "_segment_timer_task", None))
+        # 注销 ambient 连接注册（仅属于本连接时删除）
+        if getattr(self, "_mode", None) == "ambient":
+            try:
+                await self._unregister_ambient_connection()
+            except Exception:
+                pass
         if user_id:
             try:
                 from apps.voice.services.voice_pipeline import VoicePipeline
@@ -137,6 +144,14 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
 
     async def _send_error(self, code: str, message: str, recoverable: bool = True) -> None:
         await self._send_json(error_msg(code, message, recoverable))
+
+    async def force_disconnect(self, event: dict[str, Any]) -> None:
+        """被新连接踢出时的 channel_layer 回调（设备独占）。"""
+        reason = event.get("reason", "device_exclusive")
+        message = event.get("message", "已被新连接接管")
+        await self._send_json({"type": "error", "data": {
+            "code": "DEVICE_EXCLUSIVE", "message": message, "reason": reason, "recoverable": False}})
+        await self.close(code=4008)
 
     async def tts_audio_frame(self, event: dict[str, Any]) -> None:
         if not self._is_device_connection:

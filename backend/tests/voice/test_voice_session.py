@@ -29,10 +29,10 @@ from django.conf import settings
 
 from apps.voice.services.voice_persist_service import VoicePersistService
 from apps.voice.services.voice_session_service import (
-    ACTIVE_CONV_KEY,
-    AUDIO_CHUNKS_KEY,
-    LLM_RATE_KEY,
-    SESSION_KEY,
+    _A as ACTIVE_CONV_KEY,
+    _AC as AUDIO_CHUNKS_KEY,
+    _LR as LLM_RATE_KEY,
+    _S as SESSION_KEY,
     VoiceSessionService,
 )
 from tests.helpers import run_async

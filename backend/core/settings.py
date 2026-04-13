@@ -361,7 +361,7 @@ DOC_PARSE_MAX_FILE_SIZE = int(os.getenv("DOC_PARSE_MAX_FILE_SIZE", str(10 * 1024
 DOC_PARSE_MAX_PAGES = int(os.getenv("DOC_PARSE_MAX_PAGES", "200"))
 DOC_PARSE_POLL_INTERVAL = int(os.getenv("DOC_PARSE_POLL_INTERVAL", "3"))  # 轮询间隔（秒）
 DOC_PARSE_POLL_MAX_WAIT = int(os.getenv("DOC_PARSE_POLL_MAX_WAIT", "900"))  # 最大等待（秒）
-DOC_PARSE_DEFAULT_MODEL = os.getenv("DOC_PARSE_DEFAULT_MODEL", "minicpm-o")
+DOC_PARSE_DEFAULT_MODEL = os.getenv("DOC_PARSE_DEFAULT_MODEL", "qwen3.5-9b")
 DOC_PARSE_MAX_RESULT_LENGTH = int(os.getenv("DOC_PARSE_MAX_RESULT_LENGTH", "6000"))  # 011-document-subagent-rag: document_parse 工具返回结果最大字符数
 
 # 视频预处理配置 (MiniCPM-o 限制: 高分辨率+多帧会导致 vLLM 500 错误)
@@ -438,9 +438,9 @@ VOICE_AMBIENT_AGGREGATE_TIMEOUT = float(os.getenv("VOICE_AMBIENT_AGGREGATE_TIMEO
 VOICE_AMBIENT_MAX_BUFFER_SIZE = int(os.getenv("VOICE_AMBIENT_MAX_BUFFER_SIZE", "10"))  # 聚合缓冲区最大话语数
 VOICE_AMBIENT_SESSION_TTL = int(os.getenv("VOICE_AMBIENT_SESSION_TTL", "3600"))  # ambient 会话 TTL: 3600s (1h)
 VOICE_AMBIENT_RECORD_ONLY_LIMIT = int(os.getenv("VOICE_AMBIENT_RECORD_ONLY_LIMIT", "20"))  # RECORD_ONLY 消息保留上限
-VOICE_DECISION_USE_LLM = os.getenv("VOICE_DECISION_USE_LLM", "false").lower() == "true"  # 是否启用 LLM 意图分类
-VOICE_DECISION_LLM_THRESHOLD = float(os.getenv("VOICE_DECISION_LLM_THRESHOLD", "0.7"))  # LLM 分类置信度阈值
-VOICE_DECISION_LLM_TIMEOUT = float(os.getenv("VOICE_DECISION_LLM_TIMEOUT", "1.0"))  # LLM 分类超时（秒）
+VOICE_DECISION_USE_LLM = os.getenv("VOICE_DECISION_USE_LLM", "true").lower() == "true"  # 是否启用 LLM 意图分类 (016: 默认开启)
+VOICE_DECISION_LLM_THRESHOLD = float(os.getenv("VOICE_DECISION_LLM_THRESHOLD", "0.6"))  # LLM 分类置信度阈值 (016: 0.7→0.6)
+VOICE_DECISION_LLM_TIMEOUT = float(os.getenv("VOICE_DECISION_LLM_TIMEOUT", "5.0"))  # LLM 分类超时（秒）(016: 1s→5s，宪法豁免)
 
 # 声纹 diarize 配置（多说话人识别与过滤）
 VOICE_SPEAKER_MIN_AUDIO_SECONDS = float(os.getenv("VOICE_SPEAKER_MIN_AUDIO_SECONDS", "1.0"))

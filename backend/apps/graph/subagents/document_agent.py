@@ -115,48 +115,67 @@ async def document_parse(task: str, config: RunnableConfig, force: bool = False)
         return "没有需要解析的文档附件（仅支持 PDF/DOCX）"
 
     max_len = getattr(settings, "DOC_PARSE_MAX_RESULT_LENGTH", 6000)
+    logger.info("[DocParse] START: user=%d, req=%s, docs=%d, uuids=%s, force=%s", user_id, req_id, len(docs), uuids, force)
     results = []
     for doc in docs:
+        logger.info("[DocParse] processing: file=%s, attachment=%d, expired=%s", doc.file_name, doc.attachment_id, doc.is_expired)
         try:
             if force:
+                logger.info("[DocParse] force=True, clearing cache: attachment=%d", doc.attachment_id)
                 await clear_parsed_cache(doc)
             cached = await get_cached_result(doc)
             if cached:
-                logger.info("Doc parse cache hit: attachment=%d, size=%d", doc.attachment_id, len(cached))
+                logger.info("[DocParse] cache HIT: attachment=%d, size=%d", doc.attachment_id, len(cached))
                 results.append(build_truncated_result(doc.file_name, cached, max_len, label="缓存") if len(cached) > max_len else f"📄 {doc.file_name}（缓存）:\n{cached}")
                 continue
+            logger.info("[DocParse] cache MISS: attachment=%d", doc.attachment_id)
             if doc.is_expired:
                 results.append(f"📄 {doc.file_name}: 原始文件已过期，无法解析")
                 continue
             try:
+                logger.info("[DocParse] acquiring GPU lock: req=%s", req_id)
                 async with acquire_gpu_lock(req_id):
+                    logger.info("[DocParse] GPU lock acquired: req=%s", req_id)
                     parse_result = await DocumentParseService.parse_document(user_id=user_id, attachment_uuid=doc.attachment_uuid, skip_background_poll=True)
                     task_id = parse_result.get("task_id", "")
+                    total_pages = parse_result.get("total_pages", "?")
+                    logger.info("[DocParse] task created: task_id=%s, file=%s, total_pages=%s", task_id, doc.file_name, total_pages)
                     if not task_id:
+                        logger.warning("[DocParse] no task_id returned for: file=%s", doc.file_name)
                         results.append(f"📄 {doc.file_name}: 解析任务创建失败")
                         continue
-                    logger.info("Doc parse task started: attachment=%d, task_id=%s, file=%s", doc.attachment_id, task_id, doc.file_name)
+                    logger.info("[DocParse] starting poll: task_id=%s, file=%s", task_id, doc.file_name)
                     status, result_text, _ = await poll_parse_task(task_id, doc, user_id, max_len)
+                    logger.info("[DocParse] poll done: task_id=%s, status=%s, has_result_text=%s, result_len=%d",
+                                task_id, status, bool(result_text), len(result_text) if result_text else 0)
                     if result_text:
                         results.append(result_text)
                         if status != "completed":
+                            logger.info("[DocParse] non-completed with result, skipping full fetch: status=%s", status)
                             continue
                     if status != "completed":
+                        logger.warning("[DocParse] non-completed without result, skipping: status=%s", status)
                         continue
+                    logger.info("[DocParse] fetching full result: task_id=%s", task_id)
                     md_content = await DocumentParseService.get_task_result(task_id, format="markdown")
-                    logger.info("Doc parse result fetched: task=%s, size=%d", task_id, len(md_content) if md_content else 0)
+                    logger.info("[DocParse] full result fetched: task=%s, size=%d", task_id, len(md_content) if md_content else 0)
                     if not md_content:
                         results.append(f"📄 {doc.file_name}: 解析结果为空")
                         continue
                     await save_parsed_result(doc, md_content)
+                    logger.info("[DocParse] result saved to cache: attachment=%d, size=%d", doc.attachment_id, len(md_content))
                     results.append(build_truncated_result(doc.file_name, md_content, max_len) if len(md_content) > max_len else f"📄 {doc.file_name}:\n{md_content}")
+                logger.info("[DocParse] GPU lock released: req=%s", req_id)
             except GPULockTimeout:
+                logger.warning("[DocParse] GPU lock timeout: req=%s, file=%s", req_id, doc.file_name)
                 results.append(f"📄 {doc.file_name}: GPU 资源繁忙，请稍后重试")
         except DocumentParseError as e:
+            logger.warning("[DocParse] DocumentParseError: attachment=%d, code=%s, msg=%s", doc.attachment_id, e.code, e.message)
             results.append(f"📄 {doc.file_name}: {e.message}")
         except Exception as e:
-            logger.error("Doc parse fail: attachment=%d, err=%s", doc.attachment_id, e)
+            logger.error("[DocParse] unexpected error: attachment=%d, err=%s", doc.attachment_id, e, exc_info=True)
             results.append(f"📄 {doc.file_name}: 解析异常 — {e}")
+    logger.info("[DocParse] DONE: user=%d, docs=%d, results=%d", user_id, len(docs), len(results))
     return "\n\n---\n\n".join(results) if results else "没有成功解析的文档"
 
 

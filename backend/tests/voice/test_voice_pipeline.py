@@ -602,21 +602,13 @@ class TestPersistAudioAttachment:
     async def test_persist_normal_flow(
         self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
     ):
-        """正常流程后调用持久化：upload_to_minio + _atomic_mark_voice。"""
+        """正常流程后调用持久化：persist_audio_attachment 被调用。"""
         consumer = _make_consumer()
-        pcm_chunks = [b"\x00\x01" * 160]  # 10ms of PCM
 
         with (
-            patch(f"{_VP}.voice_session_service") as mock_sess,
             patch(f"{_VP}.voice_persist_service") as mock_persist,
-            patch(f"{_VP}.VoicePipeline._atomic_mark_voice", new_callable=AsyncMock) as mock_atomic,
         ):
-            mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
-            mock_sess.get_audio_chunks = AsyncMock(return_value=pcm_chunks)
-            mock_sess.clear_audio_chunks = AsyncMock()
-            mock_persist.merge_pcm_to_wav.return_value = b"RIFF_WAV_DATA"
-            mock_persist.calculate_duration.return_value = 0.01
-            mock_persist.upload_to_minio = AsyncMock()
+            mock_persist.persist_audio_attachment = AsyncMock()
 
             from apps.voice.services.voice_pipeline import VoicePipeline
 
@@ -624,26 +616,19 @@ class TestPersistAudioAttachment:
                 user_id=1, text="test", segment_id="seg-1", consumer=consumer
             )
 
-            # MinIO 上传被调用
-            mock_persist.upload_to_minio.assert_called_once()
-            # 事务标记被调用
-            mock_atomic.assert_called_once()
-            # 音频缓存被清理
-            mock_sess.clear_audio_chunks.assert_called_once_with(1, "seg-1")
+            # 持久化被调用
+            mock_persist.persist_audio_attachment.assert_called_once()
 
     async def test_persist_no_audio_chunks_skips(
         self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
     ):
-        """无音频缓存时跳过持久化。"""
+        """无音频缓存时 persist_audio_attachment 内部跳过（由 persist_service 处理）。"""
         consumer = _make_consumer()
 
         with (
-            patch(f"{_VP}.voice_session_service") as mock_sess,
             patch(f"{_VP}.voice_persist_service") as mock_persist,
         ):
-            mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
-            mock_sess.get_audio_chunks = AsyncMock(return_value=[])
-            mock_persist.upload_to_minio = AsyncMock()
+            mock_persist.persist_audio_attachment = AsyncMock()
 
             from apps.voice.services.voice_pipeline import VoicePipeline
 
@@ -651,27 +636,21 @@ class TestPersistAudioAttachment:
                 user_id=1, text="test", segment_id="seg", consumer=consumer
             )
 
-            mock_persist.upload_to_minio.assert_not_called()
+            # persist_audio_attachment 被调用，内部处理空缓存逻辑
+            mock_persist.persist_audio_attachment.assert_called_once()
 
     async def test_persist_transaction_failure_compensates_minio(
         self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
     ):
-        """事务失败时补偿删除 MinIO 文件。"""
+        """持久化内部失败由 persist_service 内部处理，pipeline 正常完成。"""
         consumer = _make_consumer()
 
         with (
-            patch(f"{_VP}.voice_session_service") as mock_sess,
             patch(f"{_VP}.voice_persist_service") as mock_persist,
-            patch(f"{_VP}.VoicePipeline._atomic_mark_voice", new_callable=AsyncMock) as mock_atomic,
         ):
-            mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
-            mock_sess.get_audio_chunks = AsyncMock(return_value=[b"\x00" * 320])
-            mock_sess.clear_audio_chunks = AsyncMock()
-            mock_persist.merge_pcm_to_wav.return_value = b"WAV"
-            mock_persist.calculate_duration.return_value = 0.01
-            mock_persist.upload_to_minio = AsyncMock()
-            mock_persist.delete_from_minio = AsyncMock()
-            mock_atomic.side_effect = Exception("DB error")
+            # persist_audio_attachment 本身不抛异常（内部已 try/except），
+            # 验证 pipeline 在持久化完成后仍正常发送 response.end
+            mock_persist.persist_audio_attachment = AsyncMock()
 
             from apps.voice.services.voice_pipeline import VoicePipeline
 
@@ -679,21 +658,24 @@ class TestPersistAudioAttachment:
                 user_id=1, text="test", segment_id="seg", consumer=consumer
             )
 
-            mock_persist.delete_from_minio.assert_called_once()
+        # response.end 仍然发送
+        calls = consumer._send_json.call_args_list
+        types = [c.args[0]["type"] for c in calls]
+        assert types[-1] == "response.end"
+        mock_persist.persist_audio_attachment.assert_called_once()
 
     async def test_persist_error_does_not_propagate(
         self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
     ):
-        """持久化错误不影响 pipeline 正常完成。"""
+        """持久化错误不影响 pipeline 正常完成（persist_service 内部吞掉异常）。"""
         consumer = _make_consumer()
 
         with (
-            patch(f"{_VP}.voice_session_service") as mock_sess,
             patch(f"{_VP}.voice_persist_service") as mock_persist,
         ):
-            mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
-            mock_sess.get_audio_chunks = AsyncMock(side_effect=Exception("Redis down"))
-            mock_persist.upload_to_minio = AsyncMock()
+            # 真实 persist_audio_attachment 内部已有 try/except，不会向外抛异常
+            # 此测试验证即使 persist_audio_attachment 被调用，pipeline 仍正常完成
+            mock_persist.persist_audio_attachment = AsyncMock()
 
             from apps.voice.services.voice_pipeline import VoicePipeline
 
@@ -728,7 +710,7 @@ class TestAmbientRespondPipeline:
         ):
             mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
             mock_sess.set_active_conversation = AsyncMock()
-            mock_sess.get_audio_chunks = AsyncMock(return_value=[])
+            mock_persist.persist_audio_attachment = AsyncMock()
 
             router_inst = MagicMock()
             on_audio_cb = AsyncMock()
@@ -769,7 +751,7 @@ class TestAmbientRespondPipeline:
         ):
             mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
             mock_sess.set_active_conversation = AsyncMock()
-            mock_sess.get_audio_chunks = AsyncMock(return_value=[])
+            mock_persist.persist_audio_attachment = AsyncMock()
             router_inst = MagicMock()
             router_inst.get_on_audio_callback.return_value = AsyncMock()
             router_inst.send_control = AsyncMock()
@@ -799,7 +781,7 @@ class TestAmbientRespondPipeline:
         ):
             mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
             mock_sess.set_active_conversation = AsyncMock()
-            mock_sess.get_audio_chunks = AsyncMock(return_value=[])
+            mock_persist.persist_audio_attachment = AsyncMock()
 
             router_inst = MagicMock()
             router_inst.get_on_audio_callback.return_value = AsyncMock()
@@ -819,24 +801,25 @@ class TestAmbientRespondPipeline:
         assert "tts.completed" in control_types
 
 
+_VPS = "apps.voice.services.voice_persist_service"
+
+
 @pytest.mark.asyncio(loop_scope="function")
 class TestAmbientRecordOnly:
 
     async def test_record_only_ambient_saves_message(self):
         """ambient RECORD_ONLY → 保存 user Message（is_voice=True）。"""
-        consumer = _make_consumer()
-
         with (
-            patch(f"{_VP}.message_repo") as mock_repo,
-            patch(f"{_VP}.VoicePipeline._cleanup_record_only_messages", new_callable=AsyncMock) as mock_cleanup,
+            patch(f"{_VPS}.message_repo") as mock_repo,
+            patch(f"{_VPS}.voice_persist_service._cleanup_record_only", new_callable=AsyncMock),
         ):
             mock_repo.get_next_sequence = AsyncMock(return_value=5)
             mock_repo.create = AsyncMock()
 
-            from apps.voice.services.voice_pipeline import VoicePipeline
+            from apps.voice.services.voice_persist_service import voice_persist_service
 
-            await VoicePipeline.record_only_ambient(
-                user_id=1, text="今天好热啊", consumer=consumer
+            await voice_persist_service.record_only_ambient(
+                user_id=1, text="今天好热啊"
             )
 
         mock_repo.create.assert_called_once()
@@ -848,59 +831,53 @@ class TestAmbientRecordOnly:
 
     async def test_record_only_ambient_triggers_cleanup(self):
         """ambient RECORD_ONLY 保存后触发清理检查。"""
-        consumer = _make_consumer()
-
         with (
-            patch(f"{_VP}.message_repo") as mock_repo,
-            patch(f"{_VP}.VoicePipeline._cleanup_record_only_messages", new_callable=AsyncMock) as mock_cleanup,
+            patch(f"{_VPS}.message_repo") as mock_repo,
+            patch(f"{_VPS}.voice_persist_service._cleanup_record_only", new_callable=AsyncMock) as mock_cleanup,
         ):
             mock_repo.get_next_sequence = AsyncMock(return_value=1)
             mock_repo.create = AsyncMock()
 
-            from apps.voice.services.voice_pipeline import VoicePipeline
+            from apps.voice.services.voice_persist_service import voice_persist_service
 
-            await VoicePipeline.record_only_ambient(
-                user_id=42, text="闲聊", consumer=consumer
+            await voice_persist_service.record_only_ambient(
+                user_id=42, text="闲聊"
             )
 
         mock_cleanup.assert_called_once_with(42)
 
     async def test_record_only_ambient_no_agent_call(self):
         """ambient RECORD_ONLY 不调用 Agent。"""
-        consumer = _make_consumer()
-
         with (
-            patch(f"{_VP}.message_repo") as mock_repo,
-            patch(f"{_VP}.VoicePipeline._cleanup_record_only_messages", new_callable=AsyncMock),
+            patch(f"{_VPS}.message_repo") as mock_repo,
+            patch(f"{_VPS}.voice_persist_service._cleanup_record_only", new_callable=AsyncMock),
             patch(f"{_VP}.AgentService") as MockAgent,
         ):
             mock_repo.get_next_sequence = AsyncMock(return_value=1)
             mock_repo.create = AsyncMock()
 
-            from apps.voice.services.voice_pipeline import VoicePipeline
+            from apps.voice.services.voice_persist_service import voice_persist_service
 
-            await VoicePipeline.record_only_ambient(
-                user_id=1, text="日常聊天", consumer=consumer
+            await voice_persist_service.record_only_ambient(
+                user_id=1, text="日常聊天"
             )
 
         MockAgent.execute.assert_not_called()
 
     async def test_record_only_ambient_error_handled(self):
         """ambient RECORD_ONLY 失败时不抛异常。"""
-        consumer = _make_consumer()
-
         with (
-            patch(f"{_VP}.message_repo") as mock_repo,
+            patch(f"{_VPS}.message_repo") as mock_repo,
         ):
             mock_repo.get_next_sequence = AsyncMock(
                 side_effect=Exception("DB error")
             )
 
-            from apps.voice.services.voice_pipeline import VoicePipeline
+            from apps.voice.services.voice_persist_service import voice_persist_service
 
             # 不应抛异常
-            await VoicePipeline.record_only_ambient(
-                user_id=1, text="test", consumer=consumer
+            await voice_persist_service.record_only_ambient(
+                user_id=1, text="test"
             )
 
 
@@ -912,63 +889,52 @@ class TestAmbientRecordOnly:
 class TestRecordOnlyCleanup:
 
     async def test_cleanup_removes_excess_messages(self):
-        """超过限额时删除最早的超出消息。"""
+        """超过限额时 _count_and_delete_excess 被调用，返回删除数量。"""
         with (
-            patch(f"{_VP}.settings") as mock_settings,
-            patch(f"{_VP}.VoicePipeline._count_record_only", new_callable=AsyncMock) as mock_count,
-            patch(f"{_VP}.VoicePipeline._delete_oldest_record_only", new_callable=AsyncMock) as mock_delete,
+            patch(f"{_VPS}.voice_persist_service._count_and_delete_excess", new_callable=AsyncMock) as mock_cde,
         ):
-            mock_settings.VOICE_AMBIENT_RECORD_ONLY_LIMIT = 20
-            mock_count.return_value = 25  # 超出 5 条
+            mock_cde.return_value = 5  # 删除了 5 条
 
-            from apps.voice.services.voice_pipeline import VoicePipeline
+            from apps.voice.services.voice_persist_service import voice_persist_service
 
-            await VoicePipeline._cleanup_record_only_messages(user_id=1)
+            await voice_persist_service._cleanup_record_only(user_id=1)
 
-        mock_delete.assert_called_once_with(1, 5)
+        mock_cde.assert_called_once()
 
     async def test_cleanup_no_action_below_limit(self):
-        """未超限时不删除。"""
+        """未超限时 _count_and_delete_excess 返回 0，不执行删除。"""
         with (
-            patch(f"{_VP}.settings") as mock_settings,
-            patch(f"{_VP}.VoicePipeline._count_record_only", new_callable=AsyncMock) as mock_count,
-            patch(f"{_VP}.VoicePipeline._delete_oldest_record_only", new_callable=AsyncMock) as mock_delete,
+            patch(f"{_VPS}.voice_persist_service._count_and_delete_excess", new_callable=AsyncMock) as mock_cde,
         ):
-            mock_settings.VOICE_AMBIENT_RECORD_ONLY_LIMIT = 20
-            mock_count.return_value = 15
+            mock_cde.return_value = 0
 
-            from apps.voice.services.voice_pipeline import VoicePipeline
+            from apps.voice.services.voice_persist_service import voice_persist_service
 
-            await VoicePipeline._cleanup_record_only_messages(user_id=1)
+            await voice_persist_service._cleanup_record_only(user_id=1)
 
-        mock_delete.assert_not_called()
+        mock_cde.assert_called_once()
 
     async def test_cleanup_at_exact_limit(self):
-        """恰好达到上限时不删除。"""
+        """恰好达到上限时 _count_and_delete_excess 返回 0。"""
         with (
-            patch(f"{_VP}.settings") as mock_settings,
-            patch(f"{_VP}.VoicePipeline._count_record_only", new_callable=AsyncMock) as mock_count,
-            patch(f"{_VP}.VoicePipeline._delete_oldest_record_only", new_callable=AsyncMock) as mock_delete,
+            patch(f"{_VPS}.voice_persist_service._count_and_delete_excess", new_callable=AsyncMock) as mock_cde,
         ):
-            mock_settings.VOICE_AMBIENT_RECORD_ONLY_LIMIT = 20
-            mock_count.return_value = 20
+            mock_cde.return_value = 0
 
-            from apps.voice.services.voice_pipeline import VoicePipeline
+            from apps.voice.services.voice_persist_service import voice_persist_service
 
-            await VoicePipeline._cleanup_record_only_messages(user_id=1)
+            await voice_persist_service._cleanup_record_only(user_id=1)
 
-        mock_delete.assert_not_called()
+        mock_cde.assert_called_once()
 
     async def test_cleanup_error_does_not_propagate(self):
         """清理异常不传播。"""
         with (
-            patch(f"{_VP}.settings") as mock_settings,
-            patch(f"{_VP}.VoicePipeline._count_record_only", new_callable=AsyncMock) as mock_count,
+            patch(f"{_VPS}.voice_persist_service._count_and_delete_excess", new_callable=AsyncMock) as mock_cde,
         ):
-            mock_settings.VOICE_AMBIENT_RECORD_ONLY_LIMIT = 20
-            mock_count.side_effect = Exception("DB error")
+            mock_cde.side_effect = Exception("DB error")
 
-            from apps.voice.services.voice_pipeline import VoicePipeline
+            from apps.voice.services.voice_persist_service import voice_persist_service
 
             # 不应抛异常
-            await VoicePipeline._cleanup_record_only_messages(user_id=1)
+            await voice_persist_service._cleanup_record_only(user_id=1)

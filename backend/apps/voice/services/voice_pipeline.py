@@ -117,6 +117,10 @@ class VoicePipeline:
                 except Exception:
                     pass
 
+        # 016: HA 音箱 TTS 路由 — Agent 完成后将文本发送到 HA 音箱
+        if not error_occurred and full_response.strip() and mode == "ambient":
+            await VoicePipeline._try_ha_speaker_tts(user_id, full_response)
+
         conn_uid = connection_user_id or user_id
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         await consumer._send_json(response_event("response.end", response_id, segment_id, duration_ms=elapsed_ms))
@@ -140,3 +144,24 @@ class VoicePipeline:
         mgr.start()
         VoicePipeline._active_managers[user_id] = mgr
         return mgr
+
+    @staticmethod
+    async def _try_ha_speaker_tts(user_id: int, text: str) -> None:
+        """016: 尝试通过 HA 音箱播报 TTS，失败则降级到浏览器（已由 TTSRouter 处理）。"""
+        try:
+            from apps.voice.repositories import voice_settings_repo
+            vs, _ = await voice_settings_repo.get_or_create(user_id)
+            if vs.tts_output_device != "ha_speaker" or not vs.ha_speaker_entity_id:
+                return
+
+            from apps.voice.services.tts_router import HASpeakerError, TTSRouter
+            tts_router = TTSRouter()
+            try:
+                await tts_router.send_to_ha_speaker(vs.ha_speaker_entity_id, text)
+            except HASpeakerError as e:
+                logger.warning("HA 音箱不可达，降级到浏览器: user=%s, err=%s", user_id, e)
+                await tts_router.send_warning(
+                    user_id, "ha_speaker_unreachable", "音箱不可达，已降级到浏览器播放",
+                )
+        except Exception as e:
+            logger.error("HA TTS 路由异常: user=%s, err=%s", user_id, e)

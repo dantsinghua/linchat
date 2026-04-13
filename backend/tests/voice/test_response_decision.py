@@ -964,15 +964,15 @@ class TestDecisionResult:
 
     def test_values(self):
         """枚举值正确"""
-        assert DecisionResult.RESPOND == "RESPOND"
-        assert DecisionResult.RECORD_ONLY == "RECORD_ONLY"
-        assert DecisionResult.STOP == "STOP"
+        assert DecisionResult.RESPOND.value == "RESPOND"
+        assert DecisionResult.RECORD_ONLY.value == "RECORD_ONLY"
+        assert DecisionResult.STOP.value == "STOP"
 
     def test_is_string(self):
-        """DecisionResult 继承 str"""
-        assert isinstance(DecisionResult.RESPOND, str)
-        assert isinstance(DecisionResult.RECORD_ONLY, str)
-        assert isinstance(DecisionResult.STOP, str)
+        """DecisionResult 枚举值为字符串"""
+        assert isinstance(DecisionResult.RESPOND.value, str)
+        assert isinstance(DecisionResult.RECORD_ONLY.value, str)
+        assert isinstance(DecisionResult.STOP.value, str)
 
 
 # ============ 集成场景: 全决策链覆盖 ============

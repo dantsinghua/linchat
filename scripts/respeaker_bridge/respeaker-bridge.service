@@ -1,0 +1,15 @@
+[Unit]
+Description=reSpeaker XVF3800 Bridge Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/dantsinghua/work/linchat/scripts/respeaker_bridge
+ExecStart=/home/dantsinghua/work/linchat/linchat/bin/python \
+    /home/dantsinghua/work/linchat/scripts/respeaker_bridge/bridge.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

@@ -59,8 +59,8 @@ def _patch_voice_deps():
             patch(f"{mod}.voice_session_service", mock_session_svc)
         )
 
-    # get_redis 在 consumers.py 中引用
-    patches.append(patch(f"{_C}.get_redis", mock_get_redis))
+    # get_redis 在 consumer_session.py 中引用
+    patches.append(patch(f"{_S}.get_redis", mock_get_redis))
 
     # ASRStreamClient 在 consumer_session.py 中实例化
     patches.append(patch(f"{_S}.ASRStreamClient", mock_asr_cls))
