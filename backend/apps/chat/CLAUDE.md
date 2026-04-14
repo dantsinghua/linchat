@@ -98,3 +98,7 @@ source /home/dantsinghua/work/linchat/linchat/bin/activate
 cd /home/dantsinghua/work/linchat/backend
 pytest tests/chat/ -v
 ```
+
+<claude-mem-context>
+
+</claude-mem-context>

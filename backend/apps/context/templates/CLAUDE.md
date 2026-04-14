@@ -38,7 +38,7 @@
 | `ha_subagent.j2` | Home Assistant SubAgent 系统 Prompt | 无 |
 | `multimodal_subagent.j2` | 多模态 SubAgent 系统 Prompt | 无 |
 | `document_subagent.j2` | 文档 SubAgent 系统 Prompt（含超长文档两阶段处理策略） | 无 |
-| `voice_intent_classify.j2` | 语音意图分类 Prompt（ambient 模式 LLM 决策） | `aggregated_text` |
+| `voice_intent_classify.j2` | 语音意图分类 Prompt（ambient 模式 LLM 决策，含上下文感知） | `text`, `recent_messages`（可选，列表，每项含 `role`/`content`）, `memory_summary`（可选） |
 
 ### 任务 Prompt 模板（Celery 定时任务 / Agent 调用时使用）
 
@@ -91,3 +91,8 @@ text = render("conversation_history.j2", turns=[{"user": "你好", "assistant": 
 2. `loader.py` 的 Jinja2 Environment 配置了 `keep_trailing_newline=True`，保留模板末尾换行
 3. 任务 Prompt 模板（compaction_task / daily_summary 等）在 builder.py 中通过 `render()` 预渲染为兼容常量，使用 `str.format()` 占位符（如 `{conversation_text}`）而非 Jinja2 变量
 4. 修改模板内容会直接影响 LLM 生成行为，需谨慎测试
+
+
+<claude-mem-context>
+
+</claude-mem-context>

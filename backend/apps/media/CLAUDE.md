@@ -19,7 +19,7 @@
 | `tasks.py` | Celery 定时任务：`clean_expired_media`（MinIO 文件清理，连续 10 次失败中止） | 从 chat 分离 |
 | `services/__init__.py` | 导出：MediaService、DocumentParseService、get_cached_result、save_parsed_result、clear_parsed_cache、chunk_document、search_documents_rag | |
 | `services/upload.py` | 上传服务：文件校验 + MinIO 存储 + 元数据持久化（补偿删除机制） | 从 chat 分离 |
-| `services/document.py` | 文档解析服务：Gateway 调用、轮询、SSE 进度通知、任务所有权验证 | 精简后 ~275 行 |
+| `services/document.py` | 文档解析服务：Gateway 调用（默认模型 `qwen3.5-9b`）、轮询、SSE 进度通知、任务所有权验证 | ~217 行 |
 | `services/document_cache.py` | 文档解析结果缓存（Redis + MinIO 双层） | 新增，从 document.py 提取 |
 | `services/document_rag.py` | 文档向量分块 + RAG 搜索（pgvector 1024 维） | 新增，从 document.py 提取 |
 | `services/image.py` | 图片工具：Pillow 获取宽高 | 从 chat 分离 |

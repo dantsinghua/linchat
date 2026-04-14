@@ -31,6 +31,7 @@
 | 语音交互 | WebSocket ASR→Agent→TTS 全双工 | 009-010, 013-014 |
 | 文档 RAG | Gateway 解析→语义分块→pgvector 检索 | 011-012 |
 | 家庭多用户 | 成员管理+声纹+上下文切换 | 015 |
+| reSpeaker WiFi 语音 | XVF3800 无线麦克风阵列→WiFi 桥接→ambient 模式 | 016 |
 
 ### 源码目录结构
 
@@ -60,8 +61,9 @@ linchat/
 │   ├── services/              # 8 API: chat(SSE), media(XHR), voice(WS), member
 │   └── types/                 # Message, Voice, Media, Model 类型定义
 ├── scripts/services.sh        # ⚠️ 唯一的应用服务管理入口
+│   └── respeaker_bridge/      # reSpeaker XVF3800 WiFi 音频桥接服务(016)
 ├── docker-compose.yml         # 9 Docker 服务
-├── specs/                     # 15 个 Speckit 特性规范 (全部已完成)
+├── specs/                     # 16 个 Speckit 特性规范
 └── docs/                      # 项目文档 (17 个 .md)
 ```
 
@@ -752,6 +754,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 | **013-tts-comfort-queue** | `specs/013-tts-comfort-queue/spec.md` | ✅ 已完成 |
 | **014-jarvis-ambient-voice** | `specs/014-jarvis-ambient-voice/spec.md` | ✅ 已完成 |
 | **015-family-multiuser** | `specs/015-family-multiuser/spec.md` | ✅ 已完成 |
+| **016-respeaker-wifi-ambient** | `specs/016-respeaker-wifi-ambient/spec.md` | 🔧 开发中 |
 
 ---
 
@@ -760,7 +763,7 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 - 宪法文件: [.specify/memory/constitution.md](.specify/memory/constitution.md)
 - 代码示例: [docs/constitution-examples.md](docs/constitution-examples.md)
 - Gateway 集成指南: [docs/linchat-integration-guide.md](docs/linchat-integration-guide.md)
-- 当前特性规范: [specs/015-family-multiuser/spec.md](specs/015-family-multiuser/spec.md)
+- 当前特性规范: [specs/016-respeaker-wifi-ambient/spec.md](specs/016-respeaker-wifi-ambient/spec.md)
 
 ---
 
@@ -783,3 +786,10 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 | 加密 | gmssl (SM3+SM4) + sm-crypto | 3.2+ |
 | 监控 | Langfuse + ClickHouse | v3 |
 | 样式 | Tailwind CSS | 3.4+ |
+
+## Active Technologies
+- Python 3.12（桥接服务复用 LinChat 虚拟环境依赖） + websockets（WebSocket 客户端）、asyncio（异步事件循环）、struct（音频格式转换） (016-respeaker-wifi-ambient)
+- 无新增存储，复用现有 PostgreSQL（RegisteredDevice）+ Redis（会话状态） (016-respeaker-wifi-ambient)
+
+## Recent Changes
+- 016-respeaker-wifi-ambient: Added Python 3.12（桥接服务复用 LinChat 虚拟环境依赖） + websockets（WebSocket 客户端）、asyncio（异步事件循环）、struct（音频格式转换）

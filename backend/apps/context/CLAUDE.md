@@ -62,7 +62,7 @@
 核心: `system_base.j2`, `behavior.j2`, `reasoning.j2`, `tool_usage.j2`
 可选模块: `code_assist.j2`, `creative_writing.j2`, `data_analysis.j2`
 上下文块: `memory_context.j2`, `memory_empty.j2`, `compaction_context.j2`, `compaction_task.j2`, `tool_context.j2`, `conversation_history.j2`
-SubAgent: `search_subagent.j2`, `memory_subagent.j2`, `code_subagent.j2`, `ha_subagent.j2`, `multimodal_subagent.j2`, `document_subagent.j2`（含超长文档两阶段处理策略）, `voice_intent_classify.j2`
+SubAgent: `search_subagent.j2`, `memory_subagent.j2`, `code_subagent.j2`, `ha_subagent.j2`, `multimodal_subagent.j2`, `document_subagent.j2`（含超长文档两阶段处理策略）, `voice_intent_classify.j2`（含上下文感知：最近对话 + 用户记忆）
 记忆任务: `daily_summary.j2`, `monthly_summary.j2`, `cronmem_extract.j2`
 
 ---
@@ -83,3 +83,8 @@ SubAgent: `search_subagent.j2`, `memory_subagent.j2`, `code_subagent.j2`, `ha_su
 2. 所有 token 计数必须使用 `apps.common.tokenizer.count_tokens()`
 3. 兼容常量（`COMPACTION_PROMPT_TEMPLATE` 等）使用 `str.format()` 占位符，不是 Jinja2 变量
 4. PromptBuilder 实例不应跨请求共享，每次请求创建新实例
+
+
+<claude-mem-context>
+
+</claude-mem-context>

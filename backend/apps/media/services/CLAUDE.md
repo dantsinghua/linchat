@@ -41,7 +41,7 @@
 
 | 方法 | 说明 |
 |------|------|
-| `parse_document(user_id, attachment_uuid, pages)` | 完整解析流程：附件校验 → MinIO 下载 → Gateway 创建任务 → Redis 存所有权 → 后台轮询+通知 |
+| `parse_document(user_id, attachment_uuid, pages)` | 完整解析流程：附件校验 → MinIO 下载 → Gateway 创建任务（默认模型 `qwen3.5-9b`，可通过 `DOC_PARSE_DEFAULT_MODEL` 覆盖） → Redis 存所有权 → 后台轮询+通知 |
 | `create_parse_task(file_data, file_name, model, pages)` | Gateway POST /v1/documents/parse |
 | `poll_task_status(task_id)` | Gateway GET /v1/documents/tasks/{task_id} |
 | `get_task_result(task_id, format)` | Gateway GET /v1/documents/tasks/{task_id}/result |

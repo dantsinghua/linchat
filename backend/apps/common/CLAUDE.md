@@ -16,11 +16,11 @@
 |------|------|
 | `async_utils.py` | 异步任务取消工具：`cancel_task(task)` 异步取消 + `cancel_task_sync(task)` 同步取消（仅调 cancel，不 await），统一处理 None/CancelledError |
 | `middleware.py` | `TokenAuthMiddleware` -- Cookie SM4 Token 认证（同步中间件）、`set_token_cookie()`/`clear_token_cookie()`、`_resolve_target_user()` 多用户 target_user_id 解析（015） |
-| `websocket_auth.py` | `WebSocketTokenAuthMiddleware` -- ASGI WebSocket Cookie Token 认证（SM4 解密 + Redis 验证 + 滑动过期），失败发送 4001 关闭码 |
+| `websocket_auth.py` | `WebSocketTokenAuthMiddleware` -- ASGI WebSocket Cookie Token 认证（SM4 解密 + Redis 验证 + 滑动过期）；无 Cookie 时放行交给 Consumer 处理设备 token 认证（query string），有 Cookie 但验证失败发送 4001 关闭码 |
 | `exceptions.py` | 自定义异常层级（Auth/LLM/Business/ExternalService）、`map_llm_exception()` 异常映射、DRF `custom_exception_handler` |
 | `responses.py` | `api_response()`/`error_response()` (JsonResponse) + `ApiResponse` 类 (DRF Response) |
 | `event_service.py` | `EventService` -- Redis Pub/Sub SSE 事件推送（EventType: logout/message/heartbeat/context_status/inference_cancel/doc_parse_progress）、`SSEEvent` 格式化、`build_doc_parse_event()` 构造函数 |
-| `gateway_utils.py` | Gateway HTTP 工具集（见下方详情） |
+| `gateway_utils.py` | Gateway HTTP 工具集（见下方详情）；Langfuse 记录使用 `start_observation()` API |
 | `tokenizer.py` | tiktoken Token 计数：`count_tokens()`、`count_messages_tokens()`（cl100k_base 编码，单例模式） |
 | `decorators.py` | `async_csrf_exempt` -- 异步兼容 CSRF 豁免装饰器 |
 | `sse.py` | SSE 视图辅助（从 `apps.chat.sse` 迁移）：`parse_sse_request()`、`make_sse_response()`、`first_validation_error()` |
@@ -60,7 +60,7 @@ def cancel_task_sync(task: Optional[asyncio.Task]) -> None
 | `map_httpx_exception(e)` | httpx 异常映射到 LLM 异常类（Timeout/Connect/429/400） |
 | `gateway_retry(max_retries, retry_on)` | tenacity 重试装饰器（指数退避，默认重试 LLMConnectionError/LLMTimeoutError） |
 | `_get_langfuse()` | Langfuse 客户端单例（模块级缓存，避免每次 span 重建连接） |
-| `record_gateway_span(...)` | Langfuse span 记录（使用 `start_span()`，不同步 flush，由 BatchSpanProcessor 批量导出） |
+| `record_gateway_span(...)` | Langfuse observation 记录（使用 `start_observation()`，不同步 flush，由 BatchSpanProcessor 批量导出） |
 
 ---
 
@@ -98,19 +98,20 @@ AppException
 
 ```
 WebSocket 连接 → 提取 Cookie 中的 linchat_token
-  → SM4 解密验证 → Redis 查询 token_hash
-  → 检查 24h 绝对超时 → 滑动续期 idle TTL
-  → 注入 scope["user_id"]/scope["username"]/scope["user_type"]
-  → 失败: 发送 websocket.close code=4001
+  → 无 Cookie: 放行到 Consumer（设备 API Token 走 query string 认证）
+  → 有 Cookie: SM4 解密验证 → Redis 查询 token_hash
+    → 检查 24h 绝对超时 → 滑动续期 idle TTL
+    → 注入 scope["user_id"]/scope["username"]/scope["user_type"]
+    → 验证失败: 发送 websocket.close code=4001
 ```
 
-仅处理 `scope["type"] == "websocket"`；非 WebSocket 直接透传。设备 API Token 认证由 `VoiceConsumer` 单独处理。
+仅处理 `scope["type"] == "websocket"`；非 WebSocket 直接透传。无 Cookie 时不再拒绝，而是放行给 Consumer 处理设备 token 认证（016 变更）。
 
 ---
 
 ## 注意事项
 
-1. `record_gateway_span()` 使用 Langfuse 3.x `start_span()` API（非已废弃的 `trace()`），Langfuse 客户端为模块级单例（`_langfuse_client`），不同步 flush
+1. `record_gateway_span()` 使用 Langfuse 3.x `start_observation()` API（非已废弃的 `trace()`/`start_span()`），Langfuse 客户端为模块级单例（`_langfuse_client`），不同步 flush
 2. `check_rate_limit()` 内部做异常兜底，Redis 故障时默认放行（返回 True）
 3. `make_sse_response()` 依赖 `apps.chat.services.types.StreamChunk` 数据类
 4. 新代码应直接 import `apps.common.storage`/`apps.common.sse`，避免经过 chat 旧兼容层

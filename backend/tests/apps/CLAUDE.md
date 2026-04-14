@@ -27,9 +27,9 @@ tests/apps/
 
 ### common/
 
-| 文件 | 覆盖功能 |
-|------|----------|
-| `test_gateway_utils.py` | Gateway 请求头构建 / URL 获取 / 错误解析 / httpx 异常映射 / 重试机制 / Langfuse Span |
+| 文件 | 覆盖功能 | 测试函数数 |
+|------|----------|-----------|
+| `test_gateway_utils.py` | Gateway 请求头构建 / URL 获取 / 错误解析 / httpx 异常映射 / 重试机制 / Langfuse Span（start_observation API、文档解析 span） | 18 |
 
 ### graph/
 

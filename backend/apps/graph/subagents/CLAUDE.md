@@ -26,14 +26,14 @@ SubAgent 子代理模块，主 Agent 通过工具调用委派任务给专属 Sub
 | 文件 | 职责 | 行数 |
 |------|------|------|
 | `__init__.py` | `get_subagent_tools()` — 按配置条件组装可用 SubAgent 工具列表 | ~57 |
-| `base.py` | `run_subagent()` 工厂 + `get_common_tools()` + `_merge_tools()` + `_get_llm_instance()` | ~100 |
+| `base.py` | `run_subagent()` 工厂 + `get_common_tools()` + `_merge_tools()` + `_get_llm_instance()` | ~123 |
 | `search_agent.py` | `search_subagent` — 互联网搜索 | ~20 |
 | `memory_agent.py` | `memory_subagent` — 记忆 CRUD | ~20 |
 | `code_agent.py` | `code_subagent` — Python 代码执行 | ~20 |
 | `ha_agent.py` | `ha_subagent` — Home Assistant 智能家居 | ~25 |
 | `multimodal_agent.py` | `multimodal_subagent` + `multimodal_analyze` — 图片/视频/音频分析 | ~51 |
-| `document_agent.py` | `document_subagent` + 4 个文档工具（doc_list/doc_read/doc_search/document_parse） | ~175 |
-| `document_parse_helpers.py` | 文档解析辅助函数（从 document_agent.py 提取） | ~103 |
+| `document_agent.py` | `document_subagent` + 4 个文档工具（doc_list/doc_read/doc_search/document_parse） | ~193 |
+| `document_parse_helpers.py` | 文档解析辅助函数（从 document_agent.py 提取） | ~125 |
 
 ---
 
@@ -63,6 +63,16 @@ SubAgent 子代理模块，主 Agent 通过工具调用委派任务给专属 Sub
 
 异常处理：`TimeoutError` / `GraphRecursionError` / `LLMRateLimitError` / `LLMContentFilterError` / `LLMQuotaExceededError`。
 
+全链路结构化日志（`[SubAgent]` 前缀）：
+
+| 阶段 | 日志内容 |
+|------|----------|
+| `START` | name, user_id, timeout, task 前 100 字符 |
+| `LLM ready` | model 名称, LLM 获取耗时(ms) |
+| `tools` | 合并后工具名列表 |
+| `ainvoke START/END OK` | invoke 耗时、总耗时、消息数、实际使用的工具列表、结果预览(200 字符) |
+| `TIMEOUT/RECURSION/ERROR` | name, elapsed(ms), 异常详情 |
+
 ---
 
 ## document_parse_helpers.py 辅助函数
@@ -77,6 +87,14 @@ SubAgent 子代理模块，主 Agent 通过工具调用委派任务给专属 Sub
 
 `poll_parse_task` 配置项：`DOC_PARSE_POLL_INTERVAL`（默认 3s）、`DOC_PARSE_POLL_MAX_WAIT`（默认 900s）。
 
+`poll_parse_task` 增强特性：
+
+| 特性 | 说明 |
+|------|------|
+| 结构化日志 | `[DocPoll]` 前缀，START/poll#/COMPLETED/FAILED/TIMEOUT 各阶段含 poll_count 和 elapsed |
+| 轮询异常容错 | `poll_task_status()` 调用异常时 `continue` 跳过本轮，不中断整体轮询 |
+| incomplete 智能续轮询 | 当状态为 `incomplete` 但 `current < total`（仍有页面未解析）时继续轮询，而非立即 break |
+
 ---
 
 ## document_agent.py 工具详情
@@ -87,6 +105,8 @@ SubAgent 子代理模块，主 Agent 通过工具调用委派任务给专属 Sub
 | `doc_read` | 读取指定文档的解析结果全文（默认截断 8000 字符） |
 | `doc_search` | 在已解析文档中检索内容，支持 keyword/semantic/hybrid 三种模式 |
 | `document_parse` | 解析 PDF/DOCX：缓存检查 → GPU 锁 → Gateway 解析 → 轮询 → 保存缓存（支持 force 重新解析） |
+
+`document_parse` 全链路结构化日志（`[DocParse]` 前缀）：START → processing → cache HIT/MISS → GPU lock acquire/release → task created → poll done → full result fetched → saved → DONE。异常日志包含 `exc_info=True` 输出完整 traceback。
 
 ---
 
@@ -126,3 +146,14 @@ from apps.graph.subagents.multimodal_agent import multimodal_subagent, multimoda
 4. GPU 锁（`acquire_gpu_lock`）确保同一时间只有一个 GPU 推理任务运行
 5. `document_subagent` 设置 `recursion_limit=40`（其余使用默认值），因文档操作涉及多轮工具调用
 6. `multimodal_analyze` 排除 document 类型附件，`document_parse` 仅处理 document 类型附件
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Apr 1, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #2053 | 3:28 PM | 🔴 | Fixed document parsing incomplete status early-break bug | ~468 |
+</claude-mem-context>
