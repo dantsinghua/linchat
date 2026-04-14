@@ -27,12 +27,11 @@ void setup() {
     Serial.println();
 
     // 打印配置
-    Serial.printf("MCLK Pin:    GPIO%d (D10)\n", I2S_MCLK_PIN);
     Serial.printf("BCLK Pin:    GPIO%d (D9)\n", I2S_BCLK_PIN);
     Serial.printf("WS Pin:      GPIO%d (D8)\n", I2S_WS_PIN);
-    Serial.printf("DATA_IN Pin: GPIO%d (D7)\n", I2S_DATA_IN_PIN);
+    Serial.printf("DATA_IN Pin: GPIO%d (D6)\n", I2S_DATA_IN_PIN);
+    Serial.printf("MCLK:        不使用\n");
     Serial.printf("Sample Rate: %d Hz\n", SAMPLE_RATE);
-    Serial.printf("MCLK Freq:   %d Hz\n", SAMPLE_RATE * MCLK_MULTIPLE);
     Serial.printf("DMA Buf:     %d x %d\n", DMA_BUF_COUNT, DMA_BUF_LEN);
     Serial.printf("Read Size:   %d bytes\n", READ_BUF_SIZE);
     Serial.println();
@@ -49,9 +48,9 @@ void setup() {
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
         .dma_buf_count = DMA_BUF_COUNT,
         .dma_buf_len = DMA_BUF_LEN,
-        .use_apll = true,
+        .use_apll = false,
         .tx_desc_auto_clear = false,
-        .fixed_mclk = SAMPLE_RATE * MCLK_MULTIPLE
+        .fixed_mclk = 0
     };
 
     esp_err_t err = i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL);
@@ -66,7 +65,7 @@ void setup() {
     Serial.println("[2] Setting I2S pins...");
 
     i2s_pin_config_t pin_config = {
-        .mck_io_num   = I2S_MCLK_PIN,
+        .mck_io_num   = I2S_PIN_NO_CHANGE,
         .bck_io_num   = I2S_BCLK_PIN,
         .ws_io_num    = I2S_WS_PIN,
         .data_out_num = I2S_PIN_NO_CHANGE,

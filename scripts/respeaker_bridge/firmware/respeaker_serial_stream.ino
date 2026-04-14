@@ -48,13 +48,13 @@ static void setup_i2s(void) {
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
         .dma_buf_count = DMA_BUF_COUNT,
         .dma_buf_len = DMA_BUF_LEN,
-        .use_apll = true,
+        .use_apll = false,
         .tx_desc_auto_clear = false,
-        .fixed_mclk = SAMPLE_RATE * MCLK_MULTIPLE
+        .fixed_mclk = 0
     };
 
     i2s_pin_config_t pin_config = {
-        .mck_io_num   = I2S_MCLK_PIN,
+        .mck_io_num   = I2S_PIN_NO_CHANGE,
         .bck_io_num   = I2S_BCLK_PIN,
         .ws_io_num    = I2S_WS_PIN,
         .data_out_num = I2S_PIN_NO_CHANGE,

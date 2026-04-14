@@ -103,6 +103,7 @@ class VoicePipeline:
                 tts_manager.stop_comfort_timer()
                 tts_manager.enqueue(settings.VOICE_TTS_ERROR_TEXT, "error")
         finally:
+            await InferenceService.complete_task(user_id, request_id)
             if tts_manager:
                 try:
                     await tts_manager.wait_idle()

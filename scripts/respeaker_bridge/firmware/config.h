@@ -25,14 +25,14 @@
  *  MCLK              D10          GPIO9            ESP32 → XVF3800
  *  I2S_BCLK          D9           GPIO8            ESP32 → XVF3800
  *  I2S_LRCK          D8           GPIO7            ESP32 → XVF3800
- *  I2S_DATAO          D7           GPIO44           XVF3800 → ESP32 (音频输出)
- *  I2S_DATAI          D6           GPIO43           ESP32 → XVF3800 (AEC 参考，未使用)
+ *  I2S_DATAO          D7           GPIO44           XVF3800 → ESP32 (PCB 标注)
+ *  I2S_DATAI          D6           GPIO43           ESP32 → XVF3800 (PCB 标注)
+ *  ⚠️ 实测: 音频数据实际在 GPIO43 (D6)，非 PCB 标注的 GPIO44 (D7)
  */
-#define I2S_MCLK_PIN    9       // GPIO9  → MCLK
 #define I2S_BCLK_PIN    8       // GPIO8  → I2S_BCLK
 #define I2S_WS_PIN      7       // GPIO7  → I2S_LRCK
-#define I2S_DATA_IN_PIN 44      // GPIO44 → I2S_DATAO (从 XVF3800 接收)
-// #define I2S_DATA_OUT_PIN 43  // GPIO43 → I2S_DATAI (AEC 参考，当前不使用)
+#define I2S_DATA_IN_PIN 43      // GPIO43 → 实际音频数据输出（实测确认）
+// #define I2S_DATA_OUT_PIN 44  // GPIO44 → 未使用
 
 /* ======================== 音频参数 ========================
  *
@@ -41,11 +41,9 @@
  *    - 位深:    32-bit signed
  *    - 通道:    2（左=AEC 处理后, 右=ASR 波束）
  *
- *  ESP32 作为 I2S Master 提供 BCLK/WS/MCLK 时钟。
- *  MCLK = SAMPLE_RATE × 256 = 4.096 MHz（APLL 精确生成）。
+ *  ESP32 作为 I2S Master 提供 BCLK/WS 时钟（无需 MCLK，实测确认）。
  */
 #define SAMPLE_RATE         16000
-#define MCLK_MULTIPLE       256     // MCLK = 16000 × 256 = 4.096 MHz
 #define I2S_PORT            I2S_NUM_0
 
 /* ======================== DMA 缓冲区 ========================

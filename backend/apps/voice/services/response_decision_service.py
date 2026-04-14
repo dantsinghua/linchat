@@ -60,7 +60,8 @@ class ResponseDecisionService:
         from django.conf import settings as django_settings
         try:
             from apps.models.services import model_service
-            model_config = await model_service.get_active_model("tool")
+            from asgiref.sync import sync_to_async
+            model_config = await sync_to_async(model_service.get_active_model)("tool")
             if not model_config:
                 return None
 
@@ -75,9 +76,9 @@ class ResponseDecisionService:
 
             async with httpx.AsyncClient(timeout=django_settings.VOICE_DECISION_LLM_TIMEOUT) as client:
                 resp = await client.post(
-                    f"{model_config.api_base}/chat/completions",
-                    headers={"Authorization": f"Bearer {model_config.decrypted_api_key}"},
-                    json={"model": model_config.model_name, "messages": [{"role": "user", "content": prompt}],
+                    f"{model_config['url']}/chat/completions",
+                    headers={"Authorization": f"Bearer {model_config['api_key']}"},
+                    json={"model": model_config["name"], "messages": [{"role": "user", "content": prompt}],
                           "response_format": {"type": "json_object"}, "temperature": 0.1, "max_tokens": 100})
                 resp.raise_for_status()
             result = json_module.loads(resp.json()["choices"][0]["message"]["content"])
