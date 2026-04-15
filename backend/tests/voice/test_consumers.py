@@ -464,7 +464,9 @@ class TestASREventTranslation:
         assert len(resp["data"]["segment_id"]) == 8
         assert resp["data"]["timestamp"] == 1234
 
-        mock_session_svc.set_active_conversation.assert_called_with(42)
+        # ambient 模式下 vad_speech_start 不设置 active_conversation
+        # （只有 AI 真正回复时才设，避免环境对话误触发 RESPOND）
+        mock_session_svc.set_active_conversation.assert_not_called()
 
         await communicator.disconnect()
 
@@ -982,7 +984,7 @@ class TestASRDisconnectHandling:
     async def test_asr_connection_closed_terminates_session(
         self, MockASR, mock_session_svc, mock_get_redis
     ):
-        """ASR CONNECTION_CLOSED 错误 → session.closed + 关闭连接"""
+        """ASR CONNECTION_CLOSED 错误 → ambient 模式尝试重连成功后继续运行"""
         mock_get_redis.return_value = _mock_redis_no_rate_limit()
         mock_session_svc.create_session = AsyncMock(return_value=True)
         mock_session_svc.update_session = AsyncMock()
@@ -1004,7 +1006,7 @@ class TestASRDisconnectHandling:
 
         on_event = MockASR.call_args[1]["on_event"]
 
-        # 模拟 ASR 连接断开
+        # 模拟 ASR 连接断开 — ambient 模式会自动重连
         await on_event({
             "type": "error",
             "message": "ASR 连接断开: 1006",
@@ -1016,9 +1018,9 @@ class TestASRDisconnectHandling:
         assert resp1["data"]["code"] == "CONNECTION_CLOSED"
         assert resp1["data"]["recoverable"] is False
 
-        resp2 = await _receive_json(communicator)
-        assert resp2["type"] == "session.closed"
-        assert resp2["data"]["status"] == "error"
+        # ambient 模式: 重连成功后不关闭 session，Consumer 继续运行
+        # (mock ASR 的 connected 属性默认为 True，所以重连成功)
+        mock_session_svc.update_session.assert_called()
 
         await communicator.disconnect()
 

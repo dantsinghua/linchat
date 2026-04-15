@@ -96,13 +96,15 @@ class VoicePersistService:
 
     @staticmethod
     async def record_only_ambient(user_id: int, text: str) -> None:
+        from django.utils import timezone
         request_id = uuid.uuid4().hex
         try:
             next_seq = await message_repo.get_next_sequence(user_id)
             user_msg = Message(
                 message_uuid=str(uuid.uuid4()), user_id=user_id, role=Message.ROLE_USER,
                 content=text, is_voice=True, status=Message.STATUS_NORMAL,
-                request_id=request_id, sequence=next_seq)
+                request_id=request_id, sequence=next_seq,
+                created_time=timezone.now())
             await message_repo.create(user_msg)
             logger.info("Ambient record-only saved: user=%s, msg_id=%s", user_id, user_msg.message_id)
             await voice_persist_service._cleanup_record_only(user_id)
@@ -131,7 +133,7 @@ class VoicePersistService:
         if count <= limit:
             return 0
         excess = count - limit
-        oldest_ids = list(record_only_qs.order_by("created_at").values_list("message_id", flat=True)[:excess])
+        oldest_ids = list(record_only_qs.order_by("created_time").values_list("message_id", flat=True)[:excess])
         if oldest_ids:
             Message.objects.filter(message_id__in=oldest_ids).delete()
         return excess

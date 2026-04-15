@@ -52,7 +52,8 @@ class VoicePipeline:
                 await asyncio.wait_for(lock.acquire(), timeout=2.0)
                 lock.release()
             except asyncio.TimeoutError:
-                logger.warning("Barge-in lock timeout: user=%s", user_id)
+                logger.warning("Barge-in lock timeout, skip pipeline: user=%s", user_id)
+                return
         async with lock:
             await VoicePipeline._run_inner(user_id, text, segment_id, consumer, mode,
                                            connection_user_id=conn_uid)
@@ -74,11 +75,18 @@ class VoicePipeline:
         tts_manager = await VoicePipeline._setup_tts(user_id, mode, consumer)
         await consumer._send_json(response_event("response.start", response_id, segment_id))
 
+        # 语音模式：指示 Agent 用纯口语回复，禁止 Markdown 格式
+        voice_text = (
+            f"[语音对话] 请用纯口语、对话式风格回复，像跟朋友聊天一样自然。"
+            f"禁止使用任何 Markdown 格式（**加粗**、# 标题、- 列表、编号列表等），"
+            f"回复内容会直接通过 TTS 语音播报。简洁回答，不要太长。\n\n{text}"
+        )
+
         error_occurred, full_response = False, ""
         try:
             async for chunk in AgentService.execute(
                 user_id=user_id, thread_id=f"user_{user_id}",
-                request_id=request_id, user_message=text):
+                request_id=request_id, user_message=voice_text):
                 if chunk.type == "content":
                     await consumer._send_json(delta_msg(chunk.content, response_id))
                     full_response += chunk.content

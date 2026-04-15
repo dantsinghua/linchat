@@ -331,7 +331,7 @@ HA_BLOCKED_ENTITIES = [
     if e.strip()
 ]  # 黑名单设备列表
 HA_ENABLED = bool(HA_URL and HA_TOKEN)  # 有配置才启用
-
+HA_LAN_HOST = os.getenv("HA_LAN_HOST", "192.100.2.100")  # 局域网可达地址（HA 音箱 play_media 降级路径）
 
 # ============ MinIO 对象存储配置 ============
 # 参考: specs/008-multimodal-minicpm/research.md
@@ -341,6 +341,7 @@ MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
 MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() == "true"
 MINIO_BUCKET_MEDIA = os.getenv("MINIO_BUCKET_MEDIA", "linchat-media")
 MINIO_BUCKET_THUMBNAILS = os.getenv("MINIO_BUCKET_THUMBNAILS", "linchat-thumbnails")
+MINIO_AUDIO_BUCKET = os.getenv("MINIO_AUDIO_BUCKET", "audio")  # HA 音箱 TTS 降级路径音频桶
 
 # ============ 多模态推理配置 ============
 # 参考: specs/008-multimodal-minicpm/spec.md, FR-032, T003
@@ -421,7 +422,7 @@ VOICE_MAX_SEGMENT_DURATION = int(os.getenv("VOICE_MAX_SEGMENT_DURATION", "60")) 
 
 # 语音会话配置
 VOICE_SESSION_TTL = int(os.getenv("VOICE_SESSION_TTL", "120"))  # 会话状态 TTL: 120s
-VOICE_ACTIVE_CONV_TTL = int(os.getenv("VOICE_ACTIVE_CONV_TTL", "30"))  # 活跃对话 TTL: 30s
+VOICE_ACTIVE_CONV_TTL = int(os.getenv("VOICE_ACTIVE_CONV_TTL", "10"))  # 活跃对话 TTL: 10s (30→10, 减少 ambient 误触发)
 VOICE_AUDIO_CACHE_TTL = int(os.getenv("VOICE_AUDIO_CACHE_TTL", "300"))  # 音频缓存 TTL: 300s
 VOICE_MAX_RECORDING_SECONDS = int(os.getenv("VOICE_MAX_RECORDING_SECONDS", "30"))  # 最大录音: 30s
 VOICE_IDLE_TIMEOUT = int(os.getenv("VOICE_IDLE_TIMEOUT", "60"))  # 连接空闲超时: 60s
@@ -439,7 +440,7 @@ VOICE_AMBIENT_MAX_BUFFER_SIZE = int(os.getenv("VOICE_AMBIENT_MAX_BUFFER_SIZE", "
 VOICE_AMBIENT_SESSION_TTL = int(os.getenv("VOICE_AMBIENT_SESSION_TTL", "3600"))  # ambient 会话 TTL: 3600s (1h)
 VOICE_AMBIENT_RECORD_ONLY_LIMIT = int(os.getenv("VOICE_AMBIENT_RECORD_ONLY_LIMIT", "20"))  # RECORD_ONLY 消息保留上限
 VOICE_DECISION_USE_LLM = os.getenv("VOICE_DECISION_USE_LLM", "true").lower() == "true"  # 是否启用 LLM 意图分类 (016: 默认开启)
-VOICE_DECISION_LLM_THRESHOLD = float(os.getenv("VOICE_DECISION_LLM_THRESHOLD", "0.6"))  # LLM 分类置信度阈值 (016: 0.7→0.6)
+VOICE_DECISION_LLM_THRESHOLD = float(os.getenv("VOICE_DECISION_LLM_THRESHOLD", "0.75"))  # LLM 分类置信度阈值 (0.6→0.75, 减少 ambient 误触发)
 VOICE_DECISION_LLM_TIMEOUT = float(os.getenv("VOICE_DECISION_LLM_TIMEOUT", "5.0"))  # LLM 分类超时（秒）(016: 1s→5s，宪法豁免)
 
 # 声纹 diarize 配置（多说话人识别与过滤）

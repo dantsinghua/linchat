@@ -57,6 +57,9 @@ export const MessageList = memo(function MessageList({
   const bottomRef = useRef<HTMLDivElement>(null);
   const isUserScrollingRef = useRef(false);
   const prevMessagesLengthRef = useRef(messages.length);
+  const isLoadingHistoryRef = useRef(false);
+  const loadMoreTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevScrollHeightRef = useRef(0);
 
   // 012-doc-parse-progress: 文档解析进度
   const docParseProgress = useChatStore(state => state.docParseProgress);
@@ -114,7 +117,12 @@ export const MessageList = memo(function MessageList({
     bottomRef.current?.scrollIntoView({ behavior });
   }, []);
 
-  // 检测用户是否正在向上滚动
+  // 同步 isLoadingHistory 到 ref，避免 handleScroll 闭包过期
+  useEffect(() => {
+    isLoadingHistoryRef.current = isLoadingHistory;
+  }, [isLoadingHistory]);
+
+  // 检测用户是否正在向上滚动（带 500ms 防抖）
   const handleScroll = useCallback(() => {
     if (!containerRef.current) return;
 
@@ -122,16 +130,36 @@ export const MessageList = memo(function MessageList({
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
     isUserScrollingRef.current = !isAtBottom;
 
-    // 向上滚动到顶部时加载更多
-    if (scrollTop < 100 && hasMore && !isLoadingHistory) {
-      onLoadMore();
+    // 向上滚动到顶部时加载更多（500ms 防抖）
+    if (scrollTop < 100 && hasMore && !isLoadingHistoryRef.current) {
+      if (!loadMoreTimerRef.current) {
+        loadMoreTimerRef.current = setTimeout(() => {
+          loadMoreTimerRef.current = null;
+          if (hasMore && !isLoadingHistoryRef.current && containerRef.current) {
+            prevScrollHeightRef.current = containerRef.current.scrollHeight;
+            onLoadMore();
+          }
+        }, 500);
+      }
     }
-  }, [hasMore, isLoadingHistory, onLoadMore]);
+  }, [hasMore, onLoadMore]);
+
+  // 加载历史完成后恢复滚动位置（补偿 prepend 导致的高度增长）
+  useEffect(() => {
+    if (!isLoadingHistory && prevScrollHeightRef.current > 0 && containerRef.current) {
+      const delta = containerRef.current.scrollHeight - prevScrollHeightRef.current;
+      if (delta > 0) {
+        containerRef.current.scrollTop += delta;
+      }
+      prevScrollHeightRef.current = 0;
+    }
+  }, [isLoadingHistory]);
 
   // 新消息时自动滚动到底部（仅当用户没有向上滚动时）
+  // 加载历史消息（prepend）时保持滚动位置不变
   useEffect(() => {
     if (messages.length > prevMessagesLengthRef.current) {
-      if (!isUserScrollingRef.current) {
+      if (!isUserScrollingRef.current && !isLoadingHistoryRef.current) {
         scrollToBottom();
       }
     }

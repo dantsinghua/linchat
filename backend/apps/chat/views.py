@@ -3,7 +3,7 @@ import logging
 from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.http import HttpRequest, StreamingHttpResponse
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, throttle_classes
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -52,6 +52,7 @@ async def chat(request: HttpRequest) -> StreamingHttpResponse:
 
 
 @api_view(["GET"])
+@throttle_classes([])  # 历史消息加载排除全局限流，前端已有 500ms 防抖
 def get_messages(request: Request) -> Response:
     serializer = HistoryQuerySerializer(data=request.query_params)
     if not serializer.is_valid():

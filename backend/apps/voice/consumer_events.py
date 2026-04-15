@@ -26,7 +26,11 @@ class EventMixin:
         self._is_speaking = True
         self._current_segment_id = str(uuid.uuid4())[:8]
         self._last_activity = time.time()
-        await voice_session_service.set_active_conversation(self.user_id)
+        # ambient 模式下不在 VAD 阶段设置 active_conversation，
+        # 只有 AI 真正回复时才设（VoicePipeline.run_pipeline 中设置），
+        # 避免房间里有人说话就导致后续任何话语跳过 LLM 直接 RESPOND。
+        if getattr(self, "_mode", None) != "ambient":
+            await voice_session_service.set_active_conversation(self.user_id)
         self._start_segment_timer()
         await self._send_json({"type": "vad.speech_start", "data": {
             "segment_id": self._current_segment_id, "timestamp": event.get("timestamp")}})
@@ -126,5 +130,10 @@ class EventMixin:
         await self._send_json({"type": "error", "data": {"code": code, "message": message, "recoverable": recoverable}})
         logger.warning("ASR error: user=%s, code=%s", self.user_id, code)
         if not recoverable:
+            # ambient 模式先尝试 ASR 重连，而不是直接关闭 Consumer
+            if getattr(self, "_mode", None) == "ambient":
+                await self._reconnect_asr()
+                if self._asr_client and self._asr_client.connected:
+                    return
             await self._send_json({"type": "session.closed", "data": {"status": "error", "reason": message}})
             await self.close(code=4002)
