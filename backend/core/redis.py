@@ -81,6 +81,11 @@ async def get_redis() -> aioredis.Redis:
     return await RedisClient.get_client()
 
 
+async def get_async_redis_client() -> aioredis.Redis:
+    """获取异步 Redis 客户端（017-ambient-speaker-id 声纹标签/回溯匹配专用别名）"""
+    return await RedisClient.get_client()
+
+
 async def redis_get(key: str) -> str | None:
     """获取字符串值"""
     client = await get_redis()

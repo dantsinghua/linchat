@@ -22,6 +22,7 @@ const VoiceMessageBubble = dynamic(
 );
 import { getMediaUrl } from '@/services/mediaApi';
 import { useChatStore } from '@/stores/chatStore';
+import { useVoiceStore } from '@/stores/voiceStore';
 import type { Message } from '@/types';
 
 interface MessageListProps {
@@ -32,6 +33,8 @@ interface MessageListProps {
   hasMore: boolean;
   onLoadMore: () => void;
   onResume: (messageId: number) => void;
+  /** 当前用户名（用于头像显示） */
+  username?: string;
 }
 
 /**
@@ -52,12 +55,15 @@ export const MessageList = memo(function MessageList({
   hasMore,
   onLoadMore,
   onResume,
+  username,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isUserScrollingRef = useRef(false);
   const prevMessagesLengthRef = useRef(messages.length);
   const isLoadingHistoryRef = useRef(false);
+  const wasLoadingHistoryRef = useRef(false);
+  const initialScrollDoneRef = useRef(false);
   const loadMoreTimerRef = useRef<NodeJS.Timeout | null>(null);
   const prevScrollHeightRef = useRef(0);
 
@@ -118,7 +124,11 @@ export const MessageList = memo(function MessageList({
   }, []);
 
   // 同步 isLoadingHistory 到 ref，避免 handleScroll 闭包过期
+  // 同时标记"本轮消息变化来自历史加载"，防止新消息 effect 误触发滚动到底部
   useEffect(() => {
+    if (isLoadingHistory) {
+      wasLoadingHistoryRef.current = true;
+    }
     isLoadingHistoryRef.current = isLoadingHistory;
   }, [isLoadingHistory]);
 
@@ -159,17 +169,21 @@ export const MessageList = memo(function MessageList({
   // 加载历史消息（prepend）时保持滚动位置不变
   useEffect(() => {
     if (messages.length > prevMessagesLengthRef.current) {
-      if (!isUserScrollingRef.current && !isLoadingHistoryRef.current) {
+      if (wasLoadingHistoryRef.current) {
+        // 历史加载 prepend，不滚动（滚动位置由上方 effect 恢复）
+        wasLoadingHistoryRef.current = false;
+      } else if (!isUserScrollingRef.current) {
         scrollToBottom();
       }
     }
     prevMessagesLengthRef.current = messages.length;
   }, [messages.length, scrollToBottom]);
 
-  // 初始加载时滚动到底部
+  // 初始加载时滚动到底部（仅首次，后续历史加载不触发）
   useEffect(() => {
-    if (messages.length > 0 && !isLoadingHistory) {
+    if (!initialScrollDoneRef.current && messages.length > 0 && !isLoadingHistory) {
       scrollToBottom('instant');
+      initialScrollDoneRef.current = true;
     }
   }, [isLoadingHistory, messages.length, scrollToBottom]);
 
@@ -245,6 +259,7 @@ export const MessageList = memo(function MessageList({
             key={message.message_id}
             message={message}
             onResume={onResume}
+            username={username}
           />
         ))}
       </div>
@@ -367,11 +382,13 @@ export const MessageList = memo(function MessageList({
 interface MessageBubbleProps {
   message: Message;
   onResume: (messageId: number) => void;
+  username?: string;
 }
 
 const MessageBubble = memo(function MessageBubble({
   message,
   onResume,
+  username,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const isGenerating = message.status === 2;
@@ -383,8 +400,19 @@ const MessageBubble = memo(function MessageBubble({
   // 移除内容中的 [已中断] 标记（如果有），由UI单独渲染
   const displayContent = message.content?.replace(/\[已中断\]$/, '') || '';
 
+  const avatarLetter = username ? username.charAt(0).toUpperCase() : 'U';
+
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex items-start gap-2.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+      {/* AI 头像 */}
+      {!isUser && (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 mt-0.5">
+          <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+          </svg>
+        </div>
+      )}
+
       <div
         className={`relative max-w-[80%] rounded-lg px-4 py-3 ${
           isUser
@@ -394,7 +422,7 @@ const MessageBubble = memo(function MessageBubble({
       >
         {/* 语音消息: 使用 VoiceMessageBubble 渲染 */}
         {message.is_voice ? (
-          <VoiceMessageBubble message={message} isUser={isUser} />
+          <VoiceMessageBubble message={message} isUser={isUser} speakerInfo={useVoiceStore.getState().speakerMap[message.speaker_id ?? '']} />
         ) : (
           <>
             {/* 用户消息: 附件显示在文本上方 */}
@@ -468,6 +496,13 @@ const MessageBubble = memo(function MessageBubble({
           </div>
         )}
       </div>
+
+      {/* 用户头像 */}
+      {isUser && (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-500 mt-0.5">
+          <span className="text-sm font-medium text-white">{avatarLetter}</span>
+        </div>
+      )}
     </div>
   );
 });

@@ -63,17 +63,17 @@
 | 数据库 | PostgreSQL，`DATABASE_URL` 解析，`CONN_MAX_AGE=60` |
 | Redis | DB0 缓存，最大连接 50 |
 | LLM 超时/重试 | 调用 60s、Agent 总 300s、SubAgent 60s、重试 3 次指数退避 |
-| LLM Gateway | HTTP/WS 端点、推理/取消/轮询/文档解析超时 |
-| MinIO | 端点、媒体/缩略图桶名 |
+| LLM Gateway | HTTP/WS 端点、推理/取消/轮询/文档解析超时、`HA_LAN_HOST`（局域网 HA 音箱 play_media 降级路径） |
+| MinIO | 端点、媒体/缩略图/音频桶名（`MINIO_AUDIO_BUCKET`） |
 | 媒体限制 | 图片 10MB、视频 50MB、时长 60s、7 天过期 |
 | Brave Search | API Key、QPS 限制 1（`BRAVE_SEARCH_QPS`）、月度配额 2000（`BRAVE_SEARCH_MONTHLY_QUOTA`） |
 | 文档解析 | 默认模型 `qwen3.5-9b`（`DOC_PARSE_DEFAULT_MODEL`，原 minicpm-o）、最大 10MB/200 页、轮询 3s/最大 900s |
 | 多模态 | max_tokens 1024、限流 60s、SubAgent 超时 20min |
 | 语音 Gateway | ASR WS `VOICE_ASR_WS_URL`、TTS WS `VOICE_TTS_URL`、TTS 音色/超时/启用开关、安慰延迟/段间 gap/安慰文本/错误文本 |
 | 语音 ASR | speech_pad 2000ms、语言 auto、单段最大 60s |
-| 语音会话 | 会话 120s、活跃对话 30s、音频缓存 300s、录音 30s、空闲超时 60s、STT 超时 30s |
+| 语音会话 | 会话 120s、活跃对话 10s（`VOICE_ACTIVE_CONV_TTL`，30→10 减少 ambient 误触发）、音频缓存 300s、录音 30s、空闲超时 60s、STT 超时 30s |
 | 语音唤醒/VAD | 唤醒词"小鱼"、声纹阈值 0.5、VAD 阈值 0.5、模糊匹配阈值 0.8 |
-| **语音 ambient（014/016）** | 聚合超时 3s（`VOICE_AMBIENT_AGGREGATE_TIMEOUT`）、最大缓冲 10 段（`VOICE_AMBIENT_MAX_BUFFER_SIZE`）、会话 TTL 3600s（`VOICE_AMBIENT_SESSION_TTL`）、RECORD_ONLY 保留上限 20（`VOICE_AMBIENT_RECORD_ONLY_LIMIT`）、LLM 意图分类默认开启（`VOICE_DECISION_USE_LLM=True`，016 变更）、置信度阈值 0.6（`VOICE_DECISION_LLM_THRESHOLD`，016: 0.7→0.6）、分类超时 5s（`VOICE_DECISION_LLM_TIMEOUT`，016: 1s→5s） |
+| **语音 ambient（014/016）** | 聚合超时 3s（`VOICE_AMBIENT_AGGREGATE_TIMEOUT`）、最大缓冲 10 段（`VOICE_AMBIENT_MAX_BUFFER_SIZE`）、会话 TTL 3600s（`VOICE_AMBIENT_SESSION_TTL`）、RECORD_ONLY 保留上限 20（`VOICE_AMBIENT_RECORD_ONLY_LIMIT`）、LLM 意图分类默认开启（`VOICE_DECISION_USE_LLM=True`，016 变更）、置信度阈值 0.75（`VOICE_DECISION_LLM_THRESHOLD`，0.6→0.75 减少误触发）、分类超时 5s（`VOICE_DECISION_LLM_TIMEOUT`，016: 1s→5s） |
 | 认证 | Token 空闲 1h/绝对 24h、验证码 2min、锁定 15min |
 | Memory | Embedding 1024 维、搜索 top5、向量权重 0.7 |
 | 安全 | httpOnly Cookie、SM4 密钥、DRF 限流 100/h(匿名) 1000/h(认证) |

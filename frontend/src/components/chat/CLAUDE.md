@@ -8,7 +8,7 @@
 
 | 文件 | 用途 |
 |------|------|
-| `MessageList.tsx` | 消息列表渲染（消息气泡、滚动锚定、上滑加载更多、附件渲染、上下文压缩提示、视频推理超时提示） |
+| `MessageList.tsx` | 消息列表渲染（消息气泡、滚动锚定、上滑加载更多（500ms 防抖 + 滚动位置恢复）、附件渲染、上下文压缩提示、视频推理超时提示） |
 | `MessageInput.tsx` | 消息输入框（空消息拦截、4000 字符限制、防抖 300ms、文件上传触发、语音录制、发送/停止按钮切换、失败内容恢复、成员头像按钮 015） |
 | `NetworkError.tsx` | 网络错误横幅（错误类型映射、Gateway E3002 倒计时重试、自动消失、内联错误组件、useNetworkError Hook） |
 | `MediaUploader.tsx` | 媒体文件上传（多文件选择上限 5 个、格式/大小/时长前端校验、逐个上传进度、UploadTile 预览卡片） |
@@ -26,7 +26,8 @@
 
 - 内部包含 `MessageBubble` 子组件，按角色区分样式（用户右侧蓝底、AI 左侧灰底）
 - 滚动锚定: 新消息自动滚动到底部（用户未向上滚动时）
-- 上滑加载: `scrollTop < 100` 时触发 `onLoadMore()`
+- 上滑加载: `scrollTop < 100` 时触发 `onLoadMore()`（500ms 防抖，避免重复请求）
+- 滚动位置恢复: 加载历史消息（prepend）后补偿高度增长，保持阅读位置不变
 - 消息状态渲染: 生成中（光标动画）、中断（[已中断] + 继续按钮）、失败（红色提示）
 - 附件渲染: 用户消息附件在文本上方，AI 消息附件在文本下方；音频使用 AudioPlayer，其他使用 AttachmentList
 - 视频推理提示: 检测视频附件时长，超过 `duration * 2` 秒未收到首个 content 时显示等待提示
@@ -91,3 +92,14 @@ MarkdownRenderer → MermaidRenderer (mermaid 代码块)
 - NetworkError: 验证错误类型映射、友好提示、倒计时逻辑
 - MediaUploader: 验证格式/大小/时长校验、文件数量限制
 - ContextMonitorPanel: 验证 CustomEvent 监听、历史数据累积、sessionStorage 持久化
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Feb 13, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1049 | 11:01 AM | 🔵 | Frontend failedContent Recovery Only Restores Text Not Attachments | ~608 |
+</claude-mem-context>

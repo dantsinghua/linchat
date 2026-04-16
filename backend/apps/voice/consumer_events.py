@@ -1,7 +1,7 @@
 import logging
 import time
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 from apps.voice.services.voice_session_service import voice_session_service
 
@@ -58,7 +58,7 @@ class EventMixin:
         await self._start_voice_pipeline(segment_id, text)
 
     async def _handle_ambient_transcription(self, text: str, segment_id: str) -> None:
-        import asyncio as _asyncio
+        from django.conf import settings as _settings
         from apps.voice.services.response_decision_service import ResponseDecisionService
         from apps.voice.services.voice_pipeline import VoicePipeline
 
@@ -73,12 +73,73 @@ class EventMixin:
             await self._send_json({"type": "decision.result", "data": {"decision": "STOP", "reason": "emergency_stop"}})
             return
 
-        # [DEPRECATED] diarize 功能暂时废弃，所有 ambient 走原有聚合流程
-        # if getattr(self, "_diarize_enabled", False):
-        #     _asyncio.create_task(self._diarize_and_aggregate(text, segment_id))
-        # else:
-        #     await self._legacy_aggregate(text, segment_id)
+        # 说话人识别 (017-ambient-speaker-id)
+        if _settings.VOICE_SPEAKER_IDENTIFICATION_ENABLED:
+            speaker_result = await self._identify_ambient_speaker(segment_id)
+            if speaker_result and speaker_result.get("speaker_user_id"):
+                # 已识别 → per-speaker 聚合器
+                uid = speaker_result["speaker_user_id"]
+                aggregator = self._get_or_create_aggregator(uid)
+                await aggregator.add(text)
+                await self._send_json({"type": "aggregation.utterance_added", "data": {
+                    "text": text, "buffer_count": aggregator.buffer_count,
+                    "timeout_remaining": aggregator.timeout_remaining,
+                    "speaker_user_id": uid}})
+                return
+            # 未识别 → 保存 unknown 标签，传递给聚合回调
+            self._last_unknown_label = speaker_result.get("speaker_label") if speaker_result else None
+
         await self._legacy_aggregate(text, segment_id)
+
+    async def _identify_ambient_speaker(self, segment_id: str) -> Optional[dict]:
+        """识别 ambient 模式下的说话人。返回 {speaker_user_id, speaker_label, ...} 或 None。"""
+        from django.conf import settings as _settings
+        from apps.voice.services.speaker_service import speaker_service
+        try:
+            pcm_chunks = await voice_session_service.get_audio_chunks(self.user_id, segment_id)
+            if not pcm_chunks:
+                return None
+            # get_audio_chunks() 已完成 base64 解码，返回 list[bytes]
+            pcm_data = b"".join(pcm_chunks)
+            result = await speaker_service.identify_from_pcm(pcm_data)
+            if not result["identified"] or result["confidence"] < _settings.VOICE_SPEAKER_THRESHOLD:
+                if not result["identified"]:
+                    logger.info("Speaker not identified: seg=%s", segment_id)
+                else:
+                    logger.info("Speaker identify low confidence: %.2f < %.2f", result["confidence"], _settings.VOICE_SPEAKER_THRESHOLD)
+                label = await self._assign_unknown_label(result.get("embedding_hash"))
+                await self._send_json({"type": "speaker.identified", "data": {
+                    "segment_id": segment_id, "speaker_user_id": None,
+                    "speaker_label": label, "confidence": result.get("confidence", 0.0),
+                    "is_identified": False}})
+                return {"speaker_user_id": None, "speaker_label": label}
+            profile_info = await speaker_service.identify_speaker(result["speaker_id"])
+            if not profile_info:
+                return None
+            await self._send_json({"type": "speaker.identified", "data": {
+                "segment_id": segment_id, "speaker_user_id": profile_info["user_id"],
+                "speaker_label": profile_info["speaker_name"], "confidence": result["confidence"],
+                "is_identified": True}})
+            return {"speaker_user_id": profile_info["user_id"], "speaker_label": profile_info["speaker_name"]}
+        except Exception:
+            logger.exception("Speaker identify error: seg=%s, fallback", segment_id)
+            return None
+
+    async def _assign_unknown_label(self, embedding_hash: str | None) -> str:
+        """Assign or retrieve a persistent unknown speaker label via Redis."""
+        from core.redis import get_async_redis_client
+        redis = await get_async_redis_client()
+        key_map = "voice:unknown_speakers"
+        key_counter = "voice:unknown_counter"
+        emb_hash = embedding_hash or "default"
+        existing = await redis.hget(key_map, emb_hash)
+        if existing:
+            return existing if isinstance(existing, str) else existing.decode()
+        counter = await redis.incr(key_counter)
+        label = f"unknown_{counter:02d}"
+        await redis.hset(key_map, emb_hash, label)
+        logger.info("Assigned unknown speaker label: hash=%s, label=%s", emb_hash, label)
+        return label
 
     async def _legacy_aggregate(self, text: str, segment_id: str) -> None:
         """原有 ambient 聚合流程（无声纹识别）— 100% 向后兼容"""
@@ -91,31 +152,6 @@ class EventMixin:
         else:
             logger.warning("Ambient no aggregator: user=%s, fallback", self.user_id)
             await self._start_voice_pipeline(segment_id, text)
-
-    # [DEPRECATED] diarize 功能暂时废弃，待后续重新设计
-    # async def _diarize_and_aggregate(self, streaming_text: str, segment_id: str) -> None:
-    #     """后台任务：diarize 识别说话人 + per-speaker 聚合"""
-    #     try:
-    #         from apps.voice.services.speaker_service import speaker_service
-    #         from apps.voice.services.voice_session_service import voice_session_service
-    #         pcm_chunks = await voice_session_service.get_audio_chunks(self.user_id, segment_id)
-    #         if not pcm_chunks:
-    #             return
-    #         valid_segments = await speaker_service.diarize_audio(pcm_chunks)
-    #         if not valid_segments:
-    #             aggregator = self._get_or_create_aggregator(self.user_id)
-    #             await aggregator.add(streaming_text)
-    #             return
-    #         for seg in valid_segments:
-    #             if not seg.text.strip():
-    #                 continue
-    #             await voice_session_service.add_recent_speaker(self.user_id, seg.speaker_user_id)
-    #             aggregator = self._get_or_create_aggregator(seg.speaker_user_id)
-    #             await aggregator.add(seg.text)
-    #     except Exception:
-    #         logger.exception("Diarize error, fallback: seg=%s", segment_id)
-    #         aggregator = self._get_or_create_aggregator(self.user_id)
-    #         await aggregator.add(streaming_text)
 
     async def _on_transcription_failed(self, event: dict[str, Any]) -> None:
         await self._send_json({"type": "transcription.failed", "data": {

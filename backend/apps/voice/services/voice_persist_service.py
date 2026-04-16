@@ -95,7 +95,7 @@ class VoicePersistService:
                 asst_msg.save(update_fields=["is_voice"])
 
     @staticmethod
-    async def record_only_ambient(user_id: int, text: str) -> None:
+    async def record_only_ambient(user_id: int, text: str, speaker_id: str | None = None) -> None:
         from django.utils import timezone
         request_id = uuid.uuid4().hex
         try:
@@ -104,6 +104,7 @@ class VoicePersistService:
                 message_uuid=str(uuid.uuid4()), user_id=user_id, role=Message.ROLE_USER,
                 content=text, is_voice=True, status=Message.STATUS_NORMAL,
                 request_id=request_id, sequence=next_seq,
+                speaker_id=speaker_id,
                 created_time=timezone.now())
             await message_repo.create(user_msg)
             logger.info("Ambient record-only saved: user=%s, msg_id=%s", user_id, user_msg.message_id)

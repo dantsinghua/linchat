@@ -72,6 +72,9 @@ def _build_redis_mock(speaker_count=0):
     mock_redis = AsyncMock()
     mock_redis.scard = AsyncMock(return_value=speaker_count)
     mock_redis.aclose = AsyncMock()
+    # TTS echo 检测所需：默认无 TTS 播放状态和历史，不影响原有决策链
+    mock_redis.exists = AsyncMock(return_value=0)
+    mock_redis.lrange = AsyncMock(return_value=[])
     return mock_redis
 
 
@@ -700,6 +703,9 @@ class TestRedisErrorHandling:
         mock_redis = AsyncMock()
         mock_redis.scard = AsyncMock(side_effect=Exception("scard failed"))
         mock_redis.aclose = AsyncMock()
+        # TTS echo 检测：无 TTS 播放状态，避免 echo 过滤干扰本测试
+        mock_redis.exists = AsyncMock(return_value=0)
+        mock_redis.lrange = AsyncMock(return_value=[])
 
         with patch(
             "apps.voice.services.response_decision_service.voice_settings_repo.get_or_create",
@@ -1074,3 +1080,64 @@ class TestDecisionChainIntegration:
                 )
             assert result == DecisionResult.RECORD_ONLY
             assert reason == "default"
+
+
+# ============ TTS Echo 过滤 (Level 0) ============
+
+
+class TestTtsEchoFilter:
+    """TTS echo 过滤：Level 0 决策（最高优先级）"""
+
+    def test_tts_echo_skips_all_subsequent_levels(self, service):
+        """_is_tts_echo 返回 True → decide() 直接返回 DISCARD，不检查紧急停止或唤醒词"""
+        # Build a redis mock that simulates TTS-playing state
+        mock_redis = _build_redis_mock(speaker_count=0)
+        # Patch _is_tts_echo to short-circuit immediately
+        with patch.object(
+            ResponseDecisionService,
+            "_is_tts_echo",
+            new=AsyncMock(return_value=True),
+        ), patch(
+            "apps.voice.services.response_decision_service.voice_settings_repo.get_or_create",
+            AsyncMock(return_value=(MagicMock(wake_words=["小鱼"]), False)),
+        ), patch(
+            "apps.voice.services.response_decision_service.voice_session_service.is_active_conversation",
+            AsyncMock(return_value=True),
+        ), patch(
+            "apps.voice.services.response_decision_service.get_redis",
+            AsyncMock(return_value=mock_redis),
+        ), patch.object(
+            ResponseDecisionService,
+            "_check_emergency_stop",
+            wraps=ResponseDecisionService._check_emergency_stop,
+        ) as spy_emergency:
+            result, reason = run_async(service.decide("停", None, 1))
+
+        # Must be DISCARD from echo filter, not STOP from emergency check
+        assert result == DecisionResult.DISCARD
+        assert reason == "tts_echo_detected"
+        # Emergency stop check must NOT have been reached
+        spy_emergency.assert_not_called()
+
+    def test_non_echo_proceeds_to_next_levels(self, service):
+        """_is_tts_echo 返回 False → decide() 正常进入紧急停止检查"""
+        with patch.object(
+            ResponseDecisionService,
+            "_is_tts_echo",
+            new=AsyncMock(return_value=False),
+        ), patch(
+            "apps.voice.services.response_decision_service.voice_settings_repo.get_or_create",
+            AsyncMock(return_value=(MagicMock(wake_words=["小鱼"]), False)),
+        ), patch(
+            "apps.voice.services.response_decision_service.voice_session_service.is_active_conversation",
+            AsyncMock(return_value=False),
+        ), patch(
+            "apps.voice.services.response_decision_service.get_redis",
+            AsyncMock(return_value=_build_redis_mock(speaker_count=0)),
+        ):
+            # Use an emergency-stop word to confirm the pipeline continues past echo check
+            result, reason = run_async(service.decide("停", None, 1))
+
+        # Should reach emergency_stop level (not DISCARD)
+        assert result == DecisionResult.STOP
+        assert reason == "emergency_stop"

@@ -14,6 +14,7 @@ import { memo, useMemo } from 'react';
 
 import { AudioPlayer } from '@/components/chat/AudioPlayer';
 import { getMediaUrl } from '@/services/mediaApi';
+import type { SpeakerInfo } from '@/stores/voiceStore';
 import type { Message } from '@/types';
 import type { MediaAttachment } from '@/types/media';
 
@@ -22,6 +23,8 @@ interface VoiceMessageBubbleProps {
   message: Message;
   /** 是否为用户发送的消息 */
   isUser: boolean;
+  /** 说话人信息 (017-ambient-speaker-id) */
+  speakerInfo?: SpeakerInfo;
 }
 
 /**
@@ -51,6 +54,7 @@ function isPlaceholderContent(content: string): boolean {
 export const VoiceMessageBubble = memo(function VoiceMessageBubble({
   message,
   isUser,
+  speakerInfo,
 }: VoiceMessageBubbleProps) {
   const audioAttachment = useMemo(
     () => findAudioAttachment(message.attachments as MediaAttachment[]),
@@ -66,6 +70,24 @@ export const VoiceMessageBubble = memo(function VoiceMessageBubble({
 
   return (
     <div className="flex flex-col gap-2">
+      {/* 说话人标识 (017-ambient-speaker-id) */}
+      {speakerInfo && isUser && (
+        <div className="flex items-center gap-1.5 mb-0.5">
+          {speakerInfo.isIdentified ? (
+            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
+              {speakerInfo.label.charAt(0)}
+            </div>
+          ) : (
+            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-400 text-[10px] font-medium text-white">
+              {speakerInfo.label.replace('unknown_', '')}
+            </div>
+          )}
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {speakerInfo.isIdentified ? speakerInfo.label : `用户${speakerInfo.label.replace('unknown_', '')}`}
+          </span>
+        </div>
+      )}
+
       {/* 语音消息标签 */}
       <div className="flex items-center gap-1.5">
         {/* 麦克风图标 */}
@@ -108,7 +130,8 @@ export const VoiceMessageBubble = memo(function VoiceMessageBubble({
       )}
 
       {/* 音频播放器 / 过期提示 */}
-      {audioAttachment && (
+      {/* ambient 模式用户消息有实际转写文字时隐藏播放器（环境音频无播放价值） */}
+      {audioAttachment && !(isUser && hasTranscription) && (
         <>
           {audioAttachment.is_expired ? (
             <div className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">

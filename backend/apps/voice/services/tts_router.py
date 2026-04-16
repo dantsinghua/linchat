@@ -14,9 +14,17 @@ import httpx
 from channels.layers import get_channel_layer
 from django.conf import settings
 
+from core.redis import get_redis
+
 logger = logging.getLogger(__name__)
 
 TTS_GROUP_PREFIX = "voice_tts_"
+
+_TTS_PLAYING_KEY = "voice:tts_playing:{user_id}"
+_TTS_HISTORY_KEY = "voice:tts_history:{user_id}"
+_TTS_PLAYING_TTL = 30       # TTS 播放状态标记 TTL（秒）
+_TTS_HISTORY_TTL = 300      # TTS 历史记录 TTL（秒）
+_TTS_HISTORY_MAXLEN = 9     # LTRIM 保留 0..9 共 10 条
 
 
 class TTSRouter:
@@ -57,6 +65,29 @@ class TTSRouter:
                 "type": "warning", "reason": reason, "message": message,
             }},
         )
+
+    async def mark_tts_start(self, user_id: int, text: str) -> None:
+        """在 TTS 开始播放时设置 Redis 状态标记并记录历史文本。
+
+        设置:
+        - SETEX voice:tts_playing:{user_id} 30 "1"  —— 播放中标记
+        - LPUSH voice:tts_history:{user_id} text     —— 历史文本入队头
+        - LTRIM voice:tts_history:{user_id} 0 9      —— 保留最近 10 条
+        - EXPIRE voice:tts_history:{user_id} 300     —— 5 分钟过期
+        """
+        r = await get_redis()
+        playing_key = _TTS_PLAYING_KEY.format(user_id=user_id)
+        history_key = _TTS_HISTORY_KEY.format(user_id=user_id)
+        await r.setex(playing_key, _TTS_PLAYING_TTL, "1")
+        await r.lpush(history_key, text)
+        await r.ltrim(history_key, 0, _TTS_HISTORY_MAXLEN)
+        await r.expire(history_key, _TTS_HISTORY_TTL)
+
+    async def mark_tts_end(self, user_id: int) -> None:
+        """在 TTS 播放结束时删除播放中标记。"""
+        r = await get_redis()
+        playing_key = _TTS_PLAYING_KEY.format(user_id=user_id)
+        await r.delete(playing_key)
 
     def get_on_audio_callback(
         self, user_id: int

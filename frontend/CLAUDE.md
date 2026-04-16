@@ -56,7 +56,7 @@ frontend/
 
 | Hook | 行数 | 用途 |
 |------|------|------|
-| `useChatStream` | ~400 | 核心聊天状态机（发送/停止/恢复/循环重连 reconnectWithRetry/历史加载/乐观更新/失败恢复） |
+| `useChatStream` | ~400 | 核心聊天状态机（发送/停止/恢复/循环重连 reconnectWithRetry/历史加载（500ms 防抖+滚动位置恢复）/乐观更新/失败恢复） |
 | `useVoiceMode` | ~483 | 语音模式总控（8 态状态机: idle→configuring→listening→recording→processing→responding→interrupted→error） |
 | `useVoiceWebSocket` | ~424 | WebSocket 连接管理（16 种下行事件映射、心跳 30s、自动重连 1 次） |
 | `usePCMAudioCapture` | ~307 | AudioWorklet PCM16 采集（16kHz/单声道/每帧 480 samples = 960 bytes） |
@@ -123,3 +123,8 @@ npm test
 5. **API 安全**: httpOnly Cookie 认证，密码/API Key 用 SM4 加密
 6. **动态导入**: VoiceModeContainer 通过 `next/dynamic` 懒加载，减少非语音用户包体积
 7. **乐观更新**: send() 先插入临时消息，SSE 返回后替换真实 ID
+
+
+<claude-mem-context>
+
+</claude-mem-context>

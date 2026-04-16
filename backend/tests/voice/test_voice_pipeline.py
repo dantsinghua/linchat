@@ -91,6 +91,7 @@ def mock_inference_svc():
     with patch(f"{_VP}.InferenceService") as cls:
         cls.register_task = AsyncMock(return_value=True)
         cls.cancel_task = AsyncMock(return_value=(True, "req123"))
+        cls.complete_task = AsyncMock()
         yield cls
 
 

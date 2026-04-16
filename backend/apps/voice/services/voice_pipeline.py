@@ -133,6 +133,16 @@ class VoicePipeline:
         conn_uid = connection_user_id or user_id
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         await consumer._send_json(response_event("response.end", response_id, segment_id, duration_ms=elapsed_ms))
+        # ambient 模式：更新用户消息为 ASR 原文（去掉 [语音对话] prompt 前缀）
+        if not error_occurred and mode == "ambient":
+            try:
+                from asgiref.sync import sync_to_async
+                from apps.chat.models import Message
+                await sync_to_async(
+                    Message.objects.filter(request_id=request_id, user_id=user_id, role="user").update
+                )(content=text)
+            except Exception:
+                logger.debug("Update ambient user msg content failed: req=%s", request_id)
         if not error_occurred:
             await voice_persist_service.persist_audio_attachment(
                 user_id, segment_id, request_id,
@@ -150,6 +160,10 @@ class VoicePipeline:
         else:
             on_audio = consumer._send_binary
         mgr = TTSPipelineManager(on_audio=on_audio, voice=settings.VOICE_TTS_VOICE)
+        # ambient 模式跳过安慰语音（"正在思考..."），减少响应延迟约 4 秒
+        # voice_chat 模式保留安慰语音（用户盯着界面等待，需要反馈）
+        if mode == "ambient":
+            mgr._comfort_enabled = False
         mgr.start()
         VoicePipeline._active_managers[user_id] = mgr
         return mgr

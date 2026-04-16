@@ -160,7 +160,12 @@ class SessionMixin:
             speaker_identified=is_identified)
         await self._send_json({"type": "decision.result", "data": {
             "decision": decision.value, "reason": reason, "speaker_user_id": target_uid}})
-        if decision.value == "RESPOND":
+        if decision.value == "DISCARD":
+            logger.info(
+                "Utterance discarded (TTS echo): user=%s, reason=%s, text=%s",
+                target_uid, reason, aggregated_msg.text[:50],
+            )
+        elif decision.value == "RESPOND":
             if self._is_pipeline_busy():
                 if self._pending_text:
                     self._pending_text += " " + aggregated_msg.text
@@ -175,7 +180,9 @@ class SessionMixin:
                     speaker_id=None, pipeline_user_id=target_uid if is_identified else None)
         elif decision.value == "RECORD_ONLY":
             from apps.voice.services.voice_persist_service import voice_persist_service
-            await voice_persist_service.record_only_ambient(user_id=target_uid, text=aggregated_msg.text)
+            # 已识别 → speaker_id 为真实 user_id；未识别 → 用 unknown_XX 标签区分不同说话人
+            sid = str(target_uid) if is_identified else getattr(self, "_last_unknown_label", None)
+            await voice_persist_service.record_only_ambient(user_id=target_uid, text=aggregated_msg.text, speaker_id=sid)
 
     async def _handle_session_reconnect(self, data: dict[str, Any]) -> None:
         if not await voice_session_service.get_session(self.user_id):

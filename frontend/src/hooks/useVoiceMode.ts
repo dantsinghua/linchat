@@ -93,6 +93,7 @@ export function useVoiceMode(): UseVoiceModeReturn {
   const storeSettings = useVoiceStore((s) => s.settings);
   const recordingMode = useVoiceStore((s) => s.recordingMode);
   const storeSetHasSpeakerProfile = useVoiceStore((s) => s.setHasSpeakerProfile);
+  const storeSetSpeakerInfo = useVoiceStore((s) => s.setSpeakerInfo);
 
   /**
    * 同步更新本地 state 和 ref
@@ -261,6 +262,17 @@ export function useVoiceMode(): UseVoiceModeReturn {
     onTranscriptionFailed: handleTranscriptionFailed,
     onMessageSaved: handleMessageSaved,
     onError: handleError,
+    onSpeakerIdentified: (data) => {
+      const d = data as Record<string, unknown>;
+      const segmentId = d?.segment_id as string | undefined;
+      if (segmentId) {
+        storeSetSpeakerInfo(segmentId, {
+          userId: (d.speaker_user_id as number | null) ?? null,
+          label: (d.speaker_label as string) ?? 'unknown',
+          isIdentified: (d.is_identified as boolean) ?? false,
+        });
+      }
+    },
   });
 
   // ─── PCM 采集 Hook ───
