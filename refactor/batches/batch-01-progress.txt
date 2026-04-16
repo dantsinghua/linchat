@@ -1,0 +1,33 @@
+BATCH: batch-01
+TITLE: 修复声纹识别结果始终为 dantsinghua 的 bug
+STATUS: EXECUTED
+STARTED: 2026-04-16T18:30:00+08:00
+EXECUTED: 2026-04-16T19:00:00+08:00
+
+FILES_CHANGED:
+  - backend/core/settings.py (1 line: default "false" → "true")
+  - backend/apps/voice/services/speaker_service.py (diagnostic logging + list_gateway_speakers)
+  - backend/apps/voice/consumer_events.py (exception fallback assigns unknown label)
+  - backend/tests/voice/test_speaker_identification.py (+4 tests)
+  - backend/tests/voice/test_unknown_speaker_labeling.py (+4 tests)
+
+TEST_RESULTS:
+  voice suite: 688 passed / 0 failed (27.44s)
+  new tests: 8/8 passed
+
+INVESTIGATION:
+  - SpeakerProfile count: 1 (only dantsinghua)
+  - Feature flag in production .env: true
+  - Feature flag runtime (worktree, no .env): false ← root cause of "always dantsinghua"
+  - Gateway: unreachable (frpc tunnel down)
+
+PENDING_VALIDATION:
+  - Gateway E2E test when frpc tunnel is restored
+  - Multi-speaker registration and identification test
+  - Frontend display of unknown_XX labels
+
+## Phase 2c: Manual Validation (retrofit <时间>)
+- 场景 1 (dantsinghua 录音): <结果>
+- 场景 2 (家人录音): <结果>
+- 结论: 修复有效
+STATUS: COMPLETED

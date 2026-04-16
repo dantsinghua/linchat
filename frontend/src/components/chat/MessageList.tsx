@@ -422,7 +422,12 @@ const MessageBubble = memo(function MessageBubble({
       >
         {/* 语音消息: 使用 VoiceMessageBubble 渲染 */}
         {message.is_voice ? (
-          <VoiceMessageBubble message={message} isUser={isUser} speakerInfo={useVoiceStore.getState().speakerMap[message.speaker_id ?? '']} />
+          <VoiceMessageBubble message={message} isUser={isUser} speakerInfo={
+            useVoiceStore.getState().speakerMap[message.speaker_id ?? '']
+            ?? (message.speaker_id?.startsWith('unknown_')
+              ? { userId: null, label: message.speaker_id, isIdentified: false }
+              : undefined)
+          } />
         ) : (
           <>
             {/* 用户消息: 附件显示在文本上方 */}
@@ -497,11 +502,17 @@ const MessageBubble = memo(function MessageBubble({
         )}
       </div>
 
-      {/* 用户头像 */}
+      {/* 用户头像: unknown speaker 显示灰色数字头像 */}
       {isUser && (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-500 mt-0.5">
-          <span className="text-sm font-medium text-white">{avatarLetter}</span>
-        </div>
+        message.is_voice && message.speaker_id?.startsWith('unknown_') ? (
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-400 mt-0.5">
+            <span className="text-xs font-medium text-white">{message.speaker_id.replace('unknown_', '')}</span>
+          </div>
+        ) : (
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-500 mt-0.5">
+            <span className="text-sm font-medium text-white">{avatarLetter}</span>
+          </div>
+        )
       )}
     </div>
   );

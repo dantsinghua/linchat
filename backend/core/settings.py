@@ -444,7 +444,7 @@ VOICE_DECISION_LLM_THRESHOLD = float(os.getenv("VOICE_DECISION_LLM_THRESHOLD", "
 VOICE_DECISION_LLM_TIMEOUT = float(os.getenv("VOICE_DECISION_LLM_TIMEOUT", "2.0"))  # LLM 分类超时（秒）(5.0→2.0, 加快响应)
 
 # 说话人识别 (017-ambient-speaker-id)
-VOICE_SPEAKER_IDENTIFICATION_ENABLED = os.getenv("VOICE_SPEAKER_IDENTIFICATION_ENABLED", "false").lower() == "true"
+VOICE_SPEAKER_IDENTIFICATION_ENABLED = os.getenv("VOICE_SPEAKER_IDENTIFICATION_ENABLED", "true").lower() == "true"
 
 # 声纹 diarize 配置（多说话人识别与过滤）
 VOICE_SPEAKER_MIN_AUDIO_SECONDS = float(os.getenv("VOICE_SPEAKER_MIN_AUDIO_SECONDS", "1.0"))

@@ -210,3 +210,94 @@ class TestRetrospectiveMatch:
 
         mock_message_cls.objects.filter.assert_not_called()
         redis.hdel.assert_not_called()
+
+
+# ===========================================================================
+# Batch-01: Null hash fallback + list_gateway_speakers
+# ===========================================================================
+
+
+class TestAssignUnknownLabelNullHash:
+    """_assign_unknown_label(None) → 使用 'default' 作为 hash key"""
+
+    @pytest.mark.asyncio
+    async def test_null_hash_uses_default_key(self):
+        """embedding_hash=None → Redis key 为 'default'"""
+        redis = _make_redis_mock(hget_return=None, incr_return=4)
+        consumer = MockConsumer()
+
+        with patch("core.redis.get_async_redis_client", AsyncMock(return_value=redis)):
+            label = await EventMixin._assign_unknown_label(consumer, None)
+
+        redis.hget.assert_called_once_with("voice:unknown_speakers", "default")
+        redis.hset.assert_called_once_with(
+            "voice:unknown_speakers", "default", "unknown_04"
+        )
+        assert label == "unknown_04"
+
+    @pytest.mark.asyncio
+    async def test_null_hash_reuses_existing_label(self):
+        """embedding_hash=None 且 Redis 已有 'default' 映射 → 返回已有标签"""
+        redis = _make_redis_mock(hget_return=b"unknown_04")
+        consumer = MockConsumer()
+
+        with patch("core.redis.get_async_redis_client", AsyncMock(return_value=redis)):
+            label = await EventMixin._assign_unknown_label(consumer, None)
+
+        assert label == "unknown_04"
+        redis.incr.assert_not_called()
+        redis.hset.assert_not_called()
+
+
+class TestListGatewaySpeakers:
+    """SpeakerService.list_gateway_speakers 诊断方法测试"""
+
+    @pytest.mark.asyncio
+    async def test_list_gateway_speakers_success(self):
+        """Gateway 返回 200 + speakers 列表 → 返回列表"""
+        from apps.voice.services.speaker_service import SpeakerService
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "speakers": [
+                {"speaker_id": "spk-001", "quality_score": 0.85},
+                {"speaker_id": "spk-002", "quality_score": 0.92},
+            ]
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        service = SpeakerService()
+
+        with patch("apps.voice.services.speaker_service.httpx.AsyncClient", return_value=mock_client), \
+             patch("apps.voice.services.speaker_service.settings") as mock_settings:
+            mock_settings.LLM_GATEWAY_URL = "http://test:8889"
+            mock_settings.LLM_GATEWAY_API_KEY = "test-key"
+            result = await service.list_gateway_speakers()
+
+        assert len(result) == 2
+        assert result[0]["speaker_id"] == "spk-001"
+
+    @pytest.mark.asyncio
+    async def test_list_gateway_speakers_error(self):
+        """Gateway 不可达 → 返回空列表，无异常"""
+        from apps.voice.services.speaker_service import SpeakerService
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=Exception("connection refused"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        service = SpeakerService()
+
+        with patch("apps.voice.services.speaker_service.httpx.AsyncClient", return_value=mock_client), \
+             patch("apps.voice.services.speaker_service.settings") as mock_settings:
+            mock_settings.LLM_GATEWAY_URL = "http://test:8889"
+            mock_settings.LLM_GATEWAY_API_KEY = "test-key"
+            result = await service.list_gateway_speakers()
+
+        assert result == []
