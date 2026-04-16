@@ -1,797 +1,128 @@
-# Claude 开发指南
+# LinChat — Claude Code 协作契约
 
-> 必须是用中文交流！！！每次回复我，都要叫我"安琳"，让我知道
-> 本文件为 Claude AI 代理在本项目中的开发行为提供明确指导。
-> 所有代码生成、修改和审查必须遵循本指南。
-
----
-
-## 项目概述
-
-**项目名称**: 大模型聊天平台 (LinChat)
-**项目类型**: 企业级多模态 AI Agent 聊天应用（家庭场景）
-**开发模式**: 规范驱动开发 (Speckit)
-**公网地址**: `https://www.greydan.xin/linchat`
-**代码规模**: 后端 ~13k LOC (304 .py) + 前端 ~13k LOC (206 .ts/.tsx) + 1462 测试函数
+> 本文件是 Claude 在本项目工作时的**核心契约**，不可跳过。
+> 详细信息见 `docs/` 目录，按需加载，不要预读全部。
+> 保持精简是原则：本文件任何时候不应超过 120 行。
 
 ---
 
-## 系统架构与核心逻辑
+## 一句话项目定位
 
-> 详细文档见 `docs/` 目录（project-overview-pdr.md, system-architecture.md, codebase-summary.md 等）
+LinChat 是一个企业级多模态 AI Agent 聊天应用（家庭场景），Django 4.2 + Next.js 14，
+后端 ~13k LOC / 前端 ~13k LOC / 1462+ 测试函数，公网 `https://www.greydan.xin/linchat`。
 
-### 产品能力
+## 当前工作阶段（由我在对话开头声明；默认 Phase 0）
 
-| 能力 | 实现 | 特性 |
-|------|------|------|
-| 文本聊天 | SSE 流式 + LangGraph Agent | 001 |
-| 上下文记忆 | pgvector 混合搜索 (0.7向量+0.3关键词) | 004 |
-| 监控面板 | ContextMonitor (token/工具/记忆) | 005 |
-| 6 个 SubAgent | search/memory/code/HA/multimodal/document | 006-008, 011 |
-| 语音交互 | WebSocket ASR→Agent→TTS 全双工 | 009-010, 013-014 |
-| 文档 RAG | Gateway 解析→语义分块→pgvector 检索 | 011-012 |
-| 家庭多用户 | 成员管理+声纹+上下文切换 | 015 |
-| reSpeaker WiFi 语音 | XVF3800 无线麦克风阵列→WiFi 桥接→ambient 模式 | 016 |
+- **Phase 0**：日常开发（默认）
+- **Phase 1**：只读重构分析 — 禁止修改 `backend/`、`frontend/` 下任何业务代码，产出只写入 `refactor/`
+- **Phase 2**：批次执行重构 — 严格按 `refactor/04-refactor-plan.json` 中的单个 batch 执行
 
-### 源码目录结构
+## 文档导航（按需加载）
 
-```
-linchat/
-├── backend/                   # Django 后端
-│   ├── core/                  # settings.py(507行), celery.py, redis.py, asgi.py
-│   ├── apps/
-│   │   ├── chat/              # Message/Execution 模型, SSE 流式, 推理取消
-│   │   ├── common/            # 中间件, 异常体系, SSE 事件, MinIO 存储
-│   │   ├── context/           # PromptBuilder, Token 预算, 23 个 Jinja2 模板
-│   │   ├── graph/             # LangGraph Agent, 6 SubAgent, 工具, 推理服务
-│   │   │   ├── services/      # AgentService(246), ContextService(149), InferenceService
-│   │   │   ├── subagents/     # search, memory, code, ha, multimodal, document
-│   │   │   └── tools/         # web_search, mem_*, python_exec, ha_*, doc_*
-│   │   ├── media/             # 媒体上传, 文档解析+RAG, pgvector 分块
-│   │   ├── memory/            # 用户记忆 CRUD, Embedding, 混合搜索
-│   │   ├── models/            # LLM ModelConfig, SM4 加密
-│   │   ├── users/             # 认证(SM3/SM4), 成员管理(015)
-│   │   └── voice/             # WebSocket 语音, ASR/TTS 管道, 声纹, 环境监听
-│   └── tests/                 # 89 文件, 1462+ 测试函数 (pytest + pytest-asyncio)
-├── frontend/src/
-│   ├── app/                   # 5 页面: chat, settings, login, 401, home
-│   ├── components/            # 30+ 组件 (chat/voice/settings/members/auth)
-│   ├── hooks/                 # 8 Hook: useChatStream, useVoiceMode(515行/8态FSM), useAuth
-│   ├── stores/                # 5 Zustand: chat, voice, upload, model, member
-│   ├── services/              # 8 API: chat(SSE), media(XHR), voice(WS), member
-│   └── types/                 # Message, Voice, Media, Model 类型定义
-├── scripts/services.sh        # ⚠️ 唯一的应用服务管理入口
-│   └── respeaker_bridge/      # reSpeaker XVF3800 WiFi 音频桥接服务(016)
-├── docker-compose.yml         # 9 Docker 服务
-├── specs/                     # 16 个 Speckit 特性规范
-└── docs/                      # 项目文档 (17 个 .md)
-```
-
-### 核心数据流
-
-```
-用户消息 → ChatViewSet(SSE) → ChatService → AgentService.execute()
-  → PromptBuilder(记忆召回+历史裁剪) → create_chat_agent(LangGraph)
-    → 主Agent → SubAgent(tool_call) → LLM Gateway(kimi-k2.5)
-    → astream_events(v2) → StreamChunk → SSE → 前端实时渲染
-  → finalize_message(持久化+Langfuse trace+监控推送)
-```
-
-### 数据模型 (11 个)
-
-| 模型 | App | 关键 |
-|------|-----|------|
-| `Message` | chat | user_id, role, content, status(0-3), tokens, is_voice |
-| `LangGraphExecution` | chat | request_id, status, duration_ms, langfuse_trace_id |
-| `MediaAttachment` | media | file_type, s3_path, expires_at (7天) |
-| `DocumentChunkEmbedding` | media | chunk_text, embedding (1024 dims) |
-| `UserMemory` + `UserMemoryEmbedding` | memory | content, type, embedding (1024 dims) |
-| `ModelConfig` | models | model_type(tool/multimodal/embedding), api_key(SM4) |
-| `SysUser` | users | password_hash(SM3), api_token, member_type |
-| `SpeakerProfile` / `RegisteredDevice` / `VoiceSettings` | voice | 声纹/设备/语音配置 |
-
-### Docker 服务 (9 个)
-
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| PostgreSQL 15 (pgvector+pg_jieba) | 5432 | 主数据库 |
-| Redis Stack | 6379 | DB0缓存/DB1Langfuse/DB2Celery/DB3Channels |
-| ClickHouse 24.3 | 127.0.0.1:8123 | Langfuse 分析库 |
-| MinIO | 127.0.0.1:9010 | 对象存储 |
-| Langfuse Web + Worker | 127.0.0.1:3100 | LLM 可观测性 |
-| Home Assistant | 8124 | 智能家居 |
-| Node-RED | 127.0.0.1:1880 | 自动化规则 |
-
-### Celery 定时任务
-
-| 任务 | 频率 |
+| 场景 | 文档 |
 |------|------|
-| retry_failed_embeddings | 每 5 分钟 |
-| generate_daily_summary | 每天 00:00 |
-| generate_monthly_summary | 每月 1 日 |
-| embedding_health_check | 每小时 |
-| clean_expired_media | 每天 03:00 |
-
-### 详细文档索引
-
-| 文档 | 路径 | 内容 |
-|------|------|------|
-| 项目概述 | [docs/project-overview-pdr.md](docs/project-overview-pdr.md) | 产品能力、技术栈、里程碑 |
-| 系统架构 | [docs/system-architecture.md](docs/system-architecture.md) | Mermaid 架构图、数据流、安全 |
-| 代码库摘要 | [docs/codebase-summary.md](docs/codebase-summary.md) | 模块详解、数据模型、依赖 |
-| 编码规范 | [docs/code-standards.md](docs/code-standards.md) | Python/TS 规范、架构约束 |
-| 部署指南 | [docs/deployment-guide.md](docs/deployment-guide.md) | 启动流程、services.sh、故障排查 |
-| API 参考 | [docs/api-reference.md](docs/api-reference.md) | REST/SSE/WebSocket 端点 |
-| 测试指南 | [docs/testing-guide.md](docs/testing-guide.md) | pytest/Jest/Playwright 体系 |
-| 配置指南 | [docs/configuration-guide.md](docs/configuration-guide.md) | settings.py 全量配置参考 |
-| 变更日志 | [docs/changelog.md](docs/changelog.md) | git log 自动生成 |
+| 系统架构、数据流、数据模型 | `docs/architecture.md` |
+| **历史包袱与已知痛点** | `docs/legacy-and-debts.md` ★ 重构必读 |
+| 网络/端口/Nginx/frpc | `docs/infrastructure.md` |
+| 部署与服务启动 | `docs/deployment-guide.md` |
+| 编码规范 | `docs/code-standards.md` + `.specify/memory/constitution.md` |
+| 测试指南 | `docs/testing-guide.md` |
+| API 参考 | `docs/api-reference.md` |
+| 配置参考 | `docs/configuration-guide.md` |
 
 ---
 
-## ⚠️⚠️⚠️ 重要提醒 (必读！！！) ⚠️⚠️⚠️
+## 绝对红线（违反即任务失败）
 
-> **🚨 警告 1：在执行任何 Python/Django 后端命令之前，必须先激活 linchat 虚拟环境！**
->
-> **🚨 警告 2：本项目只有一套环境，不区分开发/生产环境，永远按生产环境对待！**
->
-> **🚨 警告 3：前端必须先 `npm run build` 构建后再 `npm run start` 运行，不使用 `npm run dev`！**
+### 环境类
 
-### Python 虚拟环境
+1. **必须先激活虚拟环境**：`source /home/dantsinghua/work/linchat/linchat/bin/activate`
+2. **后端必须用 uvicorn ASGI**：`uvicorn core.asgi:application --host 0.0.0.0 --port 8002`；禁用 `runserver`
+3. **前端走生产模式**：`npm run build` + `npm run start -- -p 3784`；禁用 `npm run dev`
+4. **应用服务管理走 `./scripts/services.sh {start|stop|restart|status}`**，禁止手动 nohup（会产生孤儿进程）
 
-| 项目 | 虚拟环境路径 |
-|------|-------------|
-| **LinChat 后端** | `/home/dantsinghua/work/linchat/linchat/` |
+### 架构类
 
-### 激活命令
+5. 分层顺序：`views.py` → `services/` → `repositories.py`，**视图层禁止写业务逻辑**
+6. PostgreSQL 是唯一可信数据源，ES/Redis 是副本，写操作必须原子（失败必须回滚）
+7. **所有隔离粒度永远为 `user_id`**，禁止引入 `conversation_id` / `session_id` 字段或概念
+8. LLM 异常必须分类处理：`LLMConnectionError`、`LLMTimeoutError`、`LLMRateLimitError`、`LLMContentFilterError`
+9. SSE 视图必须用 ASGI 原生异步，禁止手动创建临时事件循环
 
-```bash
-# ⚠️ 每次开发前必须执行！！！
-source /home/dantsinghua/work/linchat/linchat/bin/activate
+### 安全类
 
-# 验证激活成功 (应显示 linchat 虚拟环境)
-which python
-# 期望输出: /home/dantsinghua/work/linchat/linchat/bin/python
-```
+10. Token 必须 httpOnly Cookie，禁止 localStorage
+11. 密码必须 SM3 哈希，API 密钥必须 SM4 加密
+12. 敏感信息（`.env*`、密钥、证书）禁止提交版本控制
 
-### 后端开发常用命令
+### 质量类
 
-```bash
-# 激活虚拟环境后执行
-cd /home/dantsinghua/work/linchat/backend
-
-# ⚠️ ASGI 服务器启动（必须使用，支持原生异步 SSE 视图）
-uvicorn core.asgi:application --host 0.0.0.0 --port 8002 --reload  # 开发环境
-uvicorn core.asgi:application --host 0.0.0.0 --port 8002           # 生产环境
-
-# ❌ 禁止使用 runserver（WSGI 模式不支持原生异步 SSE 视图）
-# python manage.py runserver 8002  # 已废弃，会导致 SSE 连接问题
-
-# Django 管理命令
-python manage.py migrate              # 数据库迁移
-python manage.py makemigrations       # 生成迁移文件
-python manage.py shell                # Django Shell
-
-# 测试
-pytest                                # 运行测试
-pytest --cov=apps                     # 带覆盖率测试
-
-# 代码质量
-black .                               # 代码格式化
-isort .                               # 导入排序
-mypy .                                # 类型检查
-```
-
-### 前端命令
-
-```bash
-cd /home/dantsinghua/work/linchat/frontend
-
-# ⚠️ 生产环境部署（必须使用）
-npm run build                         # 构建生产版本
-npm run start -- -p 3784              # 启动生产服务器
-
-# 代码检查
-npm run lint                          # 代码检查
-npm test                              # 运行测试
-
-# ❌ 不要使用 npm run dev，本项目只有生产环境！
-```
+13. 禁止裸 SQL，必须用 ORM
+14. 禁止跳过测试直接部署
+15. 覆盖率要求：总体 ≥ 80%，关键路径 ≥ 95%，服务层 ≥ 95%
 
 ---
 
-## 网络架构配置
+## Do Not Touch 路径（需专项流程才能改）
 
-> **⚠️ 本节包含完整的网络配置信息，用于指导后续配置网络环境。**
-
-### 服务端口总览
-
-| 服务 | 端口 | 绑定地址 | 说明 |
-|------|------|----------|------|
-| **LinChat 前端** | 3784 | 0.0.0.0 | Next.js 生产服务器 |
-| **LinChat 后端** | 8002 | 0.0.0.0 | Django 服务器 |
-| **DeepTutor 前端** | 3783 | 0.0.0.0 | Next.js 服务器 |
-| **DeepTutor 后端** | 8001 | 0.0.0.0 | Django 服务器 |
-| **Nginx 主入口** | 3782, 8080 | 0.0.0.0 | 反向代理统一入口 |
-| **Nginx Langfuse** | 8081 | 0.0.0.0 | Langfuse 独立端口 |
-| **PostgreSQL** | 5432 | 0.0.0.0 | 主数据库 (LinChat + Langfuse) |
-| **Redis** | 6379 | 0.0.0.0 | 缓存服务 (DB0: LinChat, DB1: Langfuse, DB2: Celery Broker) |
-| **Langfuse Web** | 3100 | 127.0.0.1 | Langfuse Web 服务 (内部) |
-| **ClickHouse HTTP** | 8123 | 127.0.0.1 | ClickHouse HTTP 接口 (仅本地) |
-| **ClickHouse Native** | 9000 | 127.0.0.1 | ClickHouse Native 接口 (仅本地) |
-| **MinIO S3 API** | 9010 | 127.0.0.1 | MinIO S3 接口 (仅本地) |
-| **MinIO Console** | 9011 | 127.0.0.1 | MinIO 管理界面 (仅本地) |
-
-### 公网访问地址
-
-| 服务 | 公网地址 | 说明 |
-|------|----------|------|
-| **LinChat** | `https://www.greydan.xin/linchat` | 聊天应用主入口 |
-| **LinChat API** | `https://www.greydan.xin/linchat/api/v1` | 后端 API |
-| **Home Assistant** | `https://ha.greydan.xin` | 智能家居控制面板 |
-| **Langfuse** | `http://www.greydan.xin:8081` | LLM 监控平台 |
-| **SSH** | stcp 类型，需通过 frpc visitor 连接 | SSH 远程连接 |
-
-### 流量路径
-
-```
-公网请求 (HTTPS)
-    ↓
-frp 服务端 (infra.greydan.xin)
-    ↓ wss://infra.greydan.xin:443
-wstunnel client (127.0.0.1:7443)
-    ↓ TCP
-frpc (连接 127.0.0.1:7443)
-    ↓
-Nginx (8080)
-    ├── /linchat/api/* → LinChat 后端 (8002)
-    ├── /linchat/*     → LinChat 前端 (3784)
-    ├── /api/*         → DeepTutor 后端 (8001)
-    └── /*             → DeepTutor 前端 (3783)
-
-Nginx (8081)
-    └── /*             → Langfuse Web (3100)
-```
+- `.specify/memory/constitution.md`（项目宪法）
+- 任何 `*.sql` 已执行的 migration 文件
+- `.env*`、证书、密钥文件
+- 生产配置文件
 
 ---
 
-## frpc 内网穿透配置
-
-> **架构说明**: 通过 wstunnel 抗 DPI，链路为：frpc → wstunnel client → wss://infra.greydan.xin:443 → wstunnel server → frps
-
-**配置文件**: `/home/dantsinghua/frp/frpc.toml`
-
-```toml
-# frpc 通过 wstunnel 连接到 frps（wstunnel 已处理加密传输）
-serverAddr = "127.0.0.1"
-serverPort = 7443
-
-auth.method = "token"
-auth.token = "frps@Greydan2026!Xin#Secure"
-
-# 直接 TCP，不需要 TLS/WebSocket（wstunnel 已处理）
-transport.protocol = "tcp"
-transport.tls.enable = false
-transport.tcpMux = true
-transport.heartbeatInterval = 10
-transport.heartbeatTimeout = 0
-
-# SSH (stcp 类型，需要 visitor 连接)
-[[proxies]]
-name = "anlin-dev-ssh"
-type = "stcp"
-secretKey = "STCP@Greydan2026!Secret"
-localIP = "127.0.0.1"
-localPort = 22
-
-# LLM Gateway visitor (连接远端 llm-gateway stcp 服务)
-[[visitors]]
-name = "llm-gateway-visitor"
-type = "stcp"
-serverName = "llm-gateway"
-secretKey = "LLMGateway@2026!Secure"
-bindAddr = "127.0.0.1"
-bindPort = 8100
-
-# OpenClaw Gateway (stcp)
-[[proxies]]
-name = "openclaw-gateway"
-type = "stcp"
-secretKey = "OpenClaw@2026!Gateway"
-localIP = "127.0.0.1"
-localPort = 18789
-
-# LinChat Web (HTTP 域名代理)
-[[proxies]]
-name = "linchat-web"
-type = "http"
-localIP = "127.0.0.1"
-localPort = 8080
-customDomains = ["www.greydan.xin"]
-locations = ["/linchat"]
-
-# Home Assistant (HTTP 域名代理)
-[[proxies]]
-name = "homeassistant"
-type = "http"
-localIP = "127.0.0.1"
-localPort = 8124
-customDomains = ["ha.greydan.xin"]
-
-# 临时下载服务
-[[proxies]]
-name = "temp-download"
-type = "http"
-localIP = "127.0.0.1"
-localPort = 19999
-customDomains = ["dl.greydan.xin"]
-```
-
-### systemd 服务管理
-
-frpc 和 wstunnel 均由 systemd 管理，**不要手动 nohup 启动**。
-
-```bash
-# wstunnel 服务 (/etc/systemd/system/wstunnel.service)
-# ExecStart: wstunnel client -L tcp://127.0.0.1:7443:127.0.0.1:7000 wss://infra.greydan.xin:443
-sudo systemctl start wstunnel    # 启动 wstunnel
-sudo systemctl status wstunnel   # 查看状态
-
-# frpc 服务 (/etc/systemd/system/frpc.service)
-sudo systemctl restart frpc      # 重启 frpc（修改配置后）
-sudo systemctl status frpc       # 查看状态
-journalctl -u frpc -f            # 查看实时日志
-journalctl -u wstunnel -f        # 查看 wstunnel 日志
-```
-
----
-
-## Nginx 反向代理配置
-
-**配置文件**: `/etc/nginx/sites-available/deeptutor`
-
-### Upstream 定义
-
-```nginx
-# LinChat
-upstream linchat_frontend { server 127.0.0.1:3784; keepalive 32; }
-upstream linchat_backend  { server 127.0.0.1:8002; keepalive 32; }
-
-# DeepTutor
-upstream frontend { server 127.0.0.1:3783; keepalive 32; }
-upstream backend  { server 127.0.0.1:8001; keepalive 32; }
-
-# Langfuse
-upstream langfuse_web { server 127.0.0.1:3100; keepalive 32; }
-```
-
-### 路由规则
-
-| 监听端口 | 路径 | 目标服务 |
-|----------|------|----------|
-| 3782/8080 | `/linchat/api/*` | linchat_backend (8002) |
-| 3782/8080 | `/linchat/*` | linchat_frontend (3784) |
-| 3782/8080 | `/api/*` | deeptutor_backend (8001) |
-| 3782/8080 | `/*` | deeptutor_frontend (3783) |
-| 8081 | `/*` | langfuse_web (3100) |
-
-### Nginx 管理命令
-
-```bash
-# 测试配置
-sudo nginx -t
-
-# 重载配置
-sudo nginx -s reload
-
-# 查看状态
-sudo systemctl status nginx
-```
-
----
-
-## Docker 服务配置
-
-**配置文件**: `/home/dantsinghua/work/linchat/docker-compose.yml`
-
-### 服务列表
-
-| 容器名称 | 镜像 | 说明 |
-|----------|------|------|
-| linchat-postgres | postgres:15-alpine | PostgreSQL 主数据库 |
-| linchat-redis | redis/redis-stack-server:latest | Redis 缓存 |
-| linchat-clickhouse | clickhouse/clickhouse-server:24.3 | ClickHouse 分析库 |
-| linchat-minio | minio/minio:latest | MinIO 对象存储 |
-| linchat-langfuse-web | langfuse/langfuse:3 | Langfuse Web |
-| linchat-langfuse-worker | langfuse/langfuse-worker:3 | Langfuse Worker |
-
-### Docker 管理命令
-
-```bash
-cd /home/dantsinghua/work/linchat
-
-# 启动所有服务
-docker compose up -d
-
-# 查看服务状态
-docker compose ps
-
-# 查看日志
-docker compose logs -f [服务名]
-
-# 重启单个服务
-docker compose restart [服务名]
-
-# 停止所有服务
-docker compose down
-```
-
----
-
-## 环境变量配置
-
-### 后端环境变量 (`backend/.env`)
-
-```bash
-DATABASE_URL=postgresql://postgres:linchat_123@localhost:5432/linchat
-REDIS_URL=redis://:redis_linchat_123@localhost:6379/0
-DJANGO_SECRET_KEY=linchat-dev-secret-key-change-in-production
-DJANGO_DEBUG=true
-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,www.greydan.xin
-CORS_ALLOWED_ORIGINS=http://localhost:3784,http://127.0.0.1:3784,http://www.greydan.xin
-SM4_SECRET_KEY=linchat-sm4-key!
-
-# LLM 配置 (火山引擎 DeepSeek)
-LLM_API_BASE=https://ark.cn-beijing.volces.com/api/v3
-LLM_API_KEY=<your-api-key>
-LLM_MODEL_NAME=deepseek-v3-1-terminus
-```
-
-### 前端环境变量 (`frontend/.env.local`)
-
-```bash
-NEXT_PUBLIC_API_BASE_URL=/linchat/api/v1
-NEXT_PUBLIC_SM4_KEY=linchat-sm4-key!
-```
-
-### Langfuse 访问凭据
-
-```
-URL: http://www.greydan.xin:8081
-Email: admin@linchat.local
-Password: Admin@123456
-```
-
----
-
-## 服务启动顺序
-
-> **⚠️ 推荐使用服务管理脚本**：`./scripts/services.sh {start|stop|restart|status}`
-> 脚本通过 PID 文件追踪进程，避免孤儿进程积累。每次 `start` 前自动清理旧进程。
-
-```bash
-# 1. 启动 Docker 服务 (PostgreSQL, Redis, Langfuse 等)
-cd /home/dantsinghua/work/linchat
-docker compose up -d
-
-# 2. 启动 Nginx
-sudo systemctl start nginx
-
-# 3. 启动 wstunnel + frpc (systemd 管理，勿手动 nohup)
-sudo systemctl start wstunnel
-sudo systemctl start frpc
-
-# 4. 启动 LinChat 应用服务（后端 + Celery + 前端）
-# ⚠️ 必须使用 services.sh，禁止手动 nohup（会产生孤儿进程）
-./scripts/services.sh start     # 启动所有应用服务
-./scripts/services.sh status    # 查看状态
-./scripts/services.sh restart   # 重启所有应用服务
-./scripts/services.sh stop      # 停止所有应用服务
-
-# 前端需先 build（仅代码变更后）
-cd /home/dantsinghua/work/linchat/frontend
-npm run build
-```
-
----
-
-## 故障排查
-
-### 检查服务状态
-
-```bash
-# 检查 Docker 服务
-docker compose ps
-
-# 检查 Nginx
-sudo systemctl status nginx
-curl http://localhost:8080/nginx-health
-
-# 检查 wstunnel + frpc (systemd 管理)
-sudo systemctl status wstunnel
-sudo systemctl status frpc
-journalctl -u frpc --since "10 min ago"
-
-# 检查端口占用
-ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
-```
-
-### 常见问题
-
-| 问题 | 解决方案 |
-|------|----------|
-| 前端 404 | 检查是否执行了 `npm run build`，检查 Nginx 配置 |
-| API 502 | 检查后端是否启动，检查虚拟环境是否激活 |
-| 数据库连接失败 | 检查 Docker PostgreSQL 是否运行 |
-| 公网无法访问 | 依次检查: `systemctl status wstunnel` → `systemctl status frpc` → Nginx 是否运行 |
-
----
-
-## 技术栈
-
-| 层级 | 技术选型 |
-|------|----------|
-| 后端框架 | Django REST Framework 4.2+ |
-| ASGI 服务器 | uvicorn 0.30+ (必须，支持原生异步视图) |
-| 前端框架 | Next.js 14+ / React 18+ / TypeScript 5.0+ |
-| 主数据库 | PostgreSQL (唯一可信来源) |
-| 搜索引擎 | Elasticsearch (只读副本) |
-| 缓存层 | Redis (会话/缓存/实时通信) |
-| 任务队列 | Celery 5.3+ |
-| AI Agent | LangGraph + Langfuse |
-| 状态管理 | Zustand (前端) |
-
----
-
-## 强制参考文档
-
-在进行任何开发工作前，**必须**阅读以下文档：
-
-### 核心治理文档
-
-| 文档 | 路径 | 用途 |
-|------|------|------|
-| 项目宪法 | [.specify/memory/constitution.md](.specify/memory/constitution.md) | 不可违背的原则和约束 |
-| 代码示例 | [docs/constitution-examples.md](docs/constitution-examples.md) | 编码时强制参考的示例代码 |
-
-### 特性规范文档
-
-| 文档类型 | 路径模式 | 用途 |
-|----------|----------|------|
-| 特性规范 | `specs/<feature>/spec.md` | 功能需求和验收标准 |
-| 实施计划 | `specs/<feature>/plan.md` | 技术方案和实施步骤 |
-| 任务清单 | `specs/<feature>/tasks.md` | 具体开发任务 |
-| 质量检查 | `specs/<feature>/checklists/*.md` | 各阶段质量检查清单 |
-
----
-
-## 开发工作流
-
-### Speckit 命令参考
-
-```bash
-# 特性规范阶段
-/speckit.specify    # 创建/更新特性规范
-/speckit.clarify    # 澄清规范中的歧义
-
-# 规划阶段
-/speckit.plan       # 生成实施计划
-/speckit.tasks      # 生成任务清单
-
-# 验证阶段
-/speckit.analyze    # 跨文档一致性分析
-/speckit.checklist  # 生成质量检查清单
-
-# 实施阶段
-/speckit.implement  # 按任务清单实施
-
-# 治理阶段
-/speckit.constitution  # 更新项目宪法
-```
-
-### 开发流程
-
-```
-1. 阅读宪法 → 2. 阅读规范 → 3. 阅读计划 → 4. 执行任务 → 5. 验证合规
-```
-
----
-
-## 编码规范速查
-
-### Python/Django 后端
-
-| 规范项 | 要求 | 参考 |
-|--------|------|------|
-| 代码风格 | PEP 8 + Black (88字符) | 宪法 2.1 |
-| 导入排序 | isort | 宪法 2.1 |
-| 类型注解 | 所有公共函数必须添加 | 宪法 2.1 |
-| 文档字符串 | Google 风格 | 宪法 2.1 |
-| 数据一致性 | 事务保护，失败回滚 | 代码示例 1-2节 |
-| 异常处理 | 自定义异常类层级 | 代码示例 3节 |
-| 测试覆盖 | 服务层 95%，总体 80%+ | 代码示例 4-6节 |
-
-### TypeScript/Next.js 前端
-
-| 规范项 | 要求 | 参考 |
-|--------|------|------|
-| 代码风格 | ESLint + Prettier | 宪法 2.2 |
-| 类型模式 | 严格模式 | 宪法 2.2 |
-| 组件规范 | 函数式组件 + Hooks | 宪法 2.2 |
-| Props 定义 | 必须使用 interface | 宪法 2.2 |
-| 状态管理 | Zustand + React Query | 宪法 2.2 |
-
----
-
-## 强制术语定义 (不可违背)
+## 强制术语（不可违背）
 
 | 术语 | 定义 |
 |------|------|
-| **1 轮对话** | 1 条 role=user 消息 + 1 条 role=assistant 消息（1 对 user+assistant 消息） |
-| **保留最近 N 轮** | 保留最后 N×2 条 user/assistant 消息（例：2 轮 = 4 条消息） |
-| **隔离粒度** | 永远按 `user_id` 粒度，不存在"会话粒度"或"session 粒度" |
-| **单用户单会话** | 一个用户永远对应一个会话，会话绑定用户。Message 模型中没有会话 ID（conversation_id），只有 `user_id`。不存在多会话概念，不考虑并发会话场景 |
+| **1 轮对话** | 1 条 role=user + 1 条 role=assistant 消息 |
+| **保留最近 N 轮** | 保留最后 N×2 条 user/assistant 消息 |
+| **隔离粒度** | 永远按 `user_id`，不存在 session/conversation 粒度 |
+| **单用户单会话** | 一个用户对应一个会话，Message 只有 `user_id`，没有 conversation_id |
 
 ---
 
-## 架构约束 (不可违背)
-
-### 分层架构
-
-```
-视图层 (views.py)      → 仅处理 HTTP 请求响应，禁止业务逻辑
-服务层 (services.py 或 services/)  → 封装所有业务逻辑 ★核心
-数据层 (repositories.py) → 封装 ORM/ES/Redis 操作
-```
-
-### 数据一致性
-
-| 原则 | 说明 |
-|------|------|
-| PostgreSQL 为主 | 唯一可信数据来源 |
-| 写操作原子性 | 失败必须回滚 |
-| 同步机制 | ES/Redis 通过 Celery 异步同步 |
-| 补偿机制 | 必须实现数据一致性检查 |
-
-> **参考**: 代码示例文档 1-2 节
-
-### 大模型异常处理
-
-必须统一处理以下异常类型：
-
-| 异常 | 策略 |
-|------|------|
-| LLMConnectionError | 重试3次 |
-| LLMTimeoutError | 重试3次 |
-| LLMRateLimitError | 不重试，返回等待时间 |
-| LLMContentFilterError | 不重试，允许用户修改 |
-
-> **参考**: 代码示例文档 3 节
-
----
-
-## 安全要求 (不可违背)
-
-| 类别 | 要求 |
-|------|------|
-| 令牌存储 | httpOnly Cookie (禁止 localStorage) |
-| 密码哈希 | 国密SM3算法 |
-| API 密钥 | 国密SM4加密存储 |
-| 频率限制 | 匿名100次/时，认证1000次/时，LLM 60次/分 |
-
----
-
-## 测试要求
-
-| 测试类型 | 说明 | 工具 |
-|----------|------|------|
-| 单元测试 | 隔离执行，mock 外部依赖 | pytest / Jest |
-| 集成测试 | 真实数据库，mock 外部服务 | pytest-django / MSW |
-| 端到端 | 完整用户流程 | Playwright |
-
-**覆盖率要求**:
-- 总体 ≥ 80%
-- 关键路径 ≥ 95%
-- 服务层 ≥ 95%
-
-> **参考**: 代码示例文档 4-6 节
-
----
-
-## 性能指标
+## 性能指标（超标视为退化）
 
 | 场景 | 指标 |
 |------|------|
-| API GET 请求 | p95 < 200ms |
-| API POST 请求 | p95 < 300ms |
-| 大模型首令牌 | < 2秒 |
-| 前端 FCP | < 1.5秒 |
-| 前端打包 | < 200KB (gzip) |
+| API GET | p95 < 200ms |
+| API POST | p95 < 300ms |
+| 大模型首 token | < 2s |
+| 前端 FCP | < 1.5s |
+| 前端打包体积 | < 200KB (gzip) |
+
+---
+
+## 上下文效率原则（给 Claude 的工作方式约束）
+
+- 先 `rg` / `glob` 定位，再精读；禁止盲目全读 >500 行文件
+- 读大文件先抓结构：`rg "^(def|class|async def) " <file>`
+- 复杂多文件任务必须委派给 `.claude/agents/` 下的子代理
+- Phase 1 分析产出一律写入 `refactor/` 目录，不在主对话里堆砌
+- 每轮完成后在 `refactor/claude-progress.txt` 更新进度，便于跨 session 恢复
+
+---
+
+## 不确定时必须提问（不要自行决策）
+
+遇到以下情况**停止并问我**：
+
+- 需要跨 Do Not Touch 边界
+- 需要改动数据库 schema 或 migration
+- 需要引入新第三方依赖或中间件
+- 对外 API 契约（REST/SSE/WebSocket）变更
+- 性能数字无法从代码判断（需要压测验证）
+- 触碰 `docs/legacy-and-debts.md` 中标记为"没人敢动"的区域
 
 ---
 
 ## 提交规范
 
-```
-<类型>(<范围>): <描述>
-
-类型: feat / fix / docs / style / refactor / perf / test / chore
-示例: feat(chat): 添加流式响应支持
-```
+`<type>(<scope>): <description>`，type ∈ `feat | fix | refactor | docs | style | perf | test | chore`
+示例：`refactor(graph): 提取 AgentService 中的工具调用编排逻辑`
 
 ---
 
-## 禁止事项
-
-1. **禁止**在视图层编写业务逻辑
-2. **禁止**直接写原生 SQL (必须使用 ORM)
-3. **禁止**将 Token 存储在 localStorage（必须使用 httpOnly Cookie）
-4. **禁止**提交敏感信息到版本控制
-5. **禁止**合并违反"不可违背"条款的代码
-6. **禁止**跳过测试直接部署
-7. **禁止**忽略数据一致性检查
-8. **禁止**在 SSE 视图中手动创建临时事件循环（必须使用 ASGI 原生异步视图）
-9. **禁止**使用 `python manage.py runserver` 启动后端（必须使用 uvicorn ASGI 模式）
-10. **禁止**使用"会话粒度"隔离 — 本项目所有隔离操作（数据查询、并发锁、缓存键）永远按 `user_id` 粒度，不存在"会话粒度"或"session 粒度"概念
-11. **禁止**在任何模型或接口中引入 `conversation_id`/`session_id` 字段 — 一个用户永远对应一个会话，会话绑定用户，Message 只有 `user_id`，不存在多会话概念
-
----
-
-## 当前特性
-
-| 特性分支 | 规范路径 | 状态 |
-|----------|----------|------|
-| 001-llm-chat-page | `specs/001-llm-chat-page/spec.md` | ✅ 已完成 |
-| 002-asgi-async-views | — | ✅ 已完成 |
-| 004-context-memory | `specs/004-context-memory/spec.md` | ✅ 已完成 |
-| 005-context-monitoring | `specs/005-context-monitoring/spec.md` | ✅ 已完成 |
-| 006-subagent-tools | `specs/006-subagent-tools/spec.md` | ✅ 已完成 |
-| 007-home-assistant-tools | `specs/007-home-assistant-tools/spec.md` | ✅ 已完成 |
-| 008-multimodal-minicpm | `specs/008-multimodal-minicpm/spec.md` | ✅ 已完成 |
-| 009-voice-interaction | `specs/009-voice-interaction/spec.md` | ✅ 已完成 |
-| **010-voice-agent-pipeline** | `specs/010-voice-agent-pipeline/spec.md` | ✅ 已完成 |
-| **011-document-subagent-rag** | `specs/011-document-subagent-rag/spec.md` | ✅ 已完成 |
-| **012-doc-parse-progress** | `specs/012-doc-parse-progress/spec.md` | ✅ 已完成 |
-| **013-tts-comfort-queue** | `specs/013-tts-comfort-queue/spec.md` | ✅ 已完成 |
-| **014-jarvis-ambient-voice** | `specs/014-jarvis-ambient-voice/spec.md` | ✅ 已完成 |
-| **015-family-multiuser** | `specs/015-family-multiuser/spec.md` | ✅ 已完成 |
-| **016-respeaker-wifi-ambient** | `specs/016-respeaker-wifi-ambient/spec.md` | 🔧 开发中 |
-
----
-
-## 快速参考链接
-
-- 宪法文件: [.specify/memory/constitution.md](.specify/memory/constitution.md)
-- 代码示例: [docs/constitution-examples.md](docs/constitution-examples.md)
-- Gateway 集成指南: [docs/linchat-integration-guide.md](docs/linchat-integration-guide.md)
-- 当前特性规范: [specs/016-respeaker-wifi-ambient/spec.md](specs/016-respeaker-wifi-ambient/spec.md)
-
----
-
-*本文件随项目演进持续更新，版本与宪法文件同步。*
-
-
-## 技术栈速查
-
-| 层级 | 技术 | 版本 |
-|------|------|------|
-| 后端框架 | Django + DRF + uvicorn | 4.2+ / 3.14+ / 0.30+ |
-| AI Agent | LangGraph + LangChain + Langfuse | 0.2+ / 0.2+ / 3.12+ |
-| 前端框架 | Next.js + React + TypeScript | 14+ / 18+ / 5.0+ |
-| 状态管理 | Zustand (5 Store) | 4.5+ |
-| 主数据库 | PostgreSQL + pgvector + pg_jieba | 15 |
-| 缓存/消息 | Redis (4 DB) + Channels | 5.0+ / 4.0+ |
-| 任务队列 | Celery (Redis DB2 Broker) | 5.3+ |
-| 对象存储 | MinIO (S3 兼容) | latest |
-| WebSocket | Channels + websockets | 4.0+ / 12.0+ |
-| 加密 | gmssl (SM3+SM4) + sm-crypto | 3.2+ |
-| 监控 | Langfuse + ClickHouse | v3 |
-| 样式 | Tailwind CSS | 3.4+ |
-
-## Active Technologies
-- Python 3.12（桥接服务复用 LinChat 虚拟环境依赖） + websockets（WebSocket 客户端）、asyncio（异步事件循环）、struct（音频格式转换） (016-respeaker-wifi-ambient)
-- 无新增存储，复用现有 PostgreSQL（RegisteredDevice）+ Redis（会话状态） (016-respeaker-wifi-ambient)
-- Python 3.12 (backend), TypeScript 5.0+ (frontend) + Django 4.2+, DRF, Channels 4.0+, httpx (Gateway HTTP), Zustand (frontend state) (017-ambient-speaker-id)
-- PostgreSQL (Message.speaker_id, SpeakerProfile), Redis (TTS 状态标记, 临时标签映射, PCM 音频缓存) (017-ambient-speaker-id)
-
-## Recent Changes
-- 016-respeaker-wifi-ambient: Added Python 3.12（桥接服务复用 LinChat 虚拟环境依赖） + websockets（WebSocket 客户端）、asyncio（异步事件循环）、struct（音频格式转换）
+*本文件随项目演进持续更新，与 `.specify/memory/constitution.md` 同步。*

@@ -1,0 +1,1434 @@
+{
+  "metadata": {
+    "generated_at": "2026-04-16T17:30:00+08:00",
+    "generated_by": "refactor-planner-v2",
+    "project": "linchat",
+    "scope": "backend-only (+ 2 frontend dead file deletions)",
+    "total_batches": 27,
+    "total_estimated_sessions": 29,
+    "source_inputs": [
+      "docs/legacy-and-debts.md",
+      "refactor/01-architecture-map.md",
+      "refactor/02-issue-diagnosis.md",
+      "refactor/03-call-chain-analysis.md"
+    ]
+  },
+  "slo_targets": {
+    "voice_end_to_end_ms": 5000,
+    "llm_first_token_ms": 2000,
+    "api_get_p95_ms": 200,
+    "api_post_p95_ms": 300
+  },
+  "global_constraints": {
+    "do_not_touch": [
+      "PostgreSQL schema migration",
+      "SSE 事件格式",
+      "SM3/SM4 加密方案",
+      "conversation_id / session_id 概念引入",
+      "LangGraph/LangChain 版本升级",
+      "Docker 服务拓扑调整",
+      "前端技术栈迁移",
+      "Gateway API 契约变更"
+    ]
+  },
+  "batches": [
+    {
+      "id": "batch-01",
+      "type": "fix",
+      "title": "修复声纹识别结果始终为 dantsinghua 的 bug",
+      "priority": "P0-Day1",
+      "category": "bug-fix",
+      "estimated_files": 5,
+      "estimated_lines_changed": 80,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#二-B#声纹识别结果错误",
+        "02-issue-diagnosis#8.1#声纹识别100%失败"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/speaker_service.py",
+          "backend/apps/voice/consumer_events.py",
+          "backend/tests/voice/test_speaker_identification.py",
+          "backend/tests/voice/test_unknown_speaker_labeling.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "声纹识别 100% 返回 identified=False（219/219 次），conf 中位数 0.08，所有消息 speaker_id 始终显示 dantsinghua。需定位并修复根因。",
+      "investigation_steps": [
+        "H1（最可能）：SpeakerProfile 注册样本库只有 dantsinghua 一条记录，任何语音都被匹配到唯一样本；或 Gateway 侧声纹质量分不足。验证：查 SpeakerProfile 表记录数、Gateway /v1/voice/speakers 列表",
+        "H2：speaker_service.identify_from_pcm() 匹配逻辑的 confidence 阈值过高（当前 0.5），导致所有匹配都 fallback 到 _assign_unknown_label，但 unknown 标签最终被覆盖为 dantsinghua。验证：检查 confidence 阈值 vs 实际 conf 分布 [−0.25, 0.49]",
+        "H3：consumer_events.py 中 speaker_id 赋值逻辑有 fallback 路径，当识别失败时默认取 session 的 user_id（即 dantsinghua）。验证：追踪 _on_ambient_transcription 中 speaker_id 从生成到写入 Message 的完整路径"
+      ],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/test_speaker_identification.py -v",
+          "pytest backend/tests/voice/test_unknown_speaker_labeling.py -v"
+        ],
+        "manual": [
+          "注册至少 2 个 SpeakerProfile（不同 user_id），分别用不同声音发 3 段音频",
+          "前端 MessageList 应显示至少 2 个不同的 speaker_id",
+          "检查 Gateway /v1/voice/speakers 返回的 profile 数量和 quality_score"
+        ],
+        "metrics": [
+          "声纹匹配 identified=True 比例 > 50%（有注册样本的情况下）"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": true,
+      "notes": "此 batch 是 fix 而非 refactor，行数限制放宽。根因可能涉及 Gateway 侧声纹模型质量（不可控），如果 H1 确认，修复方向是降低阈值 + 改善注册流程引导。"
+    },
+    {
+      "id": "batch-02",
+      "type": "fix",
+      "title": "修复 13 个失败测试（第一批：数据库隔离类 — 9 个）",
+      "priority": "P0-Day1",
+      "category": "bug-fix",
+      "estimated_files": 3,
+      "estimated_lines_changed": 120,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#四#失败测试",
+        "02-issue-diagnosis#8.1#失败测试根因分析"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/tests/chat/test_media_cleanup_task.py",
+          "backend/tests/memory/test_models.py",
+          "backend/tests/memory/test_tasks.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "9 个失败测试（test_media_cleanup_task 8 个 + test_models 1 个）因 --reuse-db 导致残留数据，断言 count 不匹配。修复方向：setUp 中清理残留数据或使用 TransactionTestCase 隔离。test_tasks 3 个因 SysUser 真实数据触发多用户总结，需 mock filter。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/chat/test_media_cleanup_task.py -v",
+          "pytest backend/tests/memory/test_models.py -v",
+          "pytest backend/tests/memory/test_tasks.py -v"
+        ],
+        "manual": [],
+        "metrics": [
+          "上述 3 个测试文件 12 个测试全部 PASSED"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "test_media_cleanup_task 227 行、test_models 111 行、test_tasks 508 行，改动集中在 setUp/fixture 层。"
+    },
+    {
+      "id": "batch-03",
+      "type": "fix",
+      "title": "修复失败测试（第二批：断言更新 — 1 个）",
+      "priority": "P0-Day1",
+      "category": "bug-fix",
+      "estimated_files": 1,
+      "estimated_lines_changed": 20,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#四#失败测试",
+        "02-issue-diagnosis#8.1#test_document_agent"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/tests/apps/graph/test_document_agent.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "test_document_agent 断言 '部分解析' in result 失败，实际返回 '解析超时（900秒）'。更新断言以匹配新的超时消息格式。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/apps/graph/test_document_agent.py -v"
+        ],
+        "manual": [],
+        "metrics": [
+          "1573+13=1586 测试全部 PASSED，0 FAILED"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "batch-02 和 batch-03 完成后应运行完整 pytest 验证 CI 绿色基线。"
+    },
+    {
+      "id": "batch-04",
+      "type": "observability",
+      "title": "trace_id 中间件基础设施",
+      "priority": "P0",
+      "category": "observability",
+      "estimated_files": 4,
+      "estimated_lines_changed": 150,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#六#trace_id贯穿",
+        "02-issue-diagnosis#5.1#Trace ID 完全缺失",
+        "01-architecture-map#7#Q1"
+      ],
+      "pre_approved_by_user": false,
+      "scope": {
+        "files_touched": [
+          "backend/core/middleware.py",
+          "backend/core/logging_config.py",
+          "backend/core/settings.py",
+          "backend/apps/common/__init__.py"
+        ],
+        "new_files": [
+          "backend/core/middleware.py",
+          "backend/core/logging_config.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "创建 TraceIdMiddleware：从 X-Request-ID header 提取或生成 trace_id，存入 contextvars，注入到 logging formatter。创建统一 JSON logging formatter 替换三种混合格式（应用/uvicorn/Django）。在 settings.py MIDDLEWARE 中注册。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest -k 'trace' -v（新增测试）",
+          "curl -H 'X-Request-ID: test-123' http://localhost:8002/api/v1/auth/me | grep trace"
+        ],
+        "manual": [
+          "检查 /tmp/linchat-backend.log 中所有行包含 trace_id 字段",
+          "确认三种日志格式统一为 JSON"
+        ],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>；middleware 移除后日志退回旧格式，无数据影响",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "此 batch 是后续所有 observability 和 performance batch 的基础。"
+    },
+    {
+      "id": "batch-05",
+      "type": "observability",
+      "title": "trace_id 接入 chat/graph 链路",
+      "priority": "P0",
+      "category": "observability",
+      "estimated_files": 6,
+      "estimated_lines_changed": 80,
+      "depends_on": [
+        "batch-04"
+      ],
+      "blocks_slo": null,
+      "addresses": [
+        "02-issue-diagnosis#5.1#Trace ID 完全缺失"
+      ],
+      "pre_approved_by_user": false,
+      "scope": {
+        "files_touched": [
+          "backend/apps/chat/services/chat_service.py",
+          "backend/apps/graph/services/agent_service.py",
+          "backend/apps/graph/services/helpers/prompt.py",
+          "backend/apps/graph/services/helpers/finalize.py",
+          "backend/apps/common/sse.py",
+          "backend/apps/common/gateway_utils.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "在 SSE 聊天链路中注入 trace_id：ChatService.send_message → AgentService.execute → PromptBuilder → LangGraph astream → finalize → SSE response header。关联 Langfuse trace。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/chat/ -v",
+          "pytest backend/tests/apps/graph/ -v"
+        ],
+        "manual": [
+          "发送一条聊天消息，检查后端日志中 trace_id 贯穿 chat_service → agent_service → prompt → finalize"
+        ],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": ""
+    },
+    {
+      "id": "batch-06",
+      "type": "observability",
+      "title": "trace_id 接入 voice 链路",
+      "priority": "P0",
+      "category": "observability",
+      "estimated_files": 8,
+      "estimated_lines_changed": 100,
+      "depends_on": [
+        "batch-04"
+      ],
+      "blocks_slo": "voice_end_to_end_5s",
+      "addresses": [
+        "02-issue-diagnosis#5.1#Trace ID 完全缺失",
+        "legacy-and-debts#六#端到端语音延迟埋点"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/consumers.py",
+          "backend/apps/voice/consumer_events.py",
+          "backend/apps/voice/consumer_session.py",
+          "backend/apps/voice/consumer_inference.py",
+          "backend/apps/voice/services/voice_pipeline.py",
+          "backend/apps/voice/services/response_decision_service.py",
+          "backend/apps/voice/services/tts_pipeline_manager.py",
+          "backend/apps/voice/services/tts_router.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "在语音全链路注入 trace_id：VoiceConsumer → ASR → transcription → aggregator → decision → pipeline → TTS → HA。每个阶段记录 trace_id + 阶段名 + 耗时。这是端到端语音延迟埋点的基础。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/ -v"
+        ],
+        "manual": [
+          "通过 reSpeaker 说话触发完整语音链路，检查日志中 trace_id 从 ASR 到 HA 播报全程一致"
+        ],
+        "metrics": [
+          "日志中每个语音 pipeline 执行包含完整的阶段耗时分解"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "voice 模块最高风险。仅添加日志/trace 注入，不修改业务逻辑。"
+    },
+    {
+      "id": "batch-07",
+      "type": "observability",
+      "title": "端到端语音延迟精细埋点",
+      "priority": "P0",
+      "category": "observability",
+      "estimated_files": 6,
+      "estimated_lines_changed": 120,
+      "depends_on": [
+        "batch-06"
+      ],
+      "blocks_slo": "voice_end_to_end_5s",
+      "addresses": [
+        "legacy-and-debts#六#端到端语音延迟埋点",
+        "03-call-chain-analysis#3.2#每跳延迟分解"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/voice_pipeline.py",
+          "backend/apps/voice/services/tts_pipeline_manager.py",
+          "backend/apps/voice/services/response_decision_service.py",
+          "backend/apps/voice/services/utterance_aggregator.py",
+          "backend/apps/voice/consumer_events.py",
+          "backend/apps/voice/consumer_inference.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "为 5s SLO 基线测量添加精细埋点：12 跳各自 time.monotonic() 打点（ASR→聚合器→决策→prompt→LLM推理→TTS连接→TTS合成→HA下发），每次 pipeline 结束输出汇总日志行（JSON 格式）。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/test_voice_pipeline.py -v"
+        ],
+        "manual": [
+          "触发 3 次完整语音链路，检查日志中输出 JSON 格式的延迟汇总",
+          "确认每跳耗时之和与端到端总耗时误差 < 5%"
+        ],
+        "metrics": [
+          "建立 P50/P95 基线数据（预期 P50~10.8s）"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "此 batch 产出基线数据，是后续所有 P1 语音优化的前提。不允许先优化再埋点。"
+    },
+    {
+      "id": "batch-08",
+      "type": "refactor",
+      "title": "ambient 模式轻量 prompt 替代完整 Agent",
+      "priority": "P1",
+      "category": "performance",
+      "estimated_files": 5,
+      "estimated_lines_changed": 350,
+      "depends_on": [
+        "batch-07"
+      ],
+      "blocks_slo": "voice_end_to_end_5s",
+      "addresses": [
+        "legacy-and-debts#二#语音链路延迟",
+        "03-call-chain-analysis#3.6#瓶颈1-LLM推理完整Agent",
+        "03-call-chain-analysis#3.7#P1-A"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/voice_pipeline.py",
+          "backend/apps/graph/services/agent_service.py",
+          "backend/core/settings.py",
+          "backend/apps/context/templates/ambient_light_prompt.j2"
+        ],
+        "new_files": [
+          "backend/apps/context/templates/ambient_light_prompt.j2"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "ambient 模式新建轻量推理路径 AmbientLightPipeline：仅 system prompt + 最近 3 轮历史 + 用户消息，直接 httpx 调 LLM Gateway，跳过 LangGraph/SubAgent/工具/完整记忆召回。预期削减 LLM 推理耗时 P50 从 6.3s 到 ~1.5-2s（输入 token 减少 80%+）。voice_chat 模式不受影响，继续走完整 Agent。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/test_voice_pipeline.py -v"
+        ],
+        "manual": [
+          "触发 5 次 ambient 语音，对比优化前后 LLM 推理阶段耗时",
+          "确认 ambient 回复质量不明显退化（短回复场景）"
+        ],
+        "metrics": [
+          "LLM 推理阶段 P50 < 2.5s（从 6.3s 削减）",
+          "端到端 P50 < 7s（初步削减）"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>；恢复到完整 Agent 路径",
+      "risk": "high",
+      "estimated_sessions": 2,
+      "blocking_for_production": false,
+      "notes": "这是 5s SLO 攻坚的最大收益点（预计削减 4-5s）。需安琳确认 ambient 短回复是否需要记忆召回能力（Open Question Q3 from 03-call-chain-analysis）。"
+    },
+    {
+      "id": "batch-09",
+      "type": "refactor",
+      "title": "Agent token 流式转发至 TTS 增量合成",
+      "priority": "P1",
+      "category": "performance",
+      "estimated_files": 4,
+      "estimated_lines_changed": 200,
+      "depends_on": [
+        "batch-07"
+      ],
+      "blocks_slo": "voice_end_to_end_5s",
+      "addresses": [
+        "03-call-chain-analysis#3.6#瓶颈2-TTS等待完整Agent输出",
+        "03-call-chain-analysis#3.4#Agent流式但TTS入口等待全部token",
+        "03-call-chain-analysis#3.7#P1-B"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/voice_pipeline.py",
+          "backend/apps/voice/services/tts_pipeline_manager.py",
+          "backend/apps/voice/services/tts_stream_client.py",
+          "backend/tests/voice/test_voice_pipeline.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "将 voice_pipeline.py 中 Agent 流式循环内的 content chunk 实时 send_text_delta 给 TTS（按句子/标点分割），而非等 full_response 完成后整体 enqueue。TTS Gateway 已支持 text.delta 增量输入。预期节省 ~1-2s（TTS 合成与 LLM 推理重叠执行）。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/test_voice_pipeline.py -v"
+        ],
+        "manual": [
+          "触发语音链路，确认 TTS 在 Agent 还在输出时就开始合成音频",
+          "确认最终播放的音频完整、无截断"
+        ],
+        "metrics": [
+          "TTS 合成阶段耗时 P50 减少 > 1s"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "high",
+      "estimated_sessions": 2,
+      "blocking_for_production": false,
+      "notes": "需确认 Gateway TTS text.delta 接口的最小文本单元（Open Question Q4 from 03-call-chain-analysis）。"
+    },
+    {
+      "id": "batch-10",
+      "type": "refactor",
+      "title": "TTS WebSocket 连接复用/预连接",
+      "priority": "P1",
+      "category": "performance",
+      "estimated_files": 4,
+      "estimated_lines_changed": 150,
+      "depends_on": [
+        "batch-07"
+      ],
+      "blocks_slo": "voice_end_to_end_5s",
+      "addresses": [
+        "03-call-chain-analysis#3.6#瓶颈3-TTS WS每次新建连接",
+        "02-issue-diagnosis#7.3#TTS WS非优雅关闭",
+        "03-call-chain-analysis#3.7#P1-C"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/tts_pipeline_manager.py",
+          "backend/apps/voice/services/tts_stream_client.py",
+          "backend/apps/voice/services/ws_client_base.py",
+          "backend/tests/voice/test_voice_pipeline.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "TTS WS 连接复用：session 初始化时预创建 TTS 连接，pipeline 复用；或 pipeline 开始时与 Agent 推理并行 connect。同时修复 ws_client_base.py disconnect() 优雅关闭（发送 close frame，消除 code=1006）。预期削减 ~1s。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/test_voice_pipeline.py -v"
+        ],
+        "manual": [
+          "触发 3 次语音链路，确认 TTS WS 连接建立耗时 < 100ms（非首次）",
+          "检查日志中 TTS WS 关闭 code 从 1006 变为 1000"
+        ],
+        "metrics": [
+          "TTS 连接建立耗时 P50 < 100ms（从 1.05s 削减）",
+          "端到端 P50 < 5s（合计三个 P1 优化后目标）"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "batch-08/09/10 三个 P1 优化合计预期从 10.8s 削减到 ~3.8s，达成 5s SLO。"
+    },
+    {
+      "id": "batch-27",
+      "type": "measurement",
+      "title": "5s SLO 达成验证（非代码 batch — 测量活动）",
+      "priority": "P1",
+      "category": "performance",
+      "estimated_files": 0,
+      "estimated_lines_changed": 0,
+      "depends_on": [
+        "batch-08",
+        "batch-09",
+        "batch-10"
+      ],
+      "blocks_slo": "voice_end_to_end_5s",
+      "addresses": [
+        "legacy-and-debts#二#语音链路SLO 5s"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "在 batch-08/09/10 全部完成后，进行端到端语音延迟基线测量：触发 20+ 次 ambient 语音链路，采集 batch-07 埋点数据，计算 P50/P95，确认是否达成 5s SLO。如未达成，分析新瓶颈制定下一轮优化。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [],
+        "manual": [
+          "触发 20+ 次 ambient 语音（不同长度的输入），采集日志中 JSON 延迟汇总",
+          "计算 P50/P95，与优化前基线（P50=10.8s）对比"
+        ],
+        "metrics": [
+          "端到端 P50 < 5s（SLO 目标）",
+          "端到端 P95 < 8s（宽松目标）"
+        ]
+      },
+      "rollback_strategy": "N/A — 测量活动无代码变更",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "如果 P50 仍 > 5s，需进一步分析：考虑聚合超时缩短（1.5s→0.8s）、LLM 意图分类并行化等 P2 优化。"
+    },
+    {
+      "id": "batch-11",
+      "type": "refactor",
+      "title": "Redis 连接池改造",
+      "priority": "P1",
+      "category": "performance",
+      "estimated_files": 3,
+      "estimated_lines_changed": 80,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "01-architecture-map#5#Redis连接管理问题",
+        "03-call-chain-analysis#5.2#Redis无连接池",
+        "01-architecture-map#7#Q1"
+      ],
+      "pre_approved_by_user": false,
+      "scope": {
+        "files_touched": [
+          "backend/core/redis.py",
+          "backend/core/settings.py",
+          "backend/tests/test_redis.py"
+        ],
+        "new_files": [
+          "backend/tests/test_redis.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "将 core/redis.py 中 get_redis() 从每次创建新连接改为 ASGI 安全的 aioredis 连接池（max_connections 配置化）。ASGI 模式下事件循环稳定，连接池可安全使用。需确认不影响 Channels DB3 的独立配置。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/ -v（全量回归）"
+        ],
+        "manual": [
+          "启动后端，连续发送 20 次语音请求，检查 Redis INFO clients 中 connected_clients 不超过 30（当前可能 100+）"
+        ],
+        "metrics": [
+          "Redis connected_clients 峰值减少 50%+"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>；恢复每次新建连接模式",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "需确认 Channels DB3 不受影响（Open Question Q6 from 03-call-chain-analysis）。"
+    },
+    {
+      "id": "batch-12",
+      "type": "refactor",
+      "title": "PromptBuilder 记忆召回并行化 + model_config 缓存",
+      "priority": "P1",
+      "category": "performance",
+      "estimated_files": 4,
+      "estimated_lines_changed": 80,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "03-call-chain-analysis#1.2#瓶颈1-build_prompt_preamble串行",
+        "03-call-chain-analysis#5.2#model_config无缓存",
+        "03-call-chain-analysis#5.2#wake_words每次查DB"
+      ],
+      "pre_approved_by_user": false,
+      "scope": {
+        "files_touched": [
+          "backend/apps/graph/services/helpers/prompt.py",
+          "backend/apps/voice/services/response_decision_service.py",
+          "backend/apps/models/services.py",
+          "backend/tests/apps/graph/test_prompt_builder.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "将 prompt.py 中 model_service.get_active_model → MemoryService.search_memory → message_repo.find_latest 三步串行 IO 改为 asyncio.gather 并行执行。添加 model_config 内存 TTL 缓存（60s）。缓存 wake_words DB 查询结果。预估节省 ~50-100ms/pipeline。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/apps/graph/test_prompt_builder.py -v",
+          "pytest backend/tests/voice/test_response_decision.py -v"
+        ],
+        "manual": [
+          "对比优化前后 build_prompt_preamble 阶段耗时"
+        ],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "需确认 PromptBuilder 三步 IO 无因果依赖（Open Question Q1 from 03-call-chain-analysis）。"
+    },
+    {
+      "id": "batch-13",
+      "type": "refactor",
+      "title": "死文件删除",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 4,
+      "estimated_lines_changed": -690,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#一#死文件",
+        "legacy-and-debts#一#语音管道#DEPRECATED diarize"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "frontend/src/components/chat/ContextMonitorPanel.design.tsx",
+          "backend/apps/models/tests.py",
+          "backend/apps/voice/consumers.py",
+          "backend/apps/voice/consumer_session.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "删除 ContextMonitorPanel.design.tsx（680 行，无 import 引用）和 models/tests.py（3 行空桩）。清理 consumers.py:63-64 和 consumer_session.py:77-79 的 DEPRECATED diarize 注释代码。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "npm run build（前端构建通过）",
+          "pytest backend/tests/ -v（后端全量通过）"
+        ],
+        "manual": [],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "最低风险 batch，纯删除。"
+    },
+    {
+      "id": "batch-14",
+      "type": "refactor",
+      "title": "兼容 shim 清理（第一批：0 调用者的 9 个直接删除）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 9,
+      "estimated_lines_changed": -75,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#一#兼容层shim文件",
+        "01-architecture-map#6#兼容shim清理优先级"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/chat/sse.py",
+          "backend/apps/chat/services/document_parse_service.py",
+          "backend/apps/chat/services/context_service.py",
+          "backend/apps/chat/services/inference_service.py",
+          "backend/apps/chat/services/media_service.py",
+          "backend/apps/chat/services/gpu_lock.py",
+          "backend/apps/chat/services/minio_service.py",
+          "backend/apps/chat/services/generation.py",
+          "backend/apps/context/tokenizer.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "删除 9 个零活跃调用者的兼容 shim 文件。这些文件仅 re-export 已迁移模块的符号，经扫描确认无外部 import 引用（generation.py 29 行含少量兼容逻辑需检查）。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/ -v",
+          "python -c 'import apps.chat; import apps.context'（import 无报错）"
+        ],
+        "manual": [],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "generation.py 29 行不全是 re-export（含 StopGeneration 类），需仔细检查是否有调用者。chat/tasks.py 有 1 个测试调用者，归入 batch-15。"
+    },
+    {
+      "id": "batch-15",
+      "type": "refactor",
+      "title": "兼容 shim 清理（第二批：有调用者的 3 个迁移后删除）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 12,
+      "estimated_lines_changed": 80,
+      "depends_on": [
+        "batch-14"
+      ],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#一#兼容层shim文件",
+        "01-architecture-map#6#graph/prompts.py最多调用者"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/graph/prompts.py",
+          "backend/apps/chat/tasks.py",
+          "backend/apps/graph/services/agent_helpers.py",
+          "backend/apps/graph/services/helpers/prompt.py",
+          "backend/apps/graph/tools/context.py",
+          "backend/apps/memory/services.py",
+          "backend/tests/chat/test_prompts.py",
+          "backend/tests/memory/test_performance.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "迁移 graph/prompts.py 的 5 个调用者（prompt.py、context.py、memory/services.py、2 个测试）到 apps.context 的真实路径，然后删除 shim。迁移 chat/tasks.py 的 1 个测试调用者到 apps.media.tasks。删除 agent_helpers.py shim（调用者改为直接 import helpers/）。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/ -v（全量回归）",
+          "grep -r 'from apps.graph.prompts import' backend/ | grep -v __pycache__（应为空）"
+        ],
+        "manual": [],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "graph/prompts.py → apps.context 迁移需确认不引入新循环依赖（Open Question Q4 from 01-architecture-map）。memory/services.py 的 CRONMEM_PROMPT_TEMPLATE 导入改为 from apps.context.xxx。"
+    },
+    {
+      "id": "batch-16",
+      "type": "refactor",
+      "title": "types.py + generation.py 迁移到 graph",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 12,
+      "estimated_lines_changed": 100,
+      "depends_on": [
+        "batch-14"
+      ],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#六#P2#types/generation迁移"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/chat/services/types.py",
+          "backend/apps/graph/services/types.py",
+          "backend/apps/graph/services/agent_service.py",
+          "backend/apps/graph/services/inference_service.py",
+          "backend/apps/graph/services/helpers/finalize.py",
+          "backend/apps/common/sse.py",
+          "backend/apps/chat/services/chat_service.py",
+          "backend/apps/chat/services/__init__.py",
+          "backend/tests/chat/test_inference_service.py",
+          "backend/tests/chat/test_inference_cancel.py",
+          "backend/tests/voice/test_voice_pipeline.py"
+        ],
+        "new_files": [
+          "backend/apps/graph/services/types.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "将 chat/services/types.py（144 行，StreamChunk/InferenceTask/MessageVO）迁移到 graph/services/types.py（因 graph 是主要消费者：agent_service、inference_service、finalize、sse）。更新 9 个调用方的 import 路径。在 chat/services/types.py 保留临时 re-export 兼容层，下一轮清理。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/ -v（全量回归）"
+        ],
+        "manual": [],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "此迁移缓解 chat<->graph 循环依赖（01-architecture-map#2 最严重循环依赖）。"
+    },
+    {
+      "id": "batch-17",
+      "type": "refactor",
+      "title": "settings.py 域拆分（第一批：voice/media/celery 配置提取）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 5,
+      "estimated_lines_changed": 250,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#三#core/settings.py",
+        "legacy-and-debts#六#P2#settings.py域拆分",
+        "01-architecture-map#6#技术债排名1"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/core/settings.py",
+          "backend/core/settings/__init__.py",
+          "backend/core/settings/voice.py",
+          "backend/core/settings/media.py",
+          "backend/core/settings/celery_conf.py"
+        ],
+        "new_files": [
+          "backend/core/settings/__init__.py",
+          "backend/core/settings/voice.py",
+          "backend/core/settings/media.py",
+          "backend/core/settings/celery_conf.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "将 settings.py（513 行/117 个 getenv）拆分为 settings/ 包：core 保留 Django 基础配置（DB/Redis/INSTALLED_APPS/MIDDLEWARE 等），voice/media/celery 配置提取到独立文件。settings/__init__.py 用 from .xxx import * 保持原有 import 路径兼容。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "python -c 'from core import settings; print(settings.VOICE_AMBIENT_AGGREGATE_TIMEOUT)'",
+          "pytest backend/tests/ -v（全量回归）"
+        ],
+        "manual": [
+          "确认 ./scripts/services.sh start 能正常启动"
+        ],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>；恢复单文件 settings.py",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "不改变配置值本身，仅拆分文件组织。使用 from .xxx import * 保持向后兼容。"
+    },
+    {
+      "id": "batch-18",
+      "type": "refactor",
+      "title": "settings.py 域拆分（第二批：llm/security/logging 配置提取）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 5,
+      "estimated_lines_changed": 200,
+      "depends_on": [
+        "batch-17"
+      ],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#三#core/settings.py"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/core/settings/__init__.py",
+          "backend/core/settings/llm.py",
+          "backend/core/settings/security.py",
+          "backend/core/settings/logging_conf.py",
+          "backend/core/settings/third_party.py"
+        ],
+        "new_files": [
+          "backend/core/settings/llm.py",
+          "backend/core/settings/security.py",
+          "backend/core/settings/logging_conf.py",
+          "backend/core/settings/third_party.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "继续拆分：LLM 配置（Gateway URL/API key/model 参数）、安全配置（CORS/CSRF/rate_limit）、日志配置、第三方集成（Langfuse/MinIO/HA）。目标：settings/__init__.py 仅保留 ~100 行核心 Django 配置。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/ -v（全量回归）",
+          "./scripts/services.sh restart && ./scripts/services.sh status"
+        ],
+        "manual": [],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": ""
+    },
+    {
+      "id": "batch-19",
+      "type": "refactor",
+      "title": "voice Mixin 架构整理（第一批：consumer_session → SessionMixin Protocol 定义）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 3,
+      "estimated_lines_changed": 100,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#一#语音管道#3-Mixin架构",
+        "legacy-and-debts#五#voice模块最高风险",
+        "01-architecture-map#6#技术债排名2"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/consumer_session.py",
+          "backend/apps/voice/consumers.py",
+          "backend/apps/voice/protocols.py"
+        ],
+        "new_files": [
+          "backend/apps/voice/protocols.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "为 3-Mixin 架构添加 Protocol 接口约束。定义 VoiceConsumerProtocol（声明所有 self._* 共享属性的类型），SessionMixin 显式依赖此 Protocol。当前 3 个 Mixin 通过 self._* 隐式共享状态无类型约束。此 batch 仅添加类型约束，不改业务逻辑。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/ -v",
+          "mypy backend/apps/voice/consumer_session.py backend/apps/voice/consumers.py（类型检查通过）"
+        ],
+        "manual": [],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "voice 模块高风险，仅添加类型约束不改逻辑。Protocol 定义为后续 batch-20/21 的基础。"
+    },
+    {
+      "id": "batch-20",
+      "type": "refactor",
+      "title": "voice Mixin 架构整理（第二批：consumer_events → EventsMixin Protocol 适配）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 3,
+      "estimated_lines_changed": 80,
+      "depends_on": [
+        "batch-19"
+      ],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#一#语音管道#3-Mixin架构"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/consumer_events.py",
+          "backend/apps/voice/protocols.py",
+          "backend/tests/voice/test_consumer_events.py"
+        ],
+        "new_files": [
+          "backend/tests/voice/test_consumer_events.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "EventsMixin 适配 VoiceConsumerProtocol。显式声明依赖的共享属性。添加针对 EventsMixin 的单元测试（当前 consumer 覆盖率 ~54%）。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/ -v"
+        ],
+        "manual": [
+          "触发语音链路，确认 transcription 事件处理正常"
+        ],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": ""
+    },
+    {
+      "id": "batch-21",
+      "type": "refactor",
+      "title": "voice Mixin 架构整理（第三批：consumer_inference → InferenceMixin Protocol 适配）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 3,
+      "estimated_lines_changed": 80,
+      "depends_on": [
+        "batch-19"
+      ],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#一#语音管道#3-Mixin架构",
+        "legacy-and-debts#四#consumer_inference 54%覆盖率"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/consumer_inference.py",
+          "backend/apps/voice/protocols.py",
+          "backend/tests/voice/test_consumer_inference.py"
+        ],
+        "new_files": [
+          "backend/tests/voice/test_consumer_inference.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "InferenceMixin 适配 VoiceConsumerProtocol。添加针对 InferenceMixin 的单元测试，将覆盖率从 54% 提升到 80%+。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/test_consumer_inference.py -v --cov=apps.voice.consumer_inference"
+        ],
+        "manual": [],
+        "metrics": [
+          "consumer_inference.py 覆盖率 > 80%"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": ""
+    },
+    {
+      "id": "batch-22",
+      "type": "refactor",
+      "title": "except Exception 缩减（第一批：voice + graph 模块，高频文件）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 10,
+      "estimated_lines_changed": 200,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#五#except Exception 143处",
+        "01-architecture-map#6#except Exception分布",
+        "02-issue-diagnosis#6.1#代码中except Exception吞异常"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/response_decision_service.py",
+          "backend/apps/voice/services/voice_pipeline.py",
+          "backend/apps/voice/services/voice_persist_service.py",
+          "backend/apps/voice/consumers.py",
+          "backend/apps/voice/consumer_session.py",
+          "backend/apps/graph/services/context_service.py",
+          "backend/apps/graph/services/agent_service.py",
+          "backend/apps/graph/services/inference_service.py",
+          "backend/apps/graph/services/helpers/monitor.py",
+          "backend/apps/graph/tools/memory.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "审计 voice（35 处）和 graph（44 处）模块的 except Exception，分类为有意兜底（保留但添加具体异常类型）和开发遗留（改为具体异常）。目标：将 79 处缩减到 ~30 处（仅保留真正需要兜底的 disconnect/cleanup 场景）。每处改动添加具体异常类型（如 httpx.TimeoutException、json.JSONDecodeError、ConnectionError 等）。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/ -v",
+          "pytest backend/tests/apps/graph/ -v",
+          "grep -c 'except Exception' 改动文件列表（应减少 50%+）"
+        ],
+        "manual": [],
+        "metrics": [
+          "voice+graph except Exception 从 79 处缩减到 < 35 处"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "每处改动需确认不破坏安全降级逻辑。对于 response_decision_service 的 6 处 except Exception，其安全降级是设计正确的（返回 None/默认值），但应收窄为具体异常类型。"
+    },
+    {
+      "id": "batch-23",
+      "type": "refactor",
+      "title": "except Exception 缩减（第二批：media + memory + common + users 模块）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 10,
+      "estimated_lines_changed": 150,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#五#except Exception 143处"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/media/views.py",
+          "backend/apps/media/services/document_rag.py",
+          "backend/apps/media/services/document_cache.py",
+          "backend/apps/media/services/document.py",
+          "backend/apps/media/tasks.py",
+          "backend/apps/memory/services.py",
+          "backend/apps/memory/task_helpers.py",
+          "backend/apps/common/websocket_auth.py",
+          "backend/apps/users/views.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "审计 media（24 处）、memory（13 处）、common（15 处）、users（10 处）的 except Exception，同 batch-22 方法论。目标：62 处缩减到 ~25 处。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/ -v（全量回归）",
+          "grep -rc 'except Exception' backend/apps/ --include='*.py' | awk -F: '{s+=$2}END{print s}'（总数应 < 60）"
+        ],
+        "manual": [],
+        "metrics": [
+          "全项目 except Exception 从 143 处缩减到 < 60 处"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": ""
+    },
+    {
+      "id": "batch-24",
+      "type": "refactor",
+      "title": "DocumentParseService 兼容委托清理",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 3,
+      "estimated_lines_changed": 80,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#一#文档RAG#DocumentParseService兼容委托"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/media/services/document.py",
+          "backend/apps/media/services/document_cache.py",
+          "backend/tests/apps/graph/test_document_agent.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "清理 DocumentParseService（216 行）中的兼容委托代码，将纯核心逻辑与兼容层分离。使 parse_document 方法职责更单一。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/apps/graph/test_document_agent.py -v",
+          "pytest backend/tests/media/ -v"
+        ],
+        "manual": [
+          "上传 PDF 文件，确认解析流程正常"
+        ],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": ""
+    },
+    {
+      "id": "batch-25",
+      "type": "test",
+      "title": "低覆盖模块测试补全（consumer_inference 54% → 80%+）",
+      "priority": "P3",
+      "category": "test",
+      "estimated_files": 2,
+      "estimated_lines_changed": 200,
+      "depends_on": [
+        "batch-21"
+      ],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#四#consumer_inference 54%",
+        "legacy-and-debts#六#P3#consumer_inference测试"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/consumer_inference.py",
+          "backend/tests/voice/test_consumer_inference.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "为 consumer_inference.py（68 行）补充测试，覆盖 _start_voice_pipeline 的正常路径、barge-in 打断、异常处理路径。同时完善 API 契约文档化（docstring）。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/test_consumer_inference.py -v --cov=apps.voice.consumer_inference --cov-report=term-missing"
+        ],
+        "manual": [],
+        "metrics": [
+          "consumer_inference.py 覆盖率 > 80%"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "如果 batch-21 已覆盖部分测试，此 batch 仅补充剩余路径。"
+    },
+    {
+      "id": "batch-26",
+      "type": "test",
+      "title": "低覆盖模块测试补全（users/views 50% + voice_persist 66%）",
+      "priority": "P3",
+      "category": "test",
+      "estimated_files": 4,
+      "estimated_lines_changed": 350,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#四#users/views 50%",
+        "legacy-and-debts#四#voice_persist_service 66%",
+        "legacy-and-debts#六#P3#users/views测试",
+        "legacy-and-debts#六#P3#voice_persist测试"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/tests/users/test_views.py",
+          "backend/tests/voice/test_voice_persist_service.py",
+          "backend/apps/users/views.py",
+          "backend/apps/voice/services/voice_persist_service.py"
+        ],
+        "new_files": [
+          "backend/tests/users/test_views.py",
+          "backend/tests/voice/test_voice_persist_service.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "为 users/views.py（222 行/5 个视图类）和 voice_persist_service.py（143 行）补充测试。users/views 覆盖登录、注册、成员管理等核心路径。voice_persist 覆盖 ambient 持久化、record_only、超限清理。",
+      "investigation_steps": [],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/users/test_views.py -v --cov=apps.users.views --cov-report=term-missing",
+          "pytest backend/tests/voice/test_voice_persist_service.py -v --cov=apps.voice.services.voice_persist_service --cov-report=term-missing"
+        ],
+        "manual": [],
+        "metrics": [
+          "users/views.py 覆盖率 > 80%",
+          "voice_persist_service.py 覆盖率 > 80%",
+          "总体覆盖率 > 80%（从 79% 提升）"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": ""
+    }
+  ],
+  "phased_rollout": {
+    "phase_p0_day1_fix": [
+      "batch-01",
+      "batch-02",
+      "batch-03"
+    ],
+    "phase_p0_observability": [
+      "batch-04",
+      "batch-05",
+      "batch-06",
+      "batch-07"
+    ],
+    "phase_p1_voice_slo": [
+      "batch-08",
+      "batch-09",
+      "batch-10",
+      "batch-27"
+    ],
+    "phase_p1_other_perf": [
+      "batch-11",
+      "batch-12"
+    ],
+    "phase_p2_deadcode_shims": [
+      "batch-13",
+      "batch-14",
+      "batch-15",
+      "batch-16"
+    ],
+    "phase_p2_settings_split": [
+      "batch-17",
+      "batch-18"
+    ],
+    "phase_p2_voice_mixin": [
+      "batch-19",
+      "batch-20",
+      "batch-21"
+    ],
+    "phase_p2_except_reduce": [
+      "batch-22",
+      "batch-23"
+    ],
+    "phase_p2_doc_cleanup": [
+      "batch-24"
+    ],
+    "phase_p3_test_coverage": [
+      "batch-25",
+      "batch-26"
+    ]
+  },
+  "excluded_items": [
+    {
+      "item": "PostgreSQL schema 变更（如 Message 模型字段调整）",
+      "reason": "legacy-and-debts 第七节第 1 条"
+    },
+    {
+      "item": "SSE 事件格式变更",
+      "reason": "legacy-and-debts 第七节第 2 条"
+    },
+    {
+      "item": "SM3/SM4 加密方案调整",
+      "reason": "legacy-and-debts 第七节第 3 条"
+    },
+    {
+      "item": "引入 conversation_id / session_id",
+      "reason": "legacy-and-debts 第七节第 4 条 + CLAUDE.md 宪法禁止"
+    },
+    {
+      "item": "LangGraph / LangChain 版本升级",
+      "reason": "legacy-and-debts 第七节第 5 条"
+    },
+    {
+      "item": "前端技术栈迁移（Next.js/React/Zustand 版本）",
+      "reason": "legacy-and-debts 第七节第 6 条"
+    },
+    {
+      "item": "Docker 服务拓扑调整",
+      "reason": "legacy-and-debts 第七节第 7 条"
+    },
+    {
+      "item": "Gateway API 契约变更（ASR/TTS/声纹/文档解析接口格式）",
+      "reason": "legacy-and-debts 第七节第 8 条"
+    },
+    {
+      "item": "chat <-> graph 循环依赖的根本解法（提取 core_models app）",
+      "reason": "涉及模型迁移 + schema 变更，违反第 1 条禁区。通过 batch-16 types 迁移部分缓解"
+    },
+    {
+      "item": "ASR 流式 partial transcription（需 Gateway 侧支持）",
+      "reason": "Gateway 侧能力变更，违反第 8 条禁区。标注为 Open Question"
+    },
+    {
+      "item": "pgvector 索引优化（IVFFlat vs HNSW）",
+      "reason": "涉及 schema/索引变更，无紧迫性能证据"
+    },
+    {
+      "item": "前端 Zustand 5 个 store 边界重构",
+      "reason": "前端技术栈不动（第 6 条）"
+    },
+    {
+      "item": "23 个 Jinja2 模板渲染缓存",
+      "reason": "无性能证据（模板渲染 < 5ms），低优先级未被批准"
+    },
+    {
+      "item": "6 个 SubAgent 工具注册统一化",
+      "reason": "涉及 LangGraph 工具 API，未被批准"
+    }
+  ],
+  "pending_decisions": [
+    {
+      "id": "PD-1",
+      "question": "ambient 轻量 pipeline 是否需要记忆召回？历史保留几轮？决定 batch-08 的 prompt 设计。",
+      "blocks": [
+        "batch-08"
+      ],
+      "source": "03-call-chain-analysis#7#Q3"
+    },
+    {
+      "id": "PD-2",
+      "question": "Gateway TTS text.delta 接口的最小文本单元是什么？按句子/标点分割还是固定字符数？决定 batch-09 的 chunk 粒度。",
+      "blocks": [
+        "batch-09"
+      ],
+      "source": "03-call-chain-analysis#7#Q4"
+    },
+    {
+      "id": "PD-3",
+      "question": "voice 模块 3-Mixin 整理的目标形态：保持 Mixin + Protocol 约束？还是改为 Composition？决定 batch-19/20/21 的方向。",
+      "blocks": [
+        "batch-19"
+      ],
+      "source": "01-architecture-map#7#Q3"
+    },
+    {
+      "id": "PD-4",
+      "question": "voice_persist_service 7 处直接 ORM 应该统一经由 chat.repositories.message_repo，还是 voice 建自己的 repository 封装？",
+      "blocks": [],
+      "source": "01-architecture-map#7#Q5"
+    },
+    {
+      "id": "PD-5",
+      "question": "Redis 连接池切换是否影响 Channels DB3 的独立配置？需在 batch-11 实施前验证。",
+      "blocks": [
+        "batch-11"
+      ],
+      "source": "03-call-chain-analysis#7#Q6"
+    }
+  ]
+}
