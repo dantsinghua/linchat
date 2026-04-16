@@ -4,7 +4,11 @@
 .spec/
 
 # Claude Code
-.claude/
+# .claude/ (旧规则太粗,改为下面的精细规则)
+# .claude/ 项目级配置应该 commit
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/*.lock
 
 # PID files (services.sh)
 .pids/
@@ -78,3 +82,28 @@ backend/celerybeat-schedule.db
 # Server config / credentials (not for repo)
 frps.toml
 greydan.xin
+
+# OMC (oh my claude code) 工作目录
+.omc/
+**/.omc/
+
+# 临时测试文件
+pytest-of-*/
+*.bak-*
+*.bak
+**/quick_test.wav
+scripts/respeaker_bridge/quick_test.wav
+
+# 桌面文件
+2*.pdf
+
+# Skills（如果是个人级 skill 改为屏蔽；如果项目共享则注释掉这行）
+linchat-ops.skill
+
+# 运行时生成（不应入库）
+backend/celerybeat-schedule.db
+backend/celerybeat-schedule
+**/*.tsbuildinfo
+
+# Claude Code skills（个人级，不入库）
+.claude/skills/
