@@ -435,13 +435,16 @@ VOICE_VAD_THRESHOLD = float(os.getenv("VOICE_VAD_THRESHOLD", "0.5"))  # VAD 阈�
 VOICE_WAKE_WORD_FUZZY_THRESHOLD = float(os.getenv("VOICE_WAKE_WORD_FUZZY_THRESHOLD", "0.8"))  # 唤醒词拼音模糊匹配阈值
 
 # 环境语音模式 (014-jarvis-ambient-voice)
-VOICE_AMBIENT_AGGREGATE_TIMEOUT = float(os.getenv("VOICE_AMBIENT_AGGREGATE_TIMEOUT", "3.0"))  # 话语聚合静默超时（秒）
+VOICE_AMBIENT_AGGREGATE_TIMEOUT = float(os.getenv("VOICE_AMBIENT_AGGREGATE_TIMEOUT", "1.5"))  # 话语聚合静默超时（秒）(3.0→1.5, 加快响应)
 VOICE_AMBIENT_MAX_BUFFER_SIZE = int(os.getenv("VOICE_AMBIENT_MAX_BUFFER_SIZE", "10"))  # 聚合缓冲区最大话语数
 VOICE_AMBIENT_SESSION_TTL = int(os.getenv("VOICE_AMBIENT_SESSION_TTL", "3600"))  # ambient 会话 TTL: 3600s (1h)
 VOICE_AMBIENT_RECORD_ONLY_LIMIT = int(os.getenv("VOICE_AMBIENT_RECORD_ONLY_LIMIT", "20"))  # RECORD_ONLY 消息保留上限
 VOICE_DECISION_USE_LLM = os.getenv("VOICE_DECISION_USE_LLM", "true").lower() == "true"  # 是否启用 LLM 意图分类 (016: 默认开启)
 VOICE_DECISION_LLM_THRESHOLD = float(os.getenv("VOICE_DECISION_LLM_THRESHOLD", "0.75"))  # LLM 分类置信度阈值 (0.6→0.75, 减少 ambient 误触发)
-VOICE_DECISION_LLM_TIMEOUT = float(os.getenv("VOICE_DECISION_LLM_TIMEOUT", "5.0"))  # LLM 分类超时（秒）(016: 1s→5s，宪法豁免)
+VOICE_DECISION_LLM_TIMEOUT = float(os.getenv("VOICE_DECISION_LLM_TIMEOUT", "2.0"))  # LLM 分类超时（秒）(5.0→2.0, 加快响应)
+
+# 说话人识别 (017-ambient-speaker-id)
+VOICE_SPEAKER_IDENTIFICATION_ENABLED = os.getenv("VOICE_SPEAKER_IDENTIFICATION_ENABLED", "false").lower() == "true"
 
 # 声纹 diarize 配置（多说话人识别与过滤）
 VOICE_SPEAKER_MIN_AUDIO_SECONDS = float(os.getenv("VOICE_SPEAKER_MIN_AUDIO_SECONDS", "1.0"))

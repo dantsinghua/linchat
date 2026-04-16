@@ -790,6 +790,8 @@ ss -tlnp | grep -E '(3784|8002|8080|5432|6379)'
 ## Active Technologies
 - Python 3.12（桥接服务复用 LinChat 虚拟环境依赖） + websockets（WebSocket 客户端）、asyncio（异步事件循环）、struct（音频格式转换） (016-respeaker-wifi-ambient)
 - 无新增存储，复用现有 PostgreSQL（RegisteredDevice）+ Redis（会话状态） (016-respeaker-wifi-ambient)
+- Python 3.12 (backend), TypeScript 5.0+ (frontend) + Django 4.2+, DRF, Channels 4.0+, httpx (Gateway HTTP), Zustand (frontend state) (017-ambient-speaker-id)
+- PostgreSQL (Message.speaker_id, SpeakerProfile), Redis (TTS 状态标记, 临时标签映射, PCM 音频缓存) (017-ambient-speaker-id)
 
 ## Recent Changes
 - 016-respeaker-wifi-ambient: Added Python 3.12（桥接服务复用 LinChat 虚拟环境依赖） + websockets（WebSocket 客户端）、asyncio（异步事件循环）、struct（音频格式转换）

@@ -8,7 +8,7 @@
 
 | App | 关键模型 | 说明 |
 |-----|----------|------|
-| `chat` | Message, LangGraphExecution | 消息收发、SSE 流式响应（ASGI 异步）、生成控制（停止/恢复/重连） |
+| `chat` | Message, LangGraphExecution | 消息收发、SSE 流式响应（ASGI 异步）、生成控制（停止/恢复/重连）、历史消息排除限流 |
 | `common` | 无 | Token 中间件、WebSocket 认证、异常体系、响应格式、SSE 事件（Redis Pub/Sub）、Gateway 调用（Langfuse 单例）、Rate Limiter、MinIO 存储封装（storage/）、异步任务工具（async_utils） |
 | `context` | 无 | Prompt 构建（PromptBuilder + builder_helpers）、上下文裁剪（Trimmer）、Token 预算管理、监控 API（ContextMonitor）、23 个 Jinja2 模板 |
 | `graph` | 无 | LangGraph Agent 创建/执行（AgentService）、6 个 SubAgent（搜索/记忆/代码/HA/多模态/文档）、多模态直连推理、推理取消（InferenceService）、GPU 锁互斥 |
@@ -16,7 +16,7 @@
 | `memory` | UserMemory, UserMemoryEmbedding | 用户记忆 CRUD、pgvector 混合搜索（0.7 向量 + 0.3 关键词）、Embedding 生成、每日/每月总结、GPU 互斥（task_helpers） |
 | `models` | ModelConfig | LLM 模型配置（tool/multimodal/embedding）CRUD、SM4 加密密钥、活跃模型查询、API Key 三态处理 |
 | `users` | SysUser | 验证码、登录/登出、Token 鉴权（httpOnly Cookie）、SSO 冲突、SM3/SM4 加密、家庭成员管理（member_service）、访客过期清理 |
-| `voice` | SpeakerProfile, RegisteredDevice, VoiceSettings | WebSocket 语音流 -> ASR 流式转录 -> Agent Pipeline -> TTS 流式合成、声纹注册/识别、设备管理、ambient 环境监听（014）、响应决策 |
+| `voice` | SpeakerProfile, RegisteredDevice, VoiceSettings | WebSocket 语音流 -> ASR 流式转录 -> Agent Pipeline（纯口语 Prompt）-> TTS 流式合成、声纹注册/识别、设备管理、ambient 环境监听（014，VAD 不触发 active_conv + ASR 自动重连）、响应决策 |
 | `agent` | 无 | Prompt 模板目录（fallback_router.j2 拒识兜底与功能推荐） |
 
 ---
@@ -44,7 +44,7 @@ voice（独立 WebSocket 入口，依赖 graph/chat/media/users）
 | 文件 | 职责 |
 |------|------|
 | `models.py` | Message（status 0-3）+ LangGraphExecution；从 media 导入 MediaAttachment（兼容层） |
-| `views.py` | 6 个端点：chat(SSE)/messages/generating/stop/resume/reconnect；使用 `request.target_user_id`（015 多用户） |
+| `views.py` | 6 个端点：chat(SSE)/messages（排除限流）/generating/stop/resume/reconnect；使用 `request.target_user_id`（015 多用户） |
 | `urls.py` | 6 条路由（chat 核心路由） |
 | `serializers.py` | ChatRequest/HistoryQuery/MessageResponse/RequestId 序列化器 |
 | `repositories.py` | MessageRepository + ExecutionRepository |
@@ -164,7 +164,7 @@ voice（独立 WebSocket 入口，依赖 graph/chat/media/users）
 | 文件 | 职责 |
 |------|------|
 | `consumers.py` | VoiceConsumer 骨架（3 Mixin 组装 + connect/disconnect/receive + 设备 Token 认证 + TTS Channels 分组） |
-| `consumer_events.py` | EventMixin — ASR 事件分发 + ambient 分支（停止词预检 + 聚合器路由） |
+| `consumer_events.py` | EventMixin — ASR 事件分发 + ambient 分支（VAD 跳过 active_conv + 停止词预检 + 聚合器路由 + ASR 错误重连） |
 | `consumer_inference.py` | InferenceMixin — VoicePipeline 后台启动、空闲超时（ambient 跳过） |
 | `consumer_session.py` | SessionMixin — ASR 连接/配置/断开、语音段超时、ambient 聚合初始化 + ASR 自动重连 |
 | `models.py` | SpeakerProfile / RegisteredDevice / VoiceSettings |
@@ -177,7 +177,7 @@ voice（独立 WebSocket 入口，依赖 graph/chat/media/users）
 | `services/tts_stream_client.py` | TTSStreamClient（Gateway TTS 流式合成） |
 | `services/tts_pipeline_manager.py` | TTS 管道管理（安慰语音、队列、cancel） |
 | `services/tts_router.py` | TTSRouter（group_send 跨设备 TTS 广播） |
-| `services/voice_pipeline.py` | VoicePipeline 编排（ASR -> Agent -> TTS） |
+| `services/voice_pipeline.py` | VoicePipeline 编排（ASR -> 纯口语 Prompt -> Agent -> TTS，barge-in 超时跳过） |
 | `services/voice_persist_service.py` | 音频持久化 + `record_only_ambient()` |
 | `services/voice_session_service.py` | Redis 会话管理 + 频率限制 |
 | `services/voice_settings_service.py` | 语音设置 CRUD |
@@ -192,3 +192,8 @@ voice（独立 WebSocket 入口，依赖 graph/chat/media/users）
 | 文件 | 职责 |
 |------|------|
 | `prompts/fallback_router.j2` | 拒识兜底与功能推荐 Prompt 模板 |
+
+
+<claude-mem-context>
+
+</claude-mem-context>

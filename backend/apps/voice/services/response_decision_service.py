@@ -1,5 +1,6 @@
 import json as json_module
 import logging
+from difflib import SequenceMatcher
 from enum import Enum
 from typing import Optional
 
@@ -16,11 +17,16 @@ EMERGENCY_STOP_WORDS = {"停", "取消", "闭嘴", "停止", "别说了"}
 QUESTION_PARTICLES = {"吗", "呢", "吧", "么"}
 QUESTION_WORDS = {"什么", "怎么", "哪", "谁", "为什么", "怎样", "如何", "多少", "几"}
 
+_TTS_PLAYING_KEY = "voice:tts_playing:{user_id}"
+_TTS_HISTORY_KEY = "voice:tts_history:{user_id}"
+_TTS_ECHO_SIMILARITY_THRESHOLD = 0.7
+
 
 class DecisionResult(Enum):
     RESPOND = "RESPOND"
     RECORD_ONLY = "RECORD_ONLY"
     STOP = "STOP"
+    DISCARD = "DISCARD"
 
 
 class ResponseDecisionService:
@@ -31,6 +37,9 @@ class ResponseDecisionService:
         text = transcription_text.strip()
         if not text:
             return DecisionResult.RECORD_ONLY, "empty_text"
+        # Level 0: TTS echo 过滤 — 防止 AI 自身语音被麦克风采集后再次触发响应
+        if await self._is_tts_echo(text, user_id):
+            return DecisionResult.DISCARD, "tts_echo_detected"
         if self._check_emergency_stop(text):
             return DecisionResult.STOP, "emergency_stop"
         wake_words = await self._load_wake_words(user_id)
@@ -81,8 +90,10 @@ class ResponseDecisionService:
                     json={"model": model_config["name"], "messages": [{"role": "user", "content": prompt}],
                           "response_format": {"type": "json_object"}, "temperature": 0.1, "max_tokens": 100})
                 resp.raise_for_status()
-            result = json_module.loads(resp.json()["choices"][0]["message"]["content"])
-            decision = DecisionResult.RESPOND if result.get("decision", "").upper() == "RESPOND" else DecisionResult.RECORD_ONLY
+            result = json_module.loads(resp.json()["choices"][0]["message"]["content"], strict=False)
+            raw_decision = result.get("decision", "")
+            decision_str = raw_decision if isinstance(raw_decision, str) else ""
+            decision = DecisionResult.RESPOND if decision_str.upper() == "RESPOND" else DecisionResult.RECORD_ONLY
             return decision, result.get("reason", "unknown"), float(result.get("confidence", 0.0))
         except httpx.TimeoutException:
             # 超时时安全降级为 RECORD_ONLY，避免穿透到规则链误触发 RESPOND
@@ -156,6 +167,40 @@ class ResponseDecisionService:
             return count
         except Exception:
             return 0
+
+    async def _is_tts_echo(self, text: str, user_id: int) -> bool:
+        """检测转录文本是否为 TTS 自身输出的回声。
+
+        策略 1: Redis voice:tts_playing:{user_id} 存在 → TTS 正在播放 → 立即判定为 echo。
+        策略 2: 从 voice:tts_history:{user_id} 取最近 10 条历史，任意一条与 text
+                的 SequenceMatcher ratio > 0.7 → 判定为 echo。
+
+        Args:
+            text: 已转录的文本。
+            user_id: 用户 ID。
+
+        Returns:
+            True 表示检测到 TTS echo，应丢弃该转录。
+        """
+        try:
+            r = await get_redis()
+            playing_key = _TTS_PLAYING_KEY.format(user_id=user_id)
+            if await r.exists(playing_key):
+                logger.debug("TTS echo detected (playing): user=%s, text=%s", user_id, text[:30])
+                return True
+            history_key = _TTS_HISTORY_KEY.format(user_id=user_id)
+            history: list[str] = await r.lrange(history_key, 0, 9)
+            for tts_text in history:
+                ratio = SequenceMatcher(None, text, tts_text).ratio()
+                if ratio > _TTS_ECHO_SIMILARITY_THRESHOLD:
+                    logger.debug(
+                        "TTS echo detected (history): user=%s, ratio=%.2f, text=%s",
+                        user_id, ratio, text[:30],
+                    )
+                    return True
+        except Exception:
+            logger.debug("TTS echo check failed (ignored): user=%s", user_id, exc_info=True)
+        return False
 
 
 def _edit_distance(s1: str, s2: str) -> int:

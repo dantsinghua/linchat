@@ -11,7 +11,7 @@
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `consumers.py` | 162 | VoiceConsumer 骨架（Mixin 组装 + connect/disconnect/receive + 设备 Token 认证 + WS 连接频率限制 + TTS Channels 分组管理 + `tts_audio_frame`/`tts_control` group handler + `force_disconnect` 设备独占踢出 + ambient 连接注销） |
-| `consumer_events.py` | 130 | EventMixin — ASR 事件分发：vad.speech_start/end、transcription.completed/failed、error → 前端协议翻译；**ambient 分支**: `_handle_ambient_transcription()` 停止词预检 + 聚合器路由 + `aggregation.utterance_added` 事件；diarize 功能已废弃（DEPRECATED） |
+| `consumer_events.py` | 135 | EventMixin — ASR 事件分发：vad.speech_start/end、transcription.completed/failed、error → 前端协议翻译；**ambient 分支**: vad_speech_start 跳过 `set_active_conversation`（避免环境对话误触发 RESPOND）+ `_handle_ambient_transcription()` 停止词预检 + 聚合器路由 + `aggregation.utterance_added` 事件 + 不可恢复 ASR 错误先尝试重连再关闭；diarize 功能已废弃（DEPRECATED） |
 | `consumer_inference.py` | 68 | InferenceMixin — VoicePipeline 后台启动（voice_chat/ambient）、空闲超时循环（**ambient 模式跳过**）；精简 docstring 和格式 |
 | `consumer_session.py` | 248 | SessionMixin — ASRStreamClient 连接/配置/断开、cancel、音频帧转发、语音段超时定时器；**ambient**: UtteranceAggregator 初始化 + `_on_utterance_aggregated()` 聚合回调 + `_reconnect_asr()` ASR 自动重连 + `_handle_asr_failure()` 统一 ASR 失败处理 + **设备独占检查**（`_check_device_exclusive` / `_register_ambient_connection` / `_unregister_ambient_connection`） |
 | `models.py` | 87 | SpeakerProfile / RegisteredDevice / VoiceSettings（新增 tts_output_device + ha_speaker_entity_id） |
@@ -30,7 +30,7 @@ VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketConsumer)
 ```
 
 - **SessionMixin** (`consumer_session.py`): ASRStreamClient 连接/配置/断开、response.cancel → VoicePipeline.cancel()、音频帧转发 + PCM 缓存、语音段超时保护（VOICE_MAX_SEGMENT_DURATION → ASR commit）；**ambient 模式**: UtteranceAggregator 初始化 + `_on_utterance_aggregated()` 聚合回调（aggregation.completed → decision.result → RESPOND/RECORD_ONLY 路由）+ `_reconnect_asr()` ASR 断连自动重连（最多 3 次，间隔 2s）+ **设备独占检查**（`_check_device_exclusive`：设备连接优先于浏览器，踢掉旧连接通过 `force_disconnect` channel_layer 回调）+ Redis 连接注册/注销（`voice:ambient_conn:{uid}`）
-- **EventMixin** (`consumer_events.py`): Gateway ASR 事件 → 前端协议翻译（vad.speech_start/end、transcription.complete/failed、error），transcription.completed 触发：voice_chat → InferenceMixin._start_voice_pipeline()；**ambient → `_handle_ambient_transcription()`（停止词预检 + aggregator.add + aggregation.utterance_added 事件）**；diarize 功能已废弃（DEPRECATED），所有 ambient 走 `_legacy_aggregate` 流程
+- **EventMixin** (`consumer_events.py`): Gateway ASR 事件 → 前端协议翻译（vad.speech_start/end、transcription.complete/failed、error），**ambient 模式 vad_speech_start 跳过 `set_active_conversation`**（仅 AI 真正回复时设置，避免环境对话误触发 RESPOND），transcription.completed 触发：voice_chat → InferenceMixin._start_voice_pipeline()；**ambient → `_handle_ambient_transcription()`（停止词预检 + aggregator.add + aggregation.utterance_added 事件）**；**不可恢复 ASR 错误 ambient 模式先 `_reconnect_asr()` 尝试重连**；diarize 功能已废弃（DEPRECATED），所有 ambient 走 `_legacy_aggregate` 流程
 - **InferenceMixin** (`consumer_inference.py`): VoicePipeline.run_pipeline() 后台 asyncio.Task 启动，15 秒周期空闲超时检查（VOICE_IDLE_TIMEOUT）；**ambient 模式直接跳过空闲超时**
 
 ---
@@ -151,3 +151,15 @@ pytest tests/voice/test_response_decision.py -v  # 决策链
 | `test_repositories.py` | repositories.py（Repository CRUD） |
 | `test_views.py` | views.py（REST API、权限、验证） |
 | `test_latency_benchmark.py` | 性能基准（延迟测试） |
+
+
+<claude-mem-context>
+# Recent Activity
+
+### Mar 7, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1590 | 12:51 AM | 🔵 | LinChat Voice Consumer Session Management | ~719 |
+| #1579 | 12:45 AM | 🔵 | LinChat Existing Voice Consumer Architecture | ~608 |
+</claude-mem-context>

@@ -42,7 +42,7 @@
 | 方法 | 路径 | 视图类型 | 说明 |
 |------|------|---------|------|
 | POST | `/api/v1/chat/` | ASGI 异步 | 发送消息，返回 SSE 流（含多模态限流） |
-| GET | `/api/v1/chat/messages/` | DRF | 历史消息（游标分页，prefetch attachments） |
+| GET | `/api/v1/chat/messages/` | DRF | 历史消息（游标分页，prefetch attachments，`@throttle_classes([])` 排除全局限流） |
 | GET | `/api/v1/chat/generating/` | DRF | 获取当前生成中的 assistant 消息 |
 | POST | `/api/v1/chat/stop/` | DRF | 停止生成（signal_stop） |
 | POST | `/api/v1/chat/resume/` | ASGI 异步 | 恢复中断的生成（STATUS_INTERRUPTED -> AgentService.resume） |

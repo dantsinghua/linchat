@@ -9,7 +9,7 @@
 | 文件 | 覆盖模块 | 测试函数数 |
 |------|----------|-----------|
 | `test_asr_stream_client.py` | ASRStreamClient(BaseWSClient) — 连接/配置/PCM 帧转发/事件回调/断开 | 9 |
-| `test_consumers.py` | VoiceConsumer — Cookie/Token 认证、session.configure、Binary 帧透传、ASR 事件翻译、session.close/disconnect 清理、response.cancel、SESSION_CONFLICT、频率限制、ASR 断开处理 | 32 |
+| `test_consumers.py` | VoiceConsumer — Cookie/Token 认证、session.configure、Binary 帧透传、ASR 事件翻译（ambient vad_speech_start 跳过 set_active_conversation）、session.close/disconnect 清理、response.cancel、SESSION_CONFLICT、频率限制、ASR 断开处理（ambient 模式自动重连） | 32 |
 | `test_coverage_boost.py` | 补充覆盖率 — voice_messages.build_agent_error 分支、ws_client_base cleanup/receive_loop 分支、tts_pipeline_manager cancel/shutdown/play/drain 分支、voice_session_service.add_recent_speaker、tts_router.send_warning + HA 音箱非预期响应 | 35 |
 | `test_device_exclusive.py` | SessionMixin._check_device_exclusive — 设备阻止浏览器/设备踢浏览器/浏览器间无独占/设备间踢换/断开注销/TTL | 11 |
 | `test_device_service.py` | DeviceService — 设备注册/撤销/Token 认证/SM4 加密（UUID + token_prefix） | 40 |
@@ -85,3 +85,8 @@ pytest tests/voice/test_latency_benchmark.py -v  # 延迟基准（标记 @pytest
 13. `test_coverage_boost.py` 跨多个服务补充覆盖率缺失行（voice_messages/ws_client_base/tts_pipeline_manager/voice_session_service/tts_router）
 14. `test_voice_pipeline_tts.py` mock TTSRouter.send_to_ha_speaker，3 个测试类覆盖 browser 跳过/ha_speaker 调用/降级
 15. 异步测试使用 `pytest-asyncio`（`@pytest.mark.asyncio`）
+
+
+<claude-mem-context>
+
+</claude-mem-context>

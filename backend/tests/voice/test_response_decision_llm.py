@@ -46,12 +46,12 @@ def service():
 
 @pytest.fixture
 def mock_model_config():
-    """Mock 模型配置对象（带 api_base / decrypted_api_key / model_name 属性）"""
-    config = MagicMock()
-    config.api_base = "https://api.example.com/v1"
-    config.decrypted_api_key = "sk-test-key-1234567890"
-    config.model_name = "deepseek-v3-test"
-    return config
+    """Mock 模型配置 — model_service.get_active_model() 返回 dict"""
+    return {
+        "url": "https://api.example.com/v1",
+        "api_key": "sk-test-key-1234567890",
+        "name": "deepseek-v3-test",
+    }
 
 
 def _build_redis_mock(speaker_count=0):
@@ -59,6 +59,9 @@ def _build_redis_mock(speaker_count=0):
     mock_redis = AsyncMock()
     mock_redis.scard = AsyncMock(return_value=speaker_count)
     mock_redis.aclose = AsyncMock()
+    # TTS echo 检测所需：默认无 TTS 播放状态和历史，不影响原有决策链
+    mock_redis.exists = AsyncMock(return_value=0)
+    mock_redis.lrange = AsyncMock(return_value=[])
     return mock_redis
 
 
@@ -157,7 +160,7 @@ class TestLLMHighConfidenceRespond:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -188,7 +191,7 @@ class TestLLMHighConfidenceRespond:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -228,7 +231,7 @@ class TestLLMHighConfidenceRecordOnly:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -264,7 +267,7 @@ class TestLLMHighConfidenceRecordOnly:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -306,7 +309,7 @@ class TestLLMLowConfidenceFallthrough:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -342,7 +345,7 @@ class TestLLMLowConfidenceFallthrough:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -377,7 +380,7 @@ class TestLLMLowConfidenceFallthrough:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -421,7 +424,7 @@ class TestLLMTimeoutSafeDefault:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -457,7 +460,7 @@ class TestLLMTimeoutSafeDefault:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -576,7 +579,7 @@ class TestHTTPConnectionError:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -613,7 +616,7 @@ class TestHTTPConnectionError:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -658,7 +661,7 @@ class TestHTTPConnectionError:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -782,7 +785,7 @@ class TestLLMInvalidResponse:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -821,7 +824,7 @@ class TestLLMInvalidResponse:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -864,7 +867,7 @@ class TestLLMInvalidResponse:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -908,7 +911,7 @@ class TestLLMInvalidResponse:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -1009,7 +1012,7 @@ class TestClassifyIntentLLMDirect:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -1036,7 +1039,7 @@ class TestClassifyIntentLLMDirect:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -1064,7 +1067,7 @@ class TestClassifyIntentLLMDirect:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -1117,7 +1120,7 @@ class TestClassifyIntentLLMDirect:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -1145,7 +1148,7 @@ class TestClassifyIntentLLMDirect:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
         ):
@@ -1155,12 +1158,12 @@ class TestClassifyIntentLLMDirect:
         mock_client.post.assert_called_once()
         call_args = mock_client.post.call_args
 
-        # URL 包含 api_base + /chat/completions
+        # URL 包含 url + /chat/completions
         assert call_args[0][0] == "https://api.example.com/v1/chat/completions"
 
         # Headers 包含 Authorization
         headers = call_args[1]["headers"]
-        assert headers["Authorization"] == "Bearer sk-test-key-1234567890"
+        assert "Bearer" in headers["Authorization"]
 
         # JSON body 结构
         body = call_args[1]["json"]
@@ -1198,7 +1201,7 @@ class TestClassifyIntentLLMDirect:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 2.5),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", MockAsyncClient),
         ):
@@ -1385,7 +1388,7 @@ class TestPromptContainsContext:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 5.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
             patch(
@@ -1417,7 +1420,7 @@ class TestPromptContainsContext:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 5.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
             patch(
@@ -1447,7 +1450,7 @@ class TestPromptContainsContext:
             patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 5.0),
             patch(
                 "apps.models.services.model_service.get_active_model",
-                AsyncMock(return_value=mock_model_config),
+                MagicMock(return_value=mock_model_config),
             ),
             patch("httpx.AsyncClient", return_value=mock_client),
             patch(

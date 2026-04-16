@@ -8,6 +8,13 @@ import { create } from 'zustand';
 
 import type { VoiceSessionState, RecordingMode, VoiceSettings } from '@/types/voice';
 
+export interface SpeakerInfo {
+  userId: number | null;
+  label: string;
+  avatarUrl?: string;
+  isIdentified: boolean;
+}
+
 interface VoiceState {
   // 语音模式开关
   voiceMode: boolean;
@@ -29,6 +36,8 @@ interface VoiceState {
   currentSpeakerId: string | null;
   // 用户是否已注册声纹
   hasSpeakerProfile: boolean;
+  // 说话人映射 (segment_id → speaker info) (017-ambient-speaker-id)
+  speakerMap: Record<string, SpeakerInfo>;
 
   // Actions
   setVoiceMode: (enabled: boolean) => void;
@@ -41,6 +50,7 @@ interface VoiceState {
   setIsConnected: (connected: boolean) => void;
   setCurrentSpeakerId: (speakerId: string | null) => void;
   setHasSpeakerProfile: (has: boolean) => void;
+  setSpeakerInfo: (segmentId: string, info: SpeakerInfo) => void;
   reset: () => void;
 }
 
@@ -55,6 +65,7 @@ const initialState = {
   isConnected: false,
   currentSpeakerId: null as string | null,
   hasSpeakerProfile: false,
+  speakerMap: {} as Record<string, SpeakerInfo>,
 };
 
 export const useVoiceStore = create<VoiceState>((set) => ({
@@ -70,5 +81,8 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   setIsConnected: (connected) => set({ isConnected: connected }),
   setCurrentSpeakerId: (speakerId) => set({ currentSpeakerId: speakerId }),
   setHasSpeakerProfile: (has) => set({ hasSpeakerProfile: has }),
+  setSpeakerInfo: (segmentId, info) => set((state) => ({
+    speakerMap: { ...state.speakerMap, [segmentId]: info },
+  })),
   reset: () => set(initialState),
 }));

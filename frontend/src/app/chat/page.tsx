@@ -271,6 +271,7 @@ export default function ChatPage() {
             hasMore={hasMore}
             onLoadMore={loadMore}
             onResume={resume}
+            username={targetUsername ?? user?.username}
           />
 
           {/* 输入框 / 语音面板 + 状态条 */}
