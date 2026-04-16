@@ -1,0 +1,106 @@
+{
+  "timestamp": "20260416-174209",
+  "samples": 20,
+  "n_requested": 20,
+  "log_file": "/tmp/linchat-backend.log",
+  "pipeline_ms": {
+    "p25": 7589,
+    "p50": 10828,
+    "p75": 17231,
+    "max": 50517,
+    "min": 6689
+  },
+  "pipeline_s": {
+    "p25": 7.6,
+    "p50": 10.8,
+    "p75": 17.2,
+    "max": 50.5,
+    "min": 6.7
+  },
+  "breakdown_ms": {
+    "llm_inference": {
+      "p25": 5764,
+      "p50": 8149,
+      "p75": 13401,
+      "max": 47050,
+      "min": 4655
+    },
+    "tts_synthesis": {
+      "p25": 1291,
+      "p50": 2186,
+      "p75": 3969,
+      "max": 5787,
+      "min": 887
+    },
+    "ha_dispatch": {
+      "p25": 348,
+      "p50": 359,
+      "p75": 384,
+      "max": 414,
+      "min": 292
+    }
+  },
+  "breakdown_s": {
+    "llm_inference": {
+      "p25": 5.8,
+      "p50": 8.1,
+      "p75": 13.4,
+      "max": 47.0,
+      "min": 4.7
+    },
+    "tts_synthesis": {
+      "p25": 1.3,
+      "p50": 2.2,
+      "p75": 4.0,
+      "max": 5.8,
+      "min": 0.9
+    },
+    "ha_dispatch": {
+      "p25": 0.3,
+      "p50": 0.4,
+      "p75": 0.4,
+      "max": 0.4,
+      "min": 0.3
+    }
+  },
+  "slo_target_s": 5.0,
+  "slo_met": false,
+  "recent_samples": [
+    {
+      "time": "15:47:21",
+      "total_s": 10.4,
+      "llm_s": 8.7,
+      "tts_s": 1.4,
+      "ha_s": 0.4
+    },
+    {
+      "time": "15:48:14",
+      "total_s": 11.2,
+      "llm_s": 9.6,
+      "tts_s": 1.3,
+      "ha_s": 0.4
+    },
+    {
+      "time": "16:49:30",
+      "total_s": 50.5,
+      "llm_s": 47.0,
+      "tts_s": 3.1,
+      "ha_s": 0.4
+    },
+    {
+      "time": "16:50:34",
+      "total_s": 6.7,
+      "llm_s": 5.3,
+      "tts_s": 1.1,
+      "ha_s": 0.3
+    },
+    {
+      "time": "16:52:04",
+      "total_s": 7.7,
+      "llm_s": 6.2,
+      "tts_s": 1.2,
+      "ha_s": 0.4
+    }
+  ],
+  "notes": "延迟不含聚合等待(~3s)和 ASR 时间(~1s)，实际端到端再加 ~4s。"
+}
