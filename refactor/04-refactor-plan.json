@@ -4,7 +4,7 @@
     "generated_by": "refactor-planner-v2",
     "project": "linchat",
     "scope": "backend-only (+ 2 frontend dead file deletions)",
-    "total_batches": 27,
+    "total_batches": 28,
     "total_estimated_sessions": 29,
     "source_inputs": [
       "docs/legacy-and-debts.md",
@@ -102,7 +102,8 @@
         "files_touched": [
           "backend/tests/chat/test_media_cleanup_task.py",
           "backend/tests/memory/test_models.py",
-          "backend/tests/memory/test_tasks.py"
+          "backend/tests/memory/test_tasks.py",
+          "backend/apps/voice/consumer_session.py"
         ],
         "new_files": [],
         "forbidden_zones_crossed": false
@@ -124,7 +125,7 @@
       "risk": "low",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "test_media_cleanup_task 227 行、test_models 111 行、test_tasks 508 行，改动集中在 setUp/fixture 层。"
+      "notes": "test_media_cleanup_task 227 行、test_models 111 行、test_tasks 508 行，改动集中在 setUp/fixture 层。\n追加任务(2026-04-17): ASR WebSocket 重连竞态修复 — linchat 侧 ASR 断连重连时，旧会话未完全关闭就创建新会话，导致短暂出现两个 ASR 会话。需在 consumer_session.py _reconnect_asr() 中确保旧 ASR 会话完全关闭后再建新的。周期性断连(约6-8分钟一次)的根因也需排查。"
     },
     {
       "id": "batch-03",
@@ -1282,11 +1283,57 @@
       "estimated_sessions": 1,
       "blocking_for_production": false,
       "notes": ""
+    },
+    {
+      "id": "batch-01b",
+      "type": "fix",
+      "title": "声纹识别真实 bug 修复（延续 batch-01）",
+      "priority": "P0-followup",
+      "category": "bug-fix",
+      "estimated_files": 3,
+      "estimated_lines_changed": 50,
+      "depends_on": [
+        "batch-01"
+      ],
+      "pre_approved_by_user": true,
+      "blocked_by": [
+        "Gateway (frpc tunnel) 需要恢复在线",
+        "需要录制至少 2 个真实家庭成员的声纹样本"
+      ],
+      "investigation_steps": [
+        "注册 dantsinghua 3 段不同设备的音频到 SpeakerProfile",
+        "测试本人录音 confidence (预期 > threshold)",
+        "录家人音频测试 identified=false 是否正确触发 unknown 分支",
+        "前端手动验证: 不同人的消息显示不同 speaker"
+      ],
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/speaker_service.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "batch-01 完成了全链路代码修复（VO/Serializer/前端/决策逻辑），但 Gateway 声纹模型无法识别已注册用户（conf 全低于阈值）。本 batch 在 Gateway 模型修复后执行 E2E 验证。",
+      "validation": {
+        "automated": [],
+        "manual": [
+          "dantsinghua 本人录音: identified=true, conf > threshold",
+          "家人录音: identified=false, 前端显示灰色数字头像",
+          "前端不同消息显示不同 speaker_id"
+        ],
+        "metrics": []
+      },
+      "rollback_strategy": "单 commit revert",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "阻塞条件解除前不启动本 batch"
     }
   ],
   "phased_rollout": {
     "phase_p0_day1_fix": [
       "batch-01",
+      "batch-01b",
       "batch-02",
       "batch-03"
     ],
