@@ -1,0 +1,26 @@
+# Batch batch-03 Progress
+# Type: fix | Priority: P0-Day1 | Risk: low
+# Title: 修复失败测试（第二批：断言更新 — 1 个）
+
+## Phase 2a: Initializer
+- Started: 2026-04-17
+- Plan generated: refactor/batches/batch-03-plan.md
+- Target file: backend/tests/apps/graph/test_document_agent.py
+- Target test: TestDocumentParseSSEProgress::test_sse_incomplete_flow (line 313-335)
+- Root cause confirmed: 测试 mock progress=8/10 触发业务代码 "INCOMPLETE but progressing" 续轮询分支
+  (document_parse_helpers.py:92-96)，最终在 max_wait=900s 超时，返回 "解析超时（900秒）"，
+  与断言 "部分解析" 不匹配。业务代码行为正确（修复 incomplete early-break bug，commit 7bbbf3a），
+  应只修改测试 mock。
+- Fix: 将 mock_poll.return_value 的 progress 从 {"current":8,"total":10} 改为 {"current":10,"total":10}，
+  触发 INCOMPLETE (final) break 分支（L97-100），进入 L109-123 部分结果获取路径，产生 "部分解析"。
+- Bonus: 删除 unused `import pytest`（ruff F401）。
+- Blockers: 无
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor
+- (尚未开始)
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: PLAN_READY
