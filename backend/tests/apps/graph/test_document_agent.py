@@ -7,8 +7,6 @@ Document SubAgent 工具单元测试 (011-document-subagent-rag T023)
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from tests.helpers import run_async
 
 
@@ -323,7 +321,9 @@ class TestDocumentParseSSEProgress:
 
         mock_uuids.return_value = [_make_attachment()]
         mock_parse.return_value = {"task_id": "task-inc"}
-        mock_poll.return_value = {"status": "incomplete", "progress": {"current": 8, "total": 10}, "suggestion": "建议拆分文档", "error_message": None}
+        # current==total → 触发 "INCOMPLETE (final)" 分支（document_parse_helpers.py:97-100），
+        # 而非 "INCOMPLETE but progressing" 的 continue 分支（L92-96）
+        mock_poll.return_value = {"status": "incomplete", "progress": {"current": 10, "total": 10}, "suggestion": "建议拆分文档", "error_message": None}
         mock_result.return_value = "# Partial Content"
 
         result = run_async(document_parse.ainvoke({"task": "解析"}, config=_config(uuids=["uuid-1"])))
