@@ -36,9 +36,14 @@ INVESTIGATION:
   - Gateway identify 5 段真实录音: 全部 identified=false, conf=[-0.11, 0.26]
   - Gateway 声纹模型无法识别已注册用户（模型质量问题，非 LinChat 代码问题）
 
-PENDING (batch-01b):
+BATCH-01B (17b2f35):
+  - API 契约重设计: identify_from_pcm 传 candidate_speaker_ids，去掉 identified
+  - speaker_name 后端批量解析 + 前端直接渲染
+  - DISCARD 路径也记录消息（语音训练标注）
+  - 1048 passed / 0 failed
+
+PENDING (Gateway 侧):
   - Gateway 声纹模型修复/更换
-  - 多家庭成员声纹注册 + E2E 验证
-  - 已识别用户的完整决策链测试
+  - Gateway /v1/voice/speakers/identify 接受 candidate_speaker_ids 参数
 
 STATUS: COMPLETED
