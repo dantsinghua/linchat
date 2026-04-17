@@ -21,6 +21,10 @@ class SpeakerProfileRepository:
         return SpeakerProfile.objects.filter(user_id=user_id).first()
 
     @sync_to_async
+    def find_all(self) -> list[SpeakerProfile]:
+        return list(SpeakerProfile.objects.select_related("user").all())
+
+    @sync_to_async
     def create(self, user_id: int, gateway_speaker_id: str, name: str,
                quality_score: Optional[float] = None) -> SpeakerProfile:
         return SpeakerProfile.objects.create(

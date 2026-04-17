@@ -25,6 +25,11 @@ class UserRepository:
 
     @staticmethod
     @sync_to_async
+    def find_by_ids(user_ids: list[int]) -> list[SysUser]:
+        return list(SysUser.objects.filter(user_id__in=user_ids))
+
+    @staticmethod
+    @sync_to_async
     def find_by_username(username: str) -> Optional[SysUser]:
         try:
             return SysUser.objects.get(username=username)

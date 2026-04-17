@@ -178,6 +178,9 @@ class SessionMixin:
                 "Utterance discarded (TTS echo): user=%s, reason=%s, text=%s",
                 target_uid, reason, aggregated_msg.text[:50],
             )
+            # 仍然记录，方便后续语音文本训练标注
+            sid = str(target_uid)
+            await voice_persist_service.record_only_ambient(user_id=target_uid, text=aggregated_msg.text, speaker_id=sid)
         elif decision.value == "RESPOND":
             if self._is_pipeline_busy():
                 if self._pending_text:

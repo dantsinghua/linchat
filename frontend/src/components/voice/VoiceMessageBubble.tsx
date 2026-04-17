@@ -14,7 +14,6 @@ import { memo, useMemo } from 'react';
 
 import { AudioPlayer } from '@/components/chat/AudioPlayer';
 import { getMediaUrl } from '@/services/mediaApi';
-import type { SpeakerInfo } from '@/stores/voiceStore';
 import type { Message } from '@/types';
 import type { MediaAttachment } from '@/types/media';
 
@@ -23,8 +22,6 @@ interface VoiceMessageBubbleProps {
   message: Message;
   /** 是否为用户发送的消息 */
   isUser: boolean;
-  /** 说话人信息 (017-ambient-speaker-id) */
-  speakerInfo?: SpeakerInfo;
 }
 
 /**
@@ -54,7 +51,6 @@ function isPlaceholderContent(content: string): boolean {
 export const VoiceMessageBubble = memo(function VoiceMessageBubble({
   message,
   isUser,
-  speakerInfo,
 }: VoiceMessageBubbleProps) {
   const audioAttachment = useMemo(
     () => findAudioAttachment(message.attachments as MediaAttachment[]),
@@ -70,16 +66,11 @@ export const VoiceMessageBubble = memo(function VoiceMessageBubble({
 
   return (
     <div className="flex flex-col gap-2">
-      {/* 说话人标识 (017-ambient-speaker-id) — 仅已识别说话人显示名字标签，unknown 由 MessageList 头像区分 */}
-      {speakerInfo && isUser && speakerInfo.isIdentified && (
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
-            {speakerInfo.label.charAt(0)}
-          </div>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {speakerInfo.label}
-          </span>
-        </div>
+      {/* 说话人标识: 显示 speaker_name */}
+      {message.speaker_name && isUser && (
+        <span className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">
+          {message.speaker_name}
+        </span>
       )}
 
       {/* 语音消息标签: ambient 模式有转写文字时不显示 */}

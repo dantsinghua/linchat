@@ -97,34 +97,34 @@ class EventMixin:
 
     async def _identify_ambient_speaker(self, segment_id: str) -> Optional[dict]:
         """识别 ambient 模式下的说话人。返回 {speaker_user_id, speaker_label, ...} 或 None。"""
-        from django.conf import settings as _settings
         from apps.voice.services.speaker_service import speaker_service
         try:
             pcm_chunks = await voice_session_service.get_audio_chunks(self.user_id, segment_id)
             if not pcm_chunks:
                 return None
-            # get_audio_chunks() 已完成 base64 解码，返回 list[bytes]
             pcm_data = b"".join(pcm_chunks)
             result = await speaker_service.identify_from_pcm(pcm_data)
-            if not result["identified"] or result["confidence"] < _settings.VOICE_SPEAKER_THRESHOLD:
-                if not result["identified"]:
-                    logger.info("Speaker not identified: seg=%s", segment_id)
-                else:
-                    logger.info("Speaker identify low confidence: %.2f < %.2f", result["confidence"], _settings.VOICE_SPEAKER_THRESHOLD)
-                label = await self._assign_unknown_label(result.get("embedding_hash"))
-                await self._send_json({"type": "speaker.identified", "data": {
-                    "segment_id": segment_id, "speaker_user_id": None,
-                    "speaker_label": label, "confidence": result.get("confidence", 0.0),
-                    "is_identified": False}})
-                return {"speaker_user_id": None, "speaker_label": label}
-            profile_info = await speaker_service.identify_speaker(result["speaker_id"])
-            if not profile_info:
-                return None
+            gw_speaker_id = result.get("speaker_id")  # str|None
+            if gw_speaker_id:
+                # Gateway 匹配到候选 → 查 SpeakerProfile 映射到 LinChat 用户
+                profile_info = await speaker_service.identify_speaker(gw_speaker_id)
+                if profile_info:
+                    await self._send_json({"type": "speaker.identified", "data": {
+                        "segment_id": segment_id, "speaker_user_id": profile_info["user_id"],
+                        "speaker_label": profile_info["speaker_name"],
+                        "confidence": result.get("confidence", 0.0), "is_identified": True}})
+                    return {"speaker_user_id": profile_info["user_id"], "speaker_label": profile_info["speaker_name"]}
+                # Gateway 返回了 speaker_id 但 LinChat 没有对应 profile（数据不一致）
+                logger.warning("Gateway speaker %s not found in SpeakerProfile", gw_speaker_id)
+            # 未匹配到已注册用户 → 分配 unknown 标签
+            logger.info("Speaker not matched: seg=%s, gw=%s, conf=%.3f",
+                segment_id, gw_speaker_id, result.get("confidence", 0.0))
+            label = await self._assign_unknown_label(result.get("embedding_hash"))
             await self._send_json({"type": "speaker.identified", "data": {
-                "segment_id": segment_id, "speaker_user_id": profile_info["user_id"],
-                "speaker_label": profile_info["speaker_name"], "confidence": result["confidence"],
-                "is_identified": True}})
-            return {"speaker_user_id": profile_info["user_id"], "speaker_label": profile_info["speaker_name"]}
+                "segment_id": segment_id, "speaker_user_id": None,
+                "speaker_label": label, "confidence": result.get("confidence", 0.0),
+                "is_identified": False}})
+            return {"speaker_user_id": None, "speaker_label": label}
         except Exception:
             logger.exception("Speaker identify error: seg=%s, fallback", segment_id)
             return None
