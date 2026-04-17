@@ -60,7 +60,23 @@
 - All files changed and validated
 - Pushed to: origin/refactor/batch-02
 
-## Phase 2c: Validator
-- (尚未开始 — 等待安琳运行 /phase2-validate batch-02)
+## Phase 2c: Validator (2026-04-17)
+- 自动化验证：
+    pytest tests/chat/test_media_cleanup_task.py: 9/9 PASS
+    pytest tests/memory/test_models.py: 8/8 PASS
+    pytest tests/memory/test_tasks.py: 20/20 PASS
+    pytest tests/voice/: 688/688 PASS（0 回归）
+    pytest backend/tests/ 全量: 1592 passed, 2 failed, 9 skipped（基线 13→2, -11）
+    剩 2 失败均非本 batch 引入（性能阈值抖动 + batch-03 范围）
+- 手动验证：
+    被动观察 18 分钟：0 自然断连，无法触发 reconnect
+    主动实验 kill frpc：断连一次完整走通
+    - 唯一 1 条 ASR error: CONNECTION_CLOSED（16:30:22.567）
+    - 显式 disconnect 旧 client（16:30:22.568）
+    - 3 次 attempt 严格串行（16:30:24/26/28，间隔 2s）
+    - 无同秒并发，无重复日志
+    - 16:32:34 serial_bridge 自动重连成功恢复
+- 安琳判定：validation pass（2026-04-17）
+- 验证报告：refactor/batches/batch-02-validation.md
 
-STATUS: EXECUTED
+STATUS: COMPLETED
