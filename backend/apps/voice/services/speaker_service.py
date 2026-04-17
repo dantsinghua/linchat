@@ -70,13 +70,21 @@ class SpeakerService:
         """Identify speaker from raw PCM audio via Gateway API.
 
         Returns:
-            dict with keys: identified (bool), speaker_id (str|None),
-            confidence (float), embedding_hash (str|None)
+            dict with keys: speaker_id (str|None), confidence (float), embedding_hash (str|None)
+            speaker_id != None → 匹配到已注册用户（Gateway 侧 ID）
+            speaker_id == None → 未匹配或 Gateway 错误
         """
-        not_identified = {"identified": False, "speaker_id": None, "confidence": 0.0, "embedding_hash": None}
+        not_matched = {"speaker_id": None, "confidence": 0.0, "embedding_hash": None}
         if len(pcm_data) < MIN_PCM_BYTES_FOR_IDENTIFY:
             logger.info("Speaker identify skip: audio too short (%d bytes)", len(pcm_data))
-            return not_identified
+            return not_matched
+        # 查所有注册的 gateway_speaker_id 作为候选
+        all_profiles = await speaker_profile_repo.find_all()
+        candidate_ids = [p.gateway_speaker_id for p in all_profiles]
+        if not candidate_ids:
+            logger.info("Speaker identify skip: no registered profiles")
+            emb_hash = hashlib.md5(pcm_data[:8000]).hexdigest()[:12]
+            return {**not_matched, "embedding_hash": emb_hash}
         # Gateway 声纹端点要求 16kHz WAV 格式，需要将 raw PCM 转为 WAV
         from apps.voice.services.voice_persist_service import VoicePersistService
         wav_data = VoicePersistService.merge_pcm_to_wav([pcm_data])
@@ -87,28 +95,26 @@ class SpeakerService:
                 resp = await client.post(
                     f"{settings.LLM_GATEWAY_URL}/v1/voice/speakers/identify",
                     headers={"Authorization": f"Bearer {settings.LLM_GATEWAY_API_KEY}"},
-                    json={"audio": ab64},
+                    json={"audio": ab64, "candidate_speaker_ids": candidate_ids},
                 )
             if resp.status_code == 200:
                 data = resp.json()
-                identified = data.get("identified", False)
-                confidence = float(data.get("confidence", 0.0))
                 speaker_id = data.get("speaker_id")
-                gw_hash = data.get("embedding_hash", emb_hash)
+                confidence = float(data.get("confidence", 0.0))
                 logger.info(
-                    "Speaker identify result: identified=%s, gw=%s, conf=%.3f, threshold=%.2f, pcm=%d bytes",
-                    identified, speaker_id, confidence, settings.VOICE_SPEAKER_THRESHOLD, len(pcm_data),
+                    "Speaker identify result: speaker=%s, conf=%.3f, candidates=%d, pcm=%d bytes",
+                    speaker_id, confidence, len(candidate_ids), len(pcm_data),
                 )
                 logger.debug("Speaker identify raw response: %s", data)
-                return {"identified": identified, "speaker_id": speaker_id, "confidence": confidence, "embedding_hash": gw_hash}
+                return {"speaker_id": speaker_id, "confidence": confidence, "embedding_hash": emb_hash}
             logger.warning("Speaker identify unexpected status: %d, body=%s", resp.status_code, resp.text[:200])
-            return {**not_identified, "embedding_hash": emb_hash}
+            return {**not_matched, "embedding_hash": emb_hash}
         except httpx.TimeoutException:
             logger.error("Speaker identify timeout (pcm=%d bytes)", len(pcm_data))
-            return {**not_identified, "embedding_hash": emb_hash}
+            return {**not_matched, "embedding_hash": emb_hash}
         except httpx.HTTPError as e:
             logger.error("Speaker identify HTTP error: %s (pcm=%d bytes)", e, len(pcm_data))
-            return {**not_identified, "embedding_hash": emb_hash}
+            return {**not_matched, "embedding_hash": emb_hash}
 
     async def list_speakers(self, user_id: int) -> Optional[dict]:
         profile = await speaker_profile_repo.find_by_user_id(user_id)

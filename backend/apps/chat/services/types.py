@@ -56,6 +56,7 @@ class MessageVO:
     attachments: list = field(default_factory=list)
     is_voice: bool = False
     speaker_id: Optional[str] = None
+    speaker_name: Optional[str] = None
 
     @classmethod
     def from_entity(cls, message: Message) -> "MessageVO":

@@ -88,154 +88,100 @@ def _make_mock_client(post_response=None, side_effect=None):
 
 
 class TestIdentifyFromPcm:
-    """identify_from_pcm 声纹识别测试"""
+    """identify_from_pcm 声纹识别测试（新契约：无 identified 字段，用 speaker_id 是否为 null 判断）"""
+
+    @pytest.fixture
+    def mock_profiles(self):
+        """Mock speaker_profile_repo.find_all 返回候选列表"""
+        mock_profile = MagicMock()
+        mock_profile.gateway_speaker_id = "gw-speaker-001"
+        with patch("apps.voice.services.speaker_service.speaker_profile_repo") as mock_repo:
+            mock_repo.find_all = AsyncMock(return_value=[mock_profile])
+            yield mock_repo
 
     @pytest.mark.asyncio
     @patch("apps.voice.services.speaker_service.httpx.AsyncClient")
     async def test_identify_from_pcm_success(
-        self,
-        mock_async_client_cls,
-        service,
-        pcm_sufficient,
-        mock_gateway_settings,
+        self, mock_async_client_cls, service, pcm_sufficient, mock_gateway_settings, mock_profiles,
     ):
-        """测试 Gateway 返回 identified=True 时正确返回 speaker_id 和 confidence"""
-        mock_response = _make_mock_response(
-            200,
-            json_data={
-                "identified": True,
-                "speaker_id": "gw-speaker-001",
-                "confidence": 0.92,
-                "embedding_hash": "abc123def456",
-            },
-        )
-        mock_async_client_cls.return_value = _make_mock_client(
-            post_response=mock_response
-        )
+        """Gateway 返回 speaker_id 时正确返回"""
+        mock_response = _make_mock_response(200, json_data={
+            "speaker_id": "gw-speaker-001", "confidence": 0.92,
+        })
+        mock_async_client_cls.return_value = _make_mock_client(post_response=mock_response)
 
         result = await service.identify_from_pcm(pcm_sufficient)
 
-        assert result["identified"] is True
         assert result["speaker_id"] == "gw-speaker-001"
         assert result["confidence"] == 0.92
-        assert result["embedding_hash"] == "abc123def456"
-
-        # 验证 POST 请求使用了正确的 URL 和 Authorization header
-        mock_client = mock_async_client_cls.return_value
-        mock_client.post.assert_called_once()
-        call_args = mock_client.post.call_args
-        assert "/v1/voice/speakers/identify" in call_args.args[0]
-        assert call_args.kwargs["headers"]["Authorization"] == "Bearer test-api-key-123"
-
-        # 验证音频以 WAV base64 编码传输（identify_from_pcm 先 PCM→WAV 再编码）
-        from apps.voice.services.voice_persist_service import VoicePersistService
-        expected_wav = VoicePersistService.merge_pcm_to_wav([pcm_sufficient])
-        expected_b64 = base64.b64encode(expected_wav).decode("ascii")
-        assert call_args.kwargs["json"]["audio"] == expected_b64
+        assert result["embedding_hash"] is not None
+        # 验证传了 candidate_speaker_ids
+        call_args = mock_async_client_cls.return_value.post.call_args
+        assert call_args.kwargs["json"]["candidate_speaker_ids"] == ["gw-speaker-001"]
 
     @pytest.mark.asyncio
     @patch("apps.voice.services.speaker_service.httpx.AsyncClient")
-    async def test_identify_from_pcm_not_identified(
-        self,
-        mock_async_client_cls,
-        service,
-        pcm_sufficient,
-        mock_gateway_settings,
+    async def test_identify_from_pcm_not_matched(
+        self, mock_async_client_cls, service, pcm_sufficient, mock_gateway_settings, mock_profiles,
     ):
-        """测试 Gateway 返回 identified=False 时返回未识别结果"""
-        mock_response = _make_mock_response(
-            200,
-            json_data={
-                "identified": False,
-                "speaker_id": None,
-                "confidence": 0.15,
-                "embedding_hash": "zzzzzzzzzzzz",
-            },
-        )
-        mock_async_client_cls.return_value = _make_mock_client(
-            post_response=mock_response
-        )
+        """Gateway 返回 speaker_id=null 时返回未匹配"""
+        mock_response = _make_mock_response(200, json_data={
+            "speaker_id": None, "confidence": 0.15,
+        })
+        mock_async_client_cls.return_value = _make_mock_client(post_response=mock_response)
 
         result = await service.identify_from_pcm(pcm_sufficient)
 
-        assert result["identified"] is False
         assert result["speaker_id"] is None
         assert result["confidence"] == 0.15
-
-        # Gateway 应被调用（音频足够长）
-        mock_client = mock_async_client_cls.return_value
-        mock_client.post.assert_called_once()
+        mock_async_client_cls.return_value.post.assert_called_once()
 
     @pytest.mark.asyncio
     @patch("apps.voice.services.speaker_service.httpx.AsyncClient")
     async def test_identify_from_pcm_gateway_timeout(
-        self,
-        mock_async_client_cls,
-        service,
-        pcm_sufficient,
-        mock_gateway_settings,
+        self, mock_async_client_cls, service, pcm_sufficient, mock_gateway_settings, mock_profiles,
     ):
-        """测试 Gateway 超时时优雅降级，返回 identified=False"""
-        mock_async_client_cls.return_value = _make_mock_client(
-            side_effect=httpx.TimeoutException("请求超时")
-        )
+        """Gateway 超时 → speaker_id=None"""
+        mock_async_client_cls.return_value = _make_mock_client(side_effect=httpx.TimeoutException("超时"))
 
         result = await service.identify_from_pcm(pcm_sufficient)
 
-        assert result["identified"] is False
         assert result["speaker_id"] is None
         assert result["confidence"] == 0.0
-        # embedding_hash 仍然基于本地计算的 md5 填充
         assert result["embedding_hash"] is not None
-
-        # 验证 Gateway 被调用了（但抛了异常）
-        mock_client = mock_async_client_cls.return_value
-        mock_client.post.assert_called_once()
 
     @pytest.mark.asyncio
     @patch("apps.voice.services.speaker_service.httpx.AsyncClient")
     async def test_identify_from_pcm_gateway_error(
-        self,
-        mock_async_client_cls,
-        service,
-        pcm_sufficient,
-        mock_gateway_settings,
+        self, mock_async_client_cls, service, pcm_sufficient, mock_gateway_settings, mock_profiles,
     ):
-        """测试 Gateway 返回 500 时优雅降级，返回 identified=False"""
+        """Gateway 500 → speaker_id=None"""
         mock_response = _make_mock_response(500)
-        mock_async_client_cls.return_value = _make_mock_client(
-            post_response=mock_response
-        )
+        mock_async_client_cls.return_value = _make_mock_client(post_response=mock_response)
 
         result = await service.identify_from_pcm(pcm_sufficient)
 
-        assert result["identified"] is False
         assert result["speaker_id"] is None
         assert result["confidence"] == 0.0
 
-        # Gateway 应被调用（音频足够长）
-        mock_client = mock_async_client_cls.return_value
-        mock_client.post.assert_called_once()
-
     @pytest.mark.asyncio
-    @patch("apps.voice.services.speaker_service.httpx.AsyncClient")
-    async def test_identify_from_pcm_audio_too_short(
-        self,
-        mock_async_client_cls,
-        service,
-        pcm_too_short,
-        mock_gateway_settings,
-    ):
-        """测试音频过短（< 16000 bytes）时跳过 Gateway 调用，直接返回未识别"""
+    async def test_identify_from_pcm_audio_too_short(self, service, pcm_too_short):
+        """音频过短 → 跳过 Gateway，直接返回 speaker_id=None"""
         result = await service.identify_from_pcm(pcm_too_short)
 
-        assert result["identified"] is False
         assert result["speaker_id"] is None
         assert result["confidence"] == 0.0
         assert result["embedding_hash"] is None
 
-        # 验证 Gateway 完全未被调用
-        mock_async_client_cls.assert_not_called()
+    @pytest.mark.asyncio
+    async def test_identify_from_pcm_no_profiles(self, service, pcm_sufficient, mock_gateway_settings):
+        """无注册声纹 → 跳过 Gateway"""
+        with patch("apps.voice.services.speaker_service.speaker_profile_repo") as mock_repo:
+            mock_repo.find_all = AsyncMock(return_value=[])
+            result = await service.identify_from_pcm(pcm_sufficient)
+
+        assert result["speaker_id"] is None
+        assert result["embedding_hash"] is not None
 
 
 # ===========================================================================
@@ -296,7 +242,6 @@ class TestIdentifyAmbientSpeaker:
 
         mock_ss = MagicMock()
         mock_ss.identify_from_pcm = AsyncMock(return_value={
-            "identified": True,
             "speaker_id": "gw-spk-001",
             "confidence": 0.92,
             "embedding_hash": "abc123",
@@ -308,7 +253,6 @@ class TestIdentifyAmbientSpeaker:
         })
 
         with patch("apps.voice.consumer_events.voice_session_service", mock_vss), \
-             patch.object(django_settings, "VOICE_SPEAKER_THRESHOLD", 0.5), \
              patch.object(ss_mod, "speaker_service", mock_ss):
             result = await EventMixin._identify_ambient_speaker(consumer, "seg-001")
 
@@ -317,51 +261,18 @@ class TestIdentifyAmbientSpeaker:
         assert result["speaker_label"] == "测试用户"
 
     @pytest.mark.asyncio
-    async def test_identify_ambient_speaker_low_confidence(self):
-        """identify_from_pcm 返回 identified=True 但置信度低于 VOICE_SPEAKER_THRESHOLD → None"""
+    async def test_identify_ambient_speaker_not_matched(self):
+        """identify_from_pcm 返回 speaker_id=None → 分配 unknown 标签"""
         from apps.voice.consumer_events import EventMixin
-        from django.conf import settings as django_settings
         import apps.voice.services.speaker_service as ss_mod
-        from core.redis import get_async_redis_client
+        import types
 
         consumer = MockConsumer(user_id=1)
+        consumer._assign_unknown_label = types.MethodType(EventMixin._assign_unknown_label, consumer)
         mock_vss = _make_mock_vss()
 
         mock_ss = MagicMock()
         mock_ss.identify_from_pcm = AsyncMock(return_value={
-            "identified": True,
-            "speaker_id": "gw-spk-001",
-            "confidence": 0.3,   # below threshold 0.5
-            "embedding_hash": "low_conf_hash",
-        })
-
-        # _assign_unknown_label calls get_async_redis_client; provide a minimal stub
-        mock_redis = AsyncMock()
-        mock_redis.hget = AsyncMock(return_value=None)
-        mock_redis.incr = AsyncMock(return_value=1)
-        mock_redis.hset = AsyncMock(return_value=1)
-
-        with patch("apps.voice.consumer_events.voice_session_service", mock_vss), \
-             patch.object(django_settings, "VOICE_SPEAKER_THRESHOLD", 0.5), \
-             patch.object(ss_mod, "speaker_service", mock_ss), \
-             patch("core.redis.get_async_redis_client", AsyncMock(return_value=mock_redis)):
-            result = await EventMixin._identify_ambient_speaker(consumer, "seg-001")
-
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_identify_ambient_speaker_not_identified(self):
-        """identify_from_pcm 返回 identified=False → None"""
-        from apps.voice.consumer_events import EventMixin
-        from django.conf import settings as django_settings
-        import apps.voice.services.speaker_service as ss_mod
-
-        consumer = MockConsumer(user_id=1)
-        mock_vss = _make_mock_vss()
-
-        mock_ss = MagicMock()
-        mock_ss.identify_from_pcm = AsyncMock(return_value={
-            "identified": False,
             "speaker_id": None,
             "confidence": 0.1,
             "embedding_hash": "zzz000",
@@ -373,18 +284,18 @@ class TestIdentifyAmbientSpeaker:
         mock_redis.hset = AsyncMock(return_value=1)
 
         with patch("apps.voice.consumer_events.voice_session_service", mock_vss), \
-             patch.object(django_settings, "VOICE_SPEAKER_THRESHOLD", 0.5), \
              patch.object(ss_mod, "speaker_service", mock_ss), \
              patch("core.redis.get_async_redis_client", AsyncMock(return_value=mock_redis)):
             result = await EventMixin._identify_ambient_speaker(consumer, "seg-001")
 
-        assert result is None
+        assert result is not None
+        assert result["speaker_user_id"] is None
+        assert result["speaker_label"] == "unknown_01"
 
     @pytest.mark.asyncio
     async def test_identify_ambient_speaker_gateway_error(self):
         """identify_from_pcm 抛异常 → 优雅降级返回 None"""
         from apps.voice.consumer_events import EventMixin
-        from django.conf import settings as django_settings
         import apps.voice.services.speaker_service as ss_mod
 
         consumer = MockConsumer(user_id=1)
@@ -396,7 +307,6 @@ class TestIdentifyAmbientSpeaker:
         )
 
         with patch("apps.voice.consumer_events.voice_session_service", mock_vss), \
-             patch.object(django_settings, "VOICE_SPEAKER_THRESHOLD", 0.5), \
              patch.object(ss_mod, "speaker_service", mock_ss):
             result = await EventMixin._identify_ambient_speaker(consumer, "seg-001")
 

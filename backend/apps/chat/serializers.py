@@ -102,3 +102,4 @@ class MessageResponseSerializer(serializers.Serializer):
     attachments = serializers.ListField(default=[])
     is_voice = serializers.BooleanField(default=False)
     speaker_id = serializers.CharField(allow_null=True, default=None)
+    speaker_name = serializers.CharField(allow_null=True, default=None)

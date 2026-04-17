@@ -104,9 +104,41 @@ class HistoryService:
         else:
             messages = await message_repo.find_latest_by_user(user_id=user_id, limit=limit)
         messages.reverse()
-        return [MessageVO.from_entity(m) for m in messages]
+        vos = [MessageVO.from_entity(m) for m in messages]
+        await HistoryService._resolve_speaker_names(vos)
+        return vos
 
     @staticmethod
     async def get_generating_message(user_id: int) -> Optional[MessageVO]:
         message = await message_repo.find_generating_message(user_id)
-        return MessageVO.from_entity(message) if message else None
+        if not message:
+            return None
+        vo = MessageVO.from_entity(message)
+        await HistoryService._resolve_speaker_names([vo])
+        return vo
+
+    @staticmethod
+    async def _resolve_speaker_names(vos: list[MessageVO]) -> None:
+        """批量解析 speaker_name，避免 N+1 查询。"""
+        from apps.users.repositories import user_repo
+        user_ids = set()
+        for vo in vos:
+            if vo.speaker_id and not vo.speaker_id.startswith('unknown_'):
+                try:
+                    user_ids.add(int(vo.speaker_id))
+                except ValueError:
+                    pass
+        user_map = {}
+        if user_ids:
+            users = await user_repo.find_by_ids(list(user_ids))
+            user_map = {u.user_id: u.username for u in users}
+        for vo in vos:
+            if not vo.speaker_id:
+                continue
+            if vo.speaker_id.startswith('unknown_'):
+                vo.speaker_name = vo.speaker_id
+            else:
+                try:
+                    vo.speaker_name = user_map.get(int(vo.speaker_id), vo.speaker_id)
+                except ValueError:
+                    vo.speaker_name = vo.speaker_id

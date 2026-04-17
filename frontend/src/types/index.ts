@@ -58,6 +58,8 @@ export interface Message {
   is_voice?: boolean;
   /** 说话人 ID（声纹识别） */
   speaker_id?: string | null;
+  /** 说话人显示名（已识别=用户名，未识别=unknown_XX） */
+  speaker_name?: string | null;
 }
 
 export interface ChatRequest {
