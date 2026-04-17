@@ -14,6 +14,12 @@ from apps.memory.models import UserMemory, UserMemoryEmbedding
 class TestUserMemoryModel(TestCase):
     """UserMemory 模型测试"""
 
+    def setUp(self) -> None:
+        """每个测试前清理 UserMemory*，防止 --reuse-db 跨测试残留"""
+        super().setUp()
+        UserMemoryEmbedding.objects.all().delete()
+        UserMemory.objects.all().delete()
+
     def test_create_with_defaults(self) -> None:
         """创建记忆时默认值正确"""
         memory = UserMemory.objects.create(
@@ -67,6 +73,12 @@ class TestUserMemoryModel(TestCase):
 
 class TestUserMemoryEmbedding(TestCase):
     """UserMemoryEmbedding 模型测试"""
+
+    def setUp(self) -> None:
+        """每个测试前清理 UserMemory*，防止 --reuse-db 跨测试残留"""
+        super().setUp()
+        UserMemoryEmbedding.objects.all().delete()
+        UserMemory.objects.all().delete()
 
     def test_create_embedding(self) -> None:
         """创建 embedding 记录"""

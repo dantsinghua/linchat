@@ -344,8 +344,11 @@ class TestGenerateDailySummary:
 
     @pytest.fixture(autouse=True)
     def cleanup(self):
+        from apps.chat.models import Message
         UserMemoryEmbedding.objects.all().delete()
         UserMemory.objects.all().delete()
+        # 清理 Message 表，否则 task_helpers.run_summary() 会把真实用户也加入 active 集合
+        Message.objects.all().delete()
         yield
 
     def _create_memory_at(self, user_id, content, mem_type, target_time):
@@ -426,8 +429,11 @@ class TestGenerateMonthlySummary:
 
     @pytest.fixture(autouse=True)
     def cleanup(self):
+        from apps.chat.models import Message
         UserMemoryEmbedding.objects.all().delete()
         UserMemory.objects.all().delete()
+        # 清理 Message 表，否则 task_helpers.run_summary() 会把真实用户也加入 active 集合
+        Message.objects.all().delete()
         yield
 
     def _create_memory_at(self, user_id, content, mem_type, target_time):
