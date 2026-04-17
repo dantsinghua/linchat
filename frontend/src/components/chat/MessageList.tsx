@@ -22,7 +22,6 @@ const VoiceMessageBubble = dynamic(
 );
 import { getMediaUrl } from '@/services/mediaApi';
 import { useChatStore } from '@/stores/chatStore';
-import { useVoiceStore } from '@/stores/voiceStore';
 import type { Message } from '@/types';
 
 interface MessageListProps {
