@@ -88,6 +88,38 @@ rg "from .*import.*${basename}|import ${basename}" backend/ frontend/src/ --type
 find backend/tests -name "test_${basename}*" -o -name "*${basename}*_test*"
 ```
 
+### Step 4.6: 精简潜力评估
+
+对 `scope.files_touched` 中每个文件，评估精简潜力。写入 plan.md 第 2 节表格新增的"精简潜力"列。
+
+```bash
+for file in <files_touched>; do
+  LINES=$(wc -l < "$file")
+  UNUSED=$(ruff check --select F401 "$file" 2>/dev/null | grep -c "F401" || echo 0)
+  COMMENTED=$(grep -cE "^\s*#\s*(def |class |import |from |if |for |while |return |await |async )" "$file" || echo 0)
+  BARE_EXCEPT=$(grep -cE "except\s+Exception\s*:\s*pass" "$file" || echo 0)
+
+  # 精简潜力评级：
+  # - 高：文件>300行 OR 未使用>3 OR 注释代码>5 OR bare_except>0
+  # - 中：文件>200行 OR 未使用>0 OR 注释代码>0
+  # - 低：上述都不满足
+  echo "$file: lines=$LINES, unused=$UNUSED, commented=$COMMENTED, bare_except=$BARE_EXCEPT"
+done
+```
+
+**在 plan.md 第 2 节表格追加"精简潜力"列**：
+
+| # | 文件 | 当前行数 | 预计改动行数 | 改动类型 | 风险 | **精简潜力** |
+|---|------|---------|------------|---------|------|-------------|
+| 1 | ... | 145 | +20 -10 | 修改逻辑 | 中 | **中**（未使用 import×2） |
+
+**硬限制检查**：
+- 如果某文件 `LINES > 300`，**必须**在第 7 节"需要安琳确认"新增一条：
+  ```
+  - [ ] <file> 当前 N 行，超过 300 行硬限制。是否在本 batch 一并拆分？
+        （拆分需扩大 scope，估计额外 +X lines 改动）
+  ```
+
 ### Step 5: 生成详细执行计划
 
 写入 `refactor/batches/<batch-id>-plan.md`，**严格按以下模板**：

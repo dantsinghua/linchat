@@ -99,11 +99,72 @@ TEST_FILE="backend/tests/$(echo <file> | sed 's|backend/||' | sed 's|\.py$|_test
 [ -f "$TEST_FILE" ] && pytest "$TEST_FILE" -v
 ```
 
-#### 4.4 重试策略
+#### 4.4 代码精简（每个文件改完后必做）
+
+对刚改过的文件，调用 `.claude/agents/code-simplifier.md` 的规则精简。
+
+**4.4.1 快速检查触发条件**
+```bash
+# 统计行数
+LINES=$(wc -l < <file>)
+
+# 未使用的 import（仅 .py）
+UNUSED_IMPORTS=$(ruff check --select F401 <file> 2>/dev/null | grep -c "F401" || echo 0)
+
+# 注释掉的代码行（以 # 开头后紧跟代码特征的行）
+COMMENTED_CODE=$(grep -cE "^\s*#\s*(def |class |import |from |if |for |while |return |await |async )" <file> || echo 0)
+
+# 裸的 except Exception: pass
+BARE_EXCEPT=$(grep -cE "except\s+Exception\s*:\s*pass" <file> || echo 0)
+
+# 触发条件：文件>200行 OR 未使用 import>0 OR 注释代码>0 OR except Exception: pass
+if [ "$LINES" -gt 200 ] || [ "$UNUSED_IMPORTS" -gt 0 ] || [ "$COMMENTED_CODE" -gt 0 ] || [ "$BARE_EXCEPT" -gt 0 ]; then
+  echo "触发精简：lines=$LINES, unused=$UNUSED_IMPORTS, commented=$COMMENTED_CODE, bare_except=$BARE_EXCEPT"
+fi
+```
+
+**4.4.2 按 code-simplifier.md 规则 1-9 执行精简**
+
+读取 `.claude/agents/code-simplifier.md` 的规则，对当前文件执行精简：
+- 规则 1：删除无用 import（ruff F401 自动列表）
+- 规则 2：删除注释掉的代码（已完成的 TODO、注释掉的旧实现）
+- 规则 3：`except Exception: pass` → 具体异常 + logger.warning
+- 规则 4：合并 ≤3 层链式调用；>3 层保持分步
+- 规则 5：保留函数间 1 个空行；删除 2+ 连续空行
+- 规则 6：保留业务文档注释（docstring、"Why:" 类说明）
+- 规则 7：能用 10 行且可读性不降才精简（**可读性优先**）
+- 规则 8：单文件 >200 行软限制、>300 行必须拆
+- 规则 9：跨文件重复不在本 batch 处理 → 追加到 `refactor/simplify-candidates.md`
+
+**4.4.3 精简后验证**
+```bash
+# 语法 + lint + 测试必须全绿
+python -c "import ast; ast.parse(open('<file>').read())"
+ruff check <file>
+black --check <file>
+TEST_FILE="backend/tests/$(echo <file> | sed 's|backend/||' | sed 's|\.py$|_test.py|')"
+[ -f "$TEST_FILE" ] && pytest "$TEST_FILE" -v
+```
+
+精简后若 lint / 测试失败 → **回退精简改动（但保留功能改动）** → 跳过本文件精简，进入下一文件。
+
+**4.4.4 记录精简效果**
+```bash
+LINES_AFTER=$(wc -l < <file>)
+DELTA=$((LINES - LINES_AFTER))
+echo "- [x] 精简 <file>: ${LINES} → ${LINES_AFTER} 行（-${DELTA}）" >> refactor/batches/<id>-progress.txt
+```
+
+如果发现跨文件重复公共方法（本 batch 不适合抽取），追加到 `refactor/simplify-candidates.md`：
+```
+- [<batch-id>] <file1>:LN / <file2>:LN — <重复片段描述>，建议抽取到 <建议位置>
+```
+
+#### 4.5 重试策略
 - 验证失败 → **回退到 `/tmp/<file>.before`**，重新应用改动
 - 重试 3 次仍失败 → **STOP 整个 batch**，跳到 Step 7 的 FAILED 流程
 
-#### 4.5 进度记录
+#### 4.6 进度记录
 ```bash
 echo "- [x] 改完 <file> (改动 X.1, X.2)" >> refactor/batches/<id>-progress.txt
 ```
@@ -163,6 +224,10 @@ $(jq -r '.batches[] | select(.id == "<id>") | .addresses[]' refactor/04-refactor
 
 Files changed: $(git diff --cached --name-only | wc -l)
 Lines: +$(git diff --cached --numstat | awk '{s+=$1} END {print s}') -$(git diff --cached --numstat | awk '{s+=$2} END {print s}')
+
+Simplify stats:
+$(grep "^- \[x\] 精简" refactor/batches/<id>-progress.txt | sed 's/^/  /')
+  Total simplified files: $(grep -c "^- \[x\] 精简" refactor/batches/<id>-progress.txt || echo 0)
 
 🤖 Generated with Claude Code (Phase 2 batch-executor)
 "
