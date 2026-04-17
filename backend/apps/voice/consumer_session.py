@@ -149,12 +149,25 @@ class SessionMixin:
 
     async def _on_utterance_aggregated(self, aggregated_msg, speaker_user_id: int = 0) -> None:
         from apps.voice.services.response_decision_service import response_decision_service
+        from apps.voice.services.voice_persist_service import voice_persist_service
         target_uid = speaker_user_id or self.user_id
         is_identified = speaker_user_id > 0
         await self._send_json({"type": "aggregation.completed", "data": {
             "aggregated_text": aggregated_msg.text, "utterance_count": aggregated_msg.utterance_count,
             "first_ts": aggregated_msg.first_ts, "last_ts": aggregated_msg.last_ts,
             "speaker_user_id": target_uid}})
+
+        # 未识别说话人 → 直接 RECORD_ONLY，不进入意图判断和回复流程
+        if not is_identified:
+            sid = getattr(self, "_last_unknown_label", None)
+            await self._send_json({"type": "decision.result", "data": {
+                "decision": "RECORD_ONLY", "reason": "unidentified_speaker", "speaker_user_id": target_uid}})
+            await voice_persist_service.record_only_ambient(user_id=target_uid, text=aggregated_msg.text, speaker_id=sid)
+            logger.info("Unidentified speaker record-only: user=%s, speaker=%s, text=%s",
+                target_uid, sid, aggregated_msg.text[:50])
+            return
+
+        # 已识别说话人 → 走完整决策链（唤醒词/LLM 意图/规则链）
         decision, reason = await response_decision_service.decide(
             aggregated_msg.text, speaker_id=None, user_id=target_uid, mode="ambient",
             speaker_identified=is_identified)
@@ -177,11 +190,9 @@ class SessionMixin:
             else:
                 await self._start_voice_pipeline(
                     self._current_segment_id or "agg", aggregated_msg.text,
-                    speaker_id=None, pipeline_user_id=target_uid if is_identified else None)
+                    speaker_id=None, pipeline_user_id=target_uid)
         elif decision.value == "RECORD_ONLY":
-            from apps.voice.services.voice_persist_service import voice_persist_service
-            # 已识别 → speaker_id 为真实 user_id；未识别 → 用 unknown_XX 标签区分不同说话人
-            sid = str(target_uid) if is_identified else getattr(self, "_last_unknown_label", None)
+            sid = str(target_uid)
             await voice_persist_service.record_only_ambient(user_id=target_uid, text=aggregated_msg.text, speaker_id=sid)
 
     async def _handle_session_reconnect(self, data: dict[str, Any]) -> None:

@@ -1,0 +1,44 @@
+BATCH: batch-01
+TITLE: 修复声纹识别结果始终为 dantsinghua 的 bug
+STATUS: COMPLETED
+STARTED: 2026-04-16T18:30:00+08:00
+EXECUTED: 2026-04-17T00:30:00+08:00
+COMMIT: 03e2d6b
+
+FILES_CHANGED:
+  Backend (7 files):
+  - backend/core/settings.py (default "false" → "true")
+  - backend/apps/chat/services/types.py (MessageVO 补齐 is_voice/speaker_id — API 返回 null 的根因)
+  - backend/apps/voice/consumer_session.py (未识别说话人 → 直接 RECORD_ONLY)
+  - backend/apps/voice/consumer_events.py (异常路径 _assign_unknown_label)
+  - backend/apps/voice/services/speaker_service.py (诊断日志 + list_gateway_speakers)
+  - backend/tests/voice/test_speaker_identification.py (+4 tests)
+  - backend/tests/voice/test_unknown_speaker_labeling.py (+4 tests)
+  Frontend (3 files):
+  - frontend/src/components/chat/MessageList.tsx (unknown speaker 灰色数字头像)
+  - frontend/src/components/voice/VoiceMessageBubble.tsx (隐藏[语音消息]标签 + 清理 speakerInfo)
+  - frontend/src/hooks/useVoiceMode.ts (speakerMap 用 speaker_label 作 key)
+
+TEST_RESULTS:
+  voice suite: 688 passed / 0 failed (28.38s)
+  new tests: 8/8 passed
+  frontend lint: 0 warnings / 0 errors
+  frontend build: success
+
+ROOT_CAUSE_CHAIN:
+  1. MessageVO.from_entity() 缺 is_voice/speaker_id → API 返回 null（安琳通过 DevTools 定位）
+  2. consumer_session.py target_uid fallback → user_id 永远是 session owner
+  3. 前端 speakerMap key 不匹配 + 无 fallback → speaker 标签不显示
+
+INVESTIGATION:
+  - SpeakerProfile count: 1 (only dantsinghua)
+  - Gateway speakers: 2 (anlin + spk_39f74d36)
+  - Gateway identify 5 段真实录音: 全部 identified=false, conf=[-0.11, 0.26]
+  - Gateway 声纹模型无法识别已注册用户（模型质量问题，非 LinChat 代码问题）
+
+PENDING (batch-01b):
+  - Gateway 声纹模型修复/更换
+  - 多家庭成员声纹注册 + E2E 验证
+  - 已识别用户的完整决策链测试
+
+STATUS: COMPLETED

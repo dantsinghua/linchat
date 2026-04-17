@@ -264,14 +264,16 @@ export function useVoiceMode(): UseVoiceModeReturn {
     onError: handleError,
     onSpeakerIdentified: (data) => {
       const d = data as Record<string, unknown>;
+      const label = (d.speaker_label as string) ?? 'unknown';
+      const info = {
+        userId: (d.speaker_user_id as number | null) ?? null,
+        label,
+        isIdentified: (d.is_identified as boolean) ?? false,
+      };
+      // 用 speaker_label 作为 key（与 message.speaker_id 一致），同时保留 segment_id key
       const segmentId = d?.segment_id as string | undefined;
-      if (segmentId) {
-        storeSetSpeakerInfo(segmentId, {
-          userId: (d.speaker_user_id as number | null) ?? null,
-          label: (d.speaker_label as string) ?? 'unknown',
-          isIdentified: (d.is_identified as boolean) ?? false,
-        });
-      }
+      if (segmentId) storeSetSpeakerInfo(segmentId, info);
+      if (label) storeSetSpeakerInfo(label, info);
     },
   });
 

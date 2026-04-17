@@ -70,51 +70,46 @@ export const VoiceMessageBubble = memo(function VoiceMessageBubble({
 
   return (
     <div className="flex flex-col gap-2">
-      {/* 说话人标识 (017-ambient-speaker-id) */}
-      {speakerInfo && isUser && (
+      {/* 说话人标识 (017-ambient-speaker-id) — 仅已识别说话人显示名字标签，unknown 由 MessageList 头像区分 */}
+      {speakerInfo && isUser && speakerInfo.isIdentified && (
         <div className="flex items-center gap-1.5 mb-0.5">
-          {speakerInfo.isIdentified ? (
-            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
-              {speakerInfo.label.charAt(0)}
-            </div>
-          ) : (
-            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-400 text-[10px] font-medium text-white">
-              {speakerInfo.label.replace('unknown_', '')}
-            </div>
-          )}
+          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white">
+            {speakerInfo.label.charAt(0)}
+          </div>
           <span className="text-xs text-gray-500 dark:text-gray-400">
-            {speakerInfo.isIdentified ? speakerInfo.label : `用户${speakerInfo.label.replace('unknown_', '')}`}
+            {speakerInfo.label}
           </span>
         </div>
       )}
 
-      {/* 语音消息标签 */}
-      <div className="flex items-center gap-1.5">
-        {/* 麦克风图标 */}
-        <svg
-          className="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"
-          />
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M19 10v2a7 7 0 0 1-14 0v-2"
-          />
-          <line x1="12" y1="19" x2="12" y2="23" />
-          <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-        <span className="text-xs text-gray-400 dark:text-gray-500">
-          [语音消息]
-        </span>
-      </div>
+      {/* 语音消息标签: ambient 模式有转写文字时不显示 */}
+      {!hasTranscription && (
+        <div className="flex items-center gap-1.5">
+          <svg
+            className="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"
+            />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M19 10v2a7 7 0 0 1-14 0v-2"
+            />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+          </svg>
+          <span className="text-xs text-gray-400 dark:text-gray-500">
+            [语音消息]
+          </span>
+        </div>
+      )}
 
       {/* STT 转写文字 */}
       {hasTranscription && (

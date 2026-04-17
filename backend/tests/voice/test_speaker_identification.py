@@ -433,3 +433,90 @@ class TestIdentifyAmbientSpeaker:
         assert len(identify_called) == 0, (
             "_identify_ambient_speaker must not be called when feature flag is disabled"
         )
+
+
+# ===========================================================================
+# Batch-01: _handle_ambient_transcription speaker labeling tests
+# ===========================================================================
+
+
+class TestHandleAmbientSpeakerLabeling:
+    """_handle_ambient_transcription 中 speaker 标签传递流测试"""
+
+    @pytest.mark.asyncio
+    async def test_exception_fallback_assigns_unknown_label(self):
+        """_identify_ambient_speaker 返回 None（异常路径）→ _last_unknown_label 仍被分配"""
+        from apps.voice.consumer_events import EventMixin
+        from django.conf import settings as django_settings
+
+        consumer = MockConsumer(user_id=1)
+        # Mock _identify_ambient_speaker on the instance (not class) since MockConsumer != EventMixin
+        consumer._identify_ambient_speaker = AsyncMock(return_value=None)
+        # Bind _assign_unknown_label from EventMixin so the fallback path works
+        import types
+        consumer._assign_unknown_label = types.MethodType(EventMixin._assign_unknown_label, consumer)
+
+        mock_redis = AsyncMock()
+        mock_redis.hget = AsyncMock(return_value=None)
+        mock_redis.incr = AsyncMock(return_value=7)
+        mock_redis.hset = AsyncMock(return_value=1)
+
+        with patch.object(django_settings, "VOICE_SPEAKER_IDENTIFICATION_ENABLED", True), \
+             patch("core.redis.get_async_redis_client", AsyncMock(return_value=mock_redis)):
+            await EventMixin._handle_ambient_transcription(consumer, "你好", "seg-001")
+
+        # After fix: exception fallback calls _assign_unknown_label(None) → "unknown_07"
+        assert consumer._last_unknown_label == "unknown_07"
+        consumer._legacy_aggregate.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_not_identified_sets_speaker_label(self):
+        """_identify_ambient_speaker 返回 speaker_user_id=None → _last_unknown_label 被设置"""
+        from apps.voice.consumer_events import EventMixin
+        from django.conf import settings as django_settings
+
+        consumer = MockConsumer(user_id=1)
+        speaker_result = {"speaker_user_id": None, "speaker_label": "unknown_03"}
+        consumer._identify_ambient_speaker = AsyncMock(return_value=speaker_result)
+
+        with patch.object(django_settings, "VOICE_SPEAKER_IDENTIFICATION_ENABLED", True):
+            await EventMixin._handle_ambient_transcription(consumer, "你好", "seg-001")
+
+        assert consumer._last_unknown_label == "unknown_03"
+        consumer._legacy_aggregate.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_disabled_flag_no_label_set(self):
+        """VOICE_SPEAKER_IDENTIFICATION_ENABLED=False → _last_unknown_label 不被设置"""
+        from apps.voice.consumer_events import EventMixin
+        from django.conf import settings as django_settings
+
+        consumer = MockConsumer(user_id=1)
+
+        with patch.object(django_settings, "VOICE_SPEAKER_IDENTIFICATION_ENABLED", False):
+            await EventMixin._handle_ambient_transcription(consumer, "你好", "seg-001")
+
+        assert not hasattr(consumer, "_last_unknown_label") or consumer._last_unknown_label is None
+        consumer._legacy_aggregate.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_multi_segment_different_labels_preserved(self):
+        """连续两段未识别音频 → _last_unknown_label 分别被更新"""
+        from apps.voice.consumer_events import EventMixin
+        from django.conf import settings as django_settings
+
+        consumer = MockConsumer(user_id=1)
+
+        # First segment: unknown_01
+        result1 = {"speaker_user_id": None, "speaker_label": "unknown_01"}
+        consumer._identify_ambient_speaker = AsyncMock(return_value=result1)
+        with patch.object(django_settings, "VOICE_SPEAKER_IDENTIFICATION_ENABLED", True):
+            await EventMixin._handle_ambient_transcription(consumer, "第一段", "seg-001")
+        assert consumer._last_unknown_label == "unknown_01"
+
+        # Second segment: unknown_02
+        result2 = {"speaker_user_id": None, "speaker_label": "unknown_02"}
+        consumer._identify_ambient_speaker = AsyncMock(return_value=result2)
+        with patch.object(django_settings, "VOICE_SPEAKER_IDENTIFICATION_ENABLED", True):
+            await EventMixin._handle_ambient_transcription(consumer, "第二段", "seg-002")
+        assert consumer._last_unknown_label == "unknown_02"

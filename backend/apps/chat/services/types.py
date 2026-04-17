@@ -54,6 +54,8 @@ class MessageVO:
     model_name: Optional[str] = None
     response_time_ms: Optional[int] = None
     attachments: list = field(default_factory=list)
+    is_voice: bool = False
+    speaker_id: Optional[str] = None
 
     @classmethod
     def from_entity(cls, message: Message) -> "MessageVO":
@@ -95,6 +97,8 @@ class MessageVO:
             model_name=message.model_name,
             response_time_ms=message.response_time_ms,
             attachments=attachment_list,
+            is_voice=message.is_voice,
+            speaker_id=message.speaker_id,
         )
 
 

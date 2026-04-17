@@ -95,21 +95,44 @@ class SpeakerService:
                 confidence = float(data.get("confidence", 0.0))
                 speaker_id = data.get("speaker_id")
                 gw_hash = data.get("embedding_hash", emb_hash)
-                logger.info("Speaker identify result: identified=%s, gw=%s, conf=%.2f", identified, speaker_id, confidence)
+                logger.info(
+                    "Speaker identify result: identified=%s, gw=%s, conf=%.3f, threshold=%.2f, pcm=%d bytes",
+                    identified, speaker_id, confidence, settings.VOICE_SPEAKER_THRESHOLD, len(pcm_data),
+                )
+                logger.debug("Speaker identify raw response: %s", data)
                 return {"identified": identified, "speaker_id": speaker_id, "confidence": confidence, "embedding_hash": gw_hash}
-            logger.warning("Speaker identify unexpected status: %d", resp.status_code)
+            logger.warning("Speaker identify unexpected status: %d, body=%s", resp.status_code, resp.text[:200])
             return {**not_identified, "embedding_hash": emb_hash}
         except httpx.TimeoutException:
-            logger.error("Speaker identify timeout")
+            logger.error("Speaker identify timeout (pcm=%d bytes)", len(pcm_data))
             return {**not_identified, "embedding_hash": emb_hash}
         except httpx.HTTPError as e:
-            logger.error("Speaker identify HTTP error: %s", e)
+            logger.error("Speaker identify HTTP error: %s (pcm=%d bytes)", e, len(pcm_data))
             return {**not_identified, "embedding_hash": emb_hash}
 
     async def list_speakers(self, user_id: int) -> Optional[dict]:
         profile = await speaker_profile_repo.find_by_user_id(user_id)
         if not profile: return None
         return {"speaker_id": profile.gateway_speaker_id, "name": profile.name, "quality_score": profile.quality_score, "enrolled_at": profile.enrolled_at.isoformat() if profile.enrolled_at else None}
+
+    async def list_gateway_speakers(self) -> list[dict]:
+        """Query Gateway for all registered speaker profiles (diagnostic)."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    f"{settings.LLM_GATEWAY_URL}/v1/voice/speakers",
+                    headers={"Authorization": f"Bearer {settings.LLM_GATEWAY_API_KEY}"},
+                )
+            if resp.status_code == 200:
+                data = resp.json()
+                speakers = data if isinstance(data, list) else data.get("speakers", [])
+                logger.info("Gateway speakers count: %d", len(speakers))
+                return speakers
+            logger.warning("Gateway list speakers status: %d", resp.status_code)
+            return []
+        except Exception:
+            logger.exception("Gateway list speakers failed")
+            return []
 
     async def _retrospective_match(self, user_id: int, gateway_speaker_id: str, name: str) -> None:
         """After speaker registration, match unknown historical messages to this user."""

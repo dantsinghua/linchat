@@ -87,7 +87,11 @@ class EventMixin:
                     "speaker_user_id": uid}})
                 return
             # 未识别 → 保存 unknown 标签，传递给聚合回调
-            self._last_unknown_label = speaker_result.get("speaker_label") if speaker_result else None
+            # speaker_result=None（异常路径）时仍分配 unknown 标签，避免 speaker_id=NULL
+            if speaker_result:
+                self._last_unknown_label = speaker_result.get("speaker_label")
+            else:
+                self._last_unknown_label = await self._assign_unknown_label(None)
 
         await self._legacy_aggregate(text, segment_id)
 
