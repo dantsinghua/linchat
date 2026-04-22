@@ -26,6 +26,11 @@ from apps.media.models import MediaAttachment
 class TestCleanExpiredMedia(TestCase):
     """清理过期媒体文件 Celery 任务测试"""
 
+    def setUp(self) -> None:
+        """每个测试前清理 MediaAttachment，防止 --reuse-db 跨测试残留"""
+        super().setUp()
+        MediaAttachment.objects.all().delete()
+
     def _create_attachment(
         self, uuid_suffix: str, expired: bool = True, is_expired: bool = False
     ) -> MediaAttachment:

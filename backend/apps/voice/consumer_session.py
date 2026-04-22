@@ -257,13 +257,30 @@ class SessionMixin:
     async def _reconnect_asr(self) -> None:
         if getattr(self, "_mode", None) != "ambient":
             return
-        for attempt in range(1, 4):
-            await asyncio.sleep(2)
-            asr_err = await self._connect_and_configure_asr()
-            if not asr_err:
-                await voice_session_service.update_session(
-                    self.user_id, upstream_connected=True, asr_session_id=self._asr_client.session_id)
-                logger.info("ASR reconnected: user=%s", self.user_id)
-                return
-        logger.error("ASR reconnect failed after 3 attempts: user=%s", self.user_id)
-        await self._send_error("ASR_RECONNECT_FAILED", "语音服务重连失败，请重新连接", recoverable=False)
+        # 去重锁：防止 _on_asr_error / 心跳超时 / ASR Gateway 重启同时触发多个重连任务
+        lock = getattr(self, "_reconnect_lock", None)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._reconnect_lock = lock
+        if lock.locked():
+            logger.info("ASR reconnect already in progress, skip duplicate trigger: user=%s", self.user_id)
+            return
+        async with lock:
+            # 关键：先彻底关闭旧 ASR client，再尝试建新连接
+            if self._asr_client:
+                try:
+                    await self._asr_client.disconnect()
+                except Exception as e:
+                    logger.warning("ASR old client disconnect error (ignored): user=%s, err=%s", self.user_id, e)
+                self._asr_client = None
+            for attempt in range(1, 4):
+                await asyncio.sleep(2)
+                asr_err = await self._connect_and_configure_asr()
+                if not asr_err:
+                    await voice_session_service.update_session(
+                        self.user_id, upstream_connected=True, asr_session_id=self._asr_client.session_id)
+                    logger.info("ASR reconnected: user=%s, attempt=%d", self.user_id, attempt)
+                    return
+                logger.warning("ASR reconnect attempt %d/3 failed: user=%s, err=%s", attempt, self.user_id, asr_err)
+            logger.error("ASR reconnect failed after 3 attempts: user=%s", self.user_id)
+            await self._send_error("ASR_RECONNECT_FAILED", "语音服务重连失败，请重新连接", recoverable=False)

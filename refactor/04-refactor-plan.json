@@ -4,8 +4,8 @@
     "generated_by": "refactor-planner-v2",
     "project": "linchat",
     "scope": "backend-only (+ 2 frontend dead file deletions)",
-    "total_batches": 28,
-    "total_estimated_sessions": 29,
+    "total_batches": 29,
+    "total_estimated_sessions": 30,
     "source_inputs": [
       "docs/legacy-and-debts.md",
       "refactor/01-architecture-map.md",
@@ -125,7 +125,57 @@
       "risk": "low",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "test_media_cleanup_task 227 行、test_models 111 行、test_tasks 508 行，改动集中在 setUp/fixture 层。\n追加任务(2026-04-17): ASR WebSocket 重连竞态修复 — linchat 侧 ASR 断连重连时，旧会话未完全关闭就创建新会话，导致短暂出现两个 ASR 会话。需在 consumer_session.py _reconnect_asr() 中确保旧 ASR 会话完全关闭后再建新的。周期性断连(约6-8分钟一次)的根因也需排查。"
+      "notes": "test_media_cleanup_task 227 行、test_models 111 行、test_tasks 508 行，改动集中在 setUp/fixture 层。\n追加任务(2026-04-17): ASR WebSocket 重连竞态修复 — linchat 侧 ASR 断连重连时，旧会话未完全关闭就创建新会话，导致短暂出现两个 ASR 会话。需在 consumer_session.py _reconnect_asr() 中确保旧 ASR 会话完全关闭后再建新的。周期性断连(约6-8分钟一次)的根因也需排查。\nCommit 拆分(2026-04-17 安琳决策 C1): batch-02a=测试修复 / batch-02b=ASR 竞态修复，独立 commit 独立回滚。\nC2 决策: 周期性断连根因排查拆到独立 batch-02c。\nC3 决策: 接受 Message.objects.all().delete() 清空真实数据（本机开发库可接受）。"
+    },
+    {
+      "id": "batch-02c",
+      "type": "investigation",
+      "title": "排查 ASR 周期性断连根因（Gateway/Nginx 侧 1006/1012）",
+      "priority": "P1",
+      "category": "infrastructure-diagnosis",
+      "estimated_files": 0,
+      "estimated_lines_changed": 0,
+      "depends_on": ["batch-02"],
+      "blocks_slo": null,
+      "addresses": [
+        "02-issue-diagnosis#ASR#周期性断连 6-8 分钟",
+        "batch-02-plan#C2"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [],
+        "new_files": [],
+        "forbidden_zones_crossed": false,
+        "external_systems": [
+          "Gateway (OpenClaw) 侧 nginx 配置 proxy_read_timeout",
+          "Gateway 服务自动重启策略（1012 service restart 源头）",
+          "ASR WS ping_interval / ping_timeout 参数与 nginx 超时的对齐"
+        ]
+      },
+      "description": "batch-02b 修复了 linchat 侧 ASR 重连竞态，但周期性断连（约 6-8 分钟一次，1006 keepalive timeout 或 1012 service restart）本身不在 linchat 侧。本 batch 独立排查 Gateway/Nginx 层：1) nginx proxy_read_timeout 是否默认 60s 先于 ping_timeout=60s 切断；2) Gateway 服务是否周期性 auto-restart（何种触发条件）；3) 评估 asr_stream_client.py 的 ping_interval=30/ping_timeout=60 是否需调整。产出诊断报告 + 可选改动方案（若需改 linchat 侧 ping 参数，走单独 batch）。",
+      "investigation_steps": [
+        "收集 6-8 分钟周期断连的日志样本（后端 + Gateway 双侧）",
+        "查看 Gateway nginx 配置 proxy_read_timeout / proxy_send_timeout",
+        "查看 Gateway 服务是否有 systemd/supervisor 自动重启",
+        "对比断连时刻的 Gateway 端口状态与 nginx access log",
+        "评估 linchat 侧 WS ping 策略是否匹配 Gateway 侧超时"
+      ],
+      "validation": {
+        "automated": [],
+        "manual": [
+          "启动 voice ambient 模式连续运行 ≥ 30 分钟",
+          "统计 1006/1012 断连次数与时间分布",
+          "确认修复方案生效后断连间隔延长或消除"
+        ],
+        "metrics": [
+          "ASR 断连间隔从 6-8 分钟延长到 ≥ 30 分钟或稳定 > 1 小时"
+        ]
+      },
+      "rollback_strategy": "无代码改动则无需回滚；若最终需要改 linchat 侧 ping 参数，另起 batch 并单独 git revert",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "2026-04-17 安琳决策 C2: 从 batch-02 拆出独立诊断 batch。不改 linchat 业务代码；如发现需改动，另起 batch。执行时机：batch-02a/02b 完成并稳定后。"
     },
     {
       "id": "batch-03",

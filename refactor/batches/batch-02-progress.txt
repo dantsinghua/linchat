@@ -1,0 +1,82 @@
+# Batch 02 Progress
+# Type: fix | Priority: P0-Day1
+# Title: 修复 13 个失败测试（第一批：数据库隔离类 9 个） + ASR 重连竞态
+
+## Phase 2a: Initializer
+- Started: 2026-04-17
+- Plan generated: refactor/batches/batch-02-plan.md
+- Files investigated:
+    backend/tests/chat/test_media_cleanup_task.py (227 lines)
+    backend/tests/memory/test_models.py (111 lines)
+    backend/tests/memory/test_tasks.py (508 lines)
+    backend/apps/voice/consumer_session.py (269 lines)
+    backend/apps/voice/consumer_events.py (180 lines, _reconnect_asr 调用源)
+    backend/apps/voice/services/ws_client_base.py (85 lines)
+    backend/apps/voice/services/asr_stream_client.py (49 lines)
+    backend/apps/memory/tasks.py + task_helpers.py (run_summary 根因)
+    backend/apps/media/tasks.py (clean_expired_media)
+- Key root causes identified:
+    1. test_media_cleanup_task: --reuse-db 残留 → setUp 清理
+    2. test_models: 同上 → 两个 TestCase 类各加 setUp
+    3. test_tasks: run_summary() 扫 Message 表带入真实 user_id=7 → cleanup 加 Message.delete()（C3 需安琳确认）
+    4. ASR 重连竞态: 日志铁证 22:37:31 同秒两次 reconnected → 加 _reconnect_lock + 显式 disconnect 旧 client
+- Blockers (2026-04-17 安琳决策已解除):
+    C1: commit 是否拆 2 个（测试 / ASR） — ACK 拆分 → batch-02a (测试) + batch-02b (ASR)
+    C2: 是否新增 batch 排查 Gateway 1006/1012 周期性断连 — 新建 batch-02c (P1, investigation, depends_on=[batch-02])
+    C3: Message.objects.all().delete() 会清掉真实 user_id=7 数据 — ACK 接受清空（本机开发库）
+- Status: APPROVED
+- batch-02c 登记: 04-refactor-plan.json 已新增 (total_batches: 28→29)
+
+## Phase 2b: Executor (started 2026-04-17)
+- 执行约束: 必须产出 2 个独立 commit (batch-02a / batch-02b)，顺序不可颠倒
+- 起始 commit: 501cd42bf39beb04002b6322992077c3f2acf2a0
+- 分支: refactor/batch-02
+- 回退点 tag: before-batch-02
+
+### 改动文件 + 验证
+- [x] 改完 backend/tests/chat/test_media_cleanup_task.py (改动 1.1) — 9 passed
+- [x] 改完 backend/tests/memory/test_models.py (改动 2.1) — 8 passed
+- [x] 改完 backend/tests/memory/test_tasks.py (改动 3.1, 3.2) — 20 passed
+- [x] 改完 backend/apps/voice/consumer_session.py (改动 4.1) — voice 套件 688 passed
+
+### Commits
+- batch-02a: fc8e520 fix(tests): 修复 9 个测试数据库隔离失败（+23 -0）
+- batch-02b: aa1cd5c fix(voice): ASR 重连竞态修复（+24 -7）
+- 已 push 到: origin/refactor/batch-02
+
+### 跨文件回归验证
+- pytest tests/chat/test_media_cleanup_task.py tests/memory/test_models.py
+  tests/memory/test_tasks.py: 37 passed
+- pytest tests/voice/: 688 passed, 0 failed
+- pytest tests/chat/ tests/memory/: 491 passed, 9 skipped
+
+### 非预期偏差
+- test_models.py:8 `import pytest` 预存在 F401（不在本 batch 引入）
+  → 已记入 refactor/simplify-candidates.md（不动以遵守 fix-only 约束）
+- consumer_session.py:11 `get_redis` 预存在 F401
+  → 已记入 simplify-candidates.md
+
+## Phase 2b: Executor (completed 2026-04-17)
+- All files changed and validated
+- Pushed to: origin/refactor/batch-02
+
+## Phase 2c: Validator (2026-04-17)
+- 自动化验证：
+    pytest tests/chat/test_media_cleanup_task.py: 9/9 PASS
+    pytest tests/memory/test_models.py: 8/8 PASS
+    pytest tests/memory/test_tasks.py: 20/20 PASS
+    pytest tests/voice/: 688/688 PASS（0 回归）
+    pytest backend/tests/ 全量: 1592 passed, 2 failed, 9 skipped（基线 13→2, -11）
+    剩 2 失败均非本 batch 引入（性能阈值抖动 + batch-03 范围）
+- 手动验证：
+    被动观察 18 分钟：0 自然断连，无法触发 reconnect
+    主动实验 kill frpc：断连一次完整走通
+    - 唯一 1 条 ASR error: CONNECTION_CLOSED（16:30:22.567）
+    - 显式 disconnect 旧 client（16:30:22.568）
+    - 3 次 attempt 严格串行（16:30:24/26/28，间隔 2s）
+    - 无同秒并发，无重复日志
+    - 16:32:34 serial_bridge 自动重连成功恢复
+- 安琳判定：validation pass（2026-04-17）
+- 验证报告：refactor/batches/batch-02-validation.md
+
+STATUS: COMPLETED
