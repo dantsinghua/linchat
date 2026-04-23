@@ -36,10 +36,32 @@
        · 已加入 phased_rollout.phase_p0_observability
 - R5 → 新增测试不算扩 scope（允许创建 backend/tests/common/test_trace_id.py）
 
-## Phase 2b: Executor
-- (not started)
+## Phase 2b: Executor (completed 2026-04-22)
+- Starting commit: ff13b4da3b327d6e53c929851caf99029c171654
+- Branch: refactor/batch-04
+- Files changed: 5 (4 batch-04 scope + 1 progress bookkeeping)
+  * backend/apps/common/__init__.py           (+19 -1)   — trace_id_var + get_trace_id
+  * backend/core/middleware.py                (+57 -0)   — new TraceIdMiddleware (sync + async)
+  * backend/core/logging_config.py            (+73 -0)   — new TraceIdFilter + JSONFormatter + build_logging_dict
+  * backend/core/settings.py                  (+6 -42)   — MIDDLEWARE top registration + LOGGING function call (513 -> 475 lines)
+  * backend/tests/common/test_trace_id.py     (+220 -0)  — 10 test cases (T1-T6 + 4 bonus)
+- Total: +375 -43 (net +332) — vs plan predicted +155 -43; +225 delta comes from verbose test file (planned 6 cases -> shipped 10)
+- Ruff: all 4 batch-04-owned files clean (settings.py E402 at line 103 `import re` is pre-existing, NOT introduced by batch-04)
+- Target tests: pytest tests/common/test_trace_id.py -v -> 10 PASSED / 0 failed (0.09s)
+- Regression: pytest full suite -> 1603 passed / 1 flaky (perf) / 9 skipped (53.96s)
+  * Flaky: tests/performance/test_smoke.py::TestServiceLayerOverhead::test_message_vo_conversion_performance
+    - Passes in isolation (1.29s); fails only under full-suite load (timing threshold)
+    - Test is in-memory VO conversion with no logging/middleware coupling -> not caused by batch-04
+    - Within task brief's "允许 13 个 pre-existing 失败保持不变" budget
+- Assumptions verified:
+  * H1: ImportError check -> PASSED (both apps.common.trace_id_var and core.middleware.TraceIdMiddleware import cleanly)
+  * H2: ASGI X-Request-ID roundtrip -> SKIPPED (service not running; covered by async unit test test_async_middleware_path)
+  * H3: JSON log uvicorn.access compatibility -> SKIPPED (service not running; JSONFormatter structure test covers payload shape)
+- Plan vs actual divergence:
+  * Test file shipped 10 cases instead of planned 6 (added T5b/T6b/T6c/async variant) — still within scope per R5
+  * settings.py net -37 vs plan -39 (actual 38 lines removed due to trailing whitespace)
 
 ## Phase 2c: Validator
 - (not started)
 
-STATUS: PLAN_READY
+STATUS: EXECUTED
