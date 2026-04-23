@@ -35,23 +35,22 @@ class TraceIdMiddleware:
         return self._scall(request)
 
     def _scall(self, request: HttpRequest) -> HttpResponse:
+        # 不在 finally 里 reset：uvicorn.access 与 django.request 的 "log_response"
+        # 都在本 middleware 返回之后才写日志（前者在 h11 protocol run_asgi、
+        # 后者在 BaseHandler.get_response_async 的 >400 分支）。
+        # 一旦 reset，两者读到的 trace_id 永远是 "-"。
+        # 依赖 asyncio.Task / sync_to_async 的 contextvars 天然隔离即可。
         tid = self._extract_or_generate(request)
-        token = trace_id_var.set(tid)
-        try:
-            request.trace_id = tid
-            response = self.get_response(request)
-            response[RESP_HEADER] = tid
-            return response
-        finally:
-            trace_id_var.reset(token)
+        trace_id_var.set(tid)
+        request.trace_id = tid
+        response = self.get_response(request)
+        response[RESP_HEADER] = tid
+        return response
 
     async def _acall(self, request: HttpRequest) -> HttpResponse:
         tid = self._extract_or_generate(request)
-        token = trace_id_var.set(tid)
-        try:
-            request.trace_id = tid
-            response = await self.get_response(request)
-            response[RESP_HEADER] = tid
-            return response
-        finally:
-            trace_id_var.reset(token)
+        trace_id_var.set(tid)
+        request.trace_id = tid
+        response = await self.get_response(request)
+        response[RESP_HEADER] = tid
+        return response

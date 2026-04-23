@@ -27,6 +27,15 @@ from core.middleware import RESP_HEADER, TraceIdMiddleware
 UUID_HEX_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
+@pytest.fixture(autouse=True)
+def _reset_trace_id_var():
+    # 本套件共享 event loop，middleware 不再 reset（见模块 docstring），
+    # 需要每个 test 开头置空，避免前后测试相互污染。
+    token = trace_id_var.set("")
+    yield
+    trace_id_var.reset(token)
+
+
 # ============ TraceIdMiddleware 测试 ============
 
 
@@ -56,8 +65,9 @@ class TestTraceIdMiddleware:
         assert UUID_HEX_RE.match(tid), f"Expected 32-char hex, got: {tid!r}"
         assert captured["request_trace_id"] == tid
         assert captured["contextvar_trace_id"] == tid
-        # 响应返回后 contextvar 必须复位为默认空串
-        assert trace_id_var.get() == ""
+        # middleware 返回后 contextvar 必须仍保留（uvicorn.access / django.request
+        # 在 middleware 返回之后才写日志，依赖此值）
+        assert trace_id_var.get() == tid
 
     def test_t2_inherits_incoming_header(self):
         """T2: 有 X-Request-ID header → 原样继承"""
@@ -200,7 +210,7 @@ class TestJSONFormatter:
 
 @pytest.mark.asyncio
 async def test_async_middleware_path():
-    """补充：ASGI async 路径也能正确 set/reset trace_id"""
+    """补充：ASGI async 路径也能正确 set trace_id 且离开 middleware 后仍保留"""
     captured: dict = {}
 
     async def get_response(request):
@@ -216,5 +226,36 @@ async def test_async_middleware_path():
     assert response[RESP_HEADER] == "async-tid-42"
     assert captured["request_trace_id"] == "async-tid-42"
     assert captured["contextvar_trace_id"] == "async-tid-42"
-    # finally 复位
-    assert trace_id_var.get() == ""
+    # 保留不 reset：外层 uvicorn/django 日志依赖此值
+    assert trace_id_var.get() == "async-tid-42"
+
+
+# ============ 回归保护：uvicorn.access / django.request log 在 middleware 返回后读 ============
+
+
+class TestTraceIdPersistsAfterMiddleware:
+    """batch-04 修复 bug：middleware 不得在 finally 里 reset。
+    外层 uvicorn.access 与 django.request log_response 在 middleware 返回后发出日志，
+    依赖 contextvar 仍存活。回归保护：任何未来的"重新引入 reset"改动会立即炸掉这两项。
+    """
+
+    def test_sync_trace_id_outlives_middleware_return(self):
+        rf = RequestFactory()
+        req = rf.get("/ping", HTTP_X_REQUEST_ID="persist-sync-001")
+        mw = TraceIdMiddleware(lambda r: HttpResponse("ok"))
+        response = mw(req)
+        assert response[RESP_HEADER] == "persist-sync-001"
+        # 模拟外层（uvicorn / django log_response）在 middleware 返回后读
+        assert trace_id_var.get() == "persist-sync-001"
+
+    @pytest.mark.asyncio
+    async def test_async_trace_id_outlives_middleware_return(self):
+        async def get_response(r):
+            return HttpResponse("ok")
+        rf = RequestFactory()
+        req = rf.get("/ping", HTTP_X_REQUEST_ID="persist-async-002")
+        mw = TraceIdMiddleware(get_response)
+        response = await mw(req)
+        assert response[RESP_HEADER] == "persist-async-002"
+        # asyncio.Task 级持久性：本 task 内后续日志（uvicorn access）仍能拿到 tid
+        assert trace_id_var.get() == "persist-async-002"
