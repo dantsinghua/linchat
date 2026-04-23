@@ -217,7 +217,9 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "此 batch 是后续所有 observability 和 performance batch 的基础。2026-04-23 安琳 review plan.md 第 7 节批复：R1=apps/common/__init__；R2=TraceId 在 CorsMiddleware 之前；R3=本地+生产统一 JSON（jq 已装）；R4=celery 透传延后到 batch-28；R5=新增测试不算扩 scope。"
+      "notes": "此 batch 是后续所有 observability 和 performance batch 的基础。2026-04-23 安琳 review plan.md 第 7 节批复：R1=apps/common/__init__；R2=TraceId 在 CorsMiddleware 之前；R3=本地+生产统一 JSON（jq 已装）；R4=celery 透传延后到 batch-28；R5=新增测试不算扩 scope。 Phase 2c 中途发现 finally:reset 时机 bug，原地扩 scope 补丁（commit 552b64c），重验通过。",
+      "actual_status": "completed",
+      "completed_at": "2026-04-23T15:23:00+08:00"
     },
     {
       "id": "batch-05",

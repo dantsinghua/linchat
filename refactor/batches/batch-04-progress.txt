@@ -61,7 +61,41 @@
   * Test file shipped 10 cases instead of planned 6 (added T5b/T6b/T6c/async variant) — still within scope per R5
   * settings.py net -37 vs plan -39 (actual 38 lines removed due to trailing whitespace)
 
-## Phase 2c: Validator
-- (not started)
+## Phase 2c: Validator (completed 2026-04-23T15:23:00+08:00)
 
-STATUS: EXECUTED
+### 自动化验证
+- pytest tests/common/test_trace_id.py -v -> 12/12 PASSED (0.07s)
+  (原 10 + 2 个新增持久化回归保护：sync + async)
+- 全量回归 pytest backend/ -> 1605 passed / 1 failed (预存在 flaky perf) / 9 skipped
+  · 零新增回归；唯一 failed 为 test_message_vo_conversion_performance（batch-02 已记录）
+- ruff: 4 个 batch-04-owned 文件 clean（settings.py E402 预存在）
+- H1 import check: PASSED (apps.common.trace_id_var + core.middleware.TraceIdMiddleware)
+
+### 中途 fix 追溯（22665c8 → 552b64c，选项 A 原地扩 scope）
+- Phase 2c 手动验证 M3.b/M5.b 发现 trace_id 日志回落 "-"
+- 诊断：finally:reset(token) 时机过早，uvicorn.access 和 django.request.log_response
+  都在 middleware 返回后才写日志，contextvar 已被 reset
+- 修复 commit 552b64c：删除 try/finally/reset（添加注释说明），+ 2 个持久化回归测试
+- 2 files changed, +61 -21
+- 安琳批准选项 A：原地补丁不拆新 batch
+- 已 push origin/refactor/batch-04 HEAD=552b64c
+
+### 手动验证（/tmp/validate-batch-04.sh 11 项端到端）
+- Prep.a/b 后端跑 batch-04 worktree + HTTP 200 -> PASS
+- M2 JSON 日志格式统一 -> PASS（ok=10 bad=0）
+- M3.a/b X-Request-ID 自定义回写 + 落日志 -> PASS
+- M3.c 跨 logger 200 路径 -> WARN（误报：200 不触发 django.request.log_response）
+- M4.a/b 无 header 自动生成 32hex + 落日志 -> PASS
+- M5.a/b 401 回写 + 日志 2 条同 trace_id（uvicorn.access + django.request） -> PASS
+- 核心语义：M5 证明 plan 目标「中间件早于 auth / 贯穿不同日志源」达成
+- 安琳判定：validation pass
+
+### Diff scope 核对
+- git diff before-batch-04..HEAD --stat：6 files, +440 -46
+- 所有文件在 plan scope.files_touched 内（test 扩展 R5 已批准）
+- 无 forbidden_zones 跨越
+
+### Validation 报告
+- refactor/batches/batch-04-validation.md
+
+STATUS: COMPLETED
