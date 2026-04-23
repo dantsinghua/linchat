@@ -1,0 +1,28 @@
+# Batch batch-05 Progress
+# Type: observability | Priority: P0 | Risk: low
+# Title: trace_id 接入 chat/graph 链路
+# Depends on: batch-04 (COMPLETED, 552b64c)
+
+## Phase 2a: Initializer
+- Started: 2026-04-23
+- Completed: 2026-04-23
+- Plan: refactor/batches/batch-05-plan.md
+- Scope verified: 6 files, all <=246 lines (≤300 hard limit), all within scope.files_touched
+- Dependencies verified:
+  - batch-04 marked STATUS: COMPLETED (refactor/batches/batch-04-progress.txt)
+  - apps.common.trace_id_var / get_trace_id exported (apps/common/__init__.py:11,14)
+  - JSON logging + TraceIdMiddleware production-verified (batch-04-validation.md §5)
+- Open Questions: 全部由安琳 2026-04-23 拍板
+  * Q1 = A (保留 request_id 字段名，语义等于 trace_id)
+  * Q2 = A (SSE heartbeat wire 不变，仅后端日志加 trace_id)
+  * Q3 = 统一 hex (llm-gateway 无 UUID 格式校验)
+  * Q4 = 接受 (agent_service execute 幂等 set contextvar)
+- Status: REVIEWED
+
+## Phase 2b: Executor
+- (not started)
+
+## Phase 2c: Validator
+- (not started)
+
+STATUS: PLAN_READY
