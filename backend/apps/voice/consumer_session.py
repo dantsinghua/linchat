@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from typing import Any, Optional
 
 from django.conf import settings
@@ -8,7 +9,7 @@ from django.conf import settings
 from apps.common.async_utils import cancel_task_sync
 from apps.voice.services.asr_stream_client import ASRStreamClient
 from apps.voice.services.voice_session_service import voice_session_service
-from core.redis import get_redis, redis_delete, redis_get, redis_setex_json
+from core.redis import get_redis, redis_delete, redis_get, redis_setex_json  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +153,13 @@ class SessionMixin:
         from apps.voice.services.voice_persist_service import voice_persist_service
         target_uid = speaker_user_id or self.user_id
         is_identified = speaker_user_id > 0
+        agg_dur_ms = int((aggregated_msg.last_ts - aggregated_msg.first_ts) * 1000)
+        logger.info("voice", extra={"stage": "ambient.aggregation.flush",
+                    "user_id": self.user_id, "target_user_id": target_uid,
+                    "duration_ms": agg_dur_ms,
+                    "utterance_count": aggregated_msg.utterance_count,
+                    "text_len": len(aggregated_msg.text),
+                    "is_identified": is_identified})
         await self._send_json({"type": "aggregation.completed", "data": {
             "aggregated_text": aggregated_msg.text, "utterance_count": aggregated_msg.utterance_count,
             "first_ts": aggregated_msg.first_ts, "last_ts": aggregated_msg.last_ts,
@@ -163,21 +171,25 @@ class SessionMixin:
             await self._send_json({"type": "decision.result", "data": {
                 "decision": "RECORD_ONLY", "reason": "unidentified_speaker", "speaker_user_id": target_uid}})
             await voice_persist_service.record_only_ambient(user_id=target_uid, text=aggregated_msg.text, speaker_id=sid)
-            logger.info("Unidentified speaker record-only: user=%s, speaker=%s, text=%s",
-                target_uid, sid, aggregated_msg.text[:50])
+            logger.info("voice", extra={"stage": "decision.decide",
+                        "user_id": self.user_id, "target_user_id": target_uid,
+                        "decision": "RECORD_ONLY", "reason": "unidentified_speaker",
+                        "speaker_label": sid})
             return
 
         # 已识别说话人 → 走完整决策链（唤醒词/LLM 意图/规则链）
+        t0 = time.monotonic()
         decision, reason = await response_decision_service.decide(
             aggregated_msg.text, speaker_id=None, user_id=target_uid, mode="ambient",
             speaker_identified=is_identified)
+        decide_dur_ms = int((time.monotonic() - t0) * 1000)
+        logger.info("voice", extra={"stage": "decision.decide",
+                    "user_id": self.user_id, "target_user_id": target_uid,
+                    "duration_ms": decide_dur_ms,
+                    "decision": decision.value, "reason": reason})
         await self._send_json({"type": "decision.result", "data": {
             "decision": decision.value, "reason": reason, "speaker_user_id": target_uid}})
         if decision.value == "DISCARD":
-            logger.info(
-                "Utterance discarded (TTS echo): user=%s, reason=%s, text=%s",
-                target_uid, reason, aggregated_msg.text[:50],
-            )
             # 仍然记录，方便后续语音文本训练标注
             sid = str(target_uid)
             await voice_persist_service.record_only_ambient(user_id=target_uid, text=aggregated_msg.text, speaker_id=sid)
@@ -188,8 +200,9 @@ class SessionMixin:
                 else:
                     self._pending_text = aggregated_msg.text
                 self._pending_speaker_user_id = speaker_user_id or None
-                logger.info("Pipeline busy, buffered: user=%s, speaker=%s, pending='%s'",
-                    self.user_id, target_uid, self._pending_text[:80])
+                logger.info("voice", extra={"stage": "pipeline.buffered",
+                            "user_id": self.user_id, "target_user_id": target_uid,
+                            "pending_len": len(self._pending_text)})
             else:
                 await self._start_voice_pipeline(
                     self._current_segment_id or "agg", aggregated_msg.text,

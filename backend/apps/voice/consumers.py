@@ -2,11 +2,13 @@ import asyncio
 import json
 import logging
 import time
+import uuid
 from typing import Any, Optional
 from urllib.parse import parse_qs
 
 from channels.generic.websocket import AsyncWebsocketConsumer
 
+from apps.common import trace_id_var
 from apps.common.async_utils import cancel_task, cancel_task_sync
 from apps.voice.consumer_events import EventMixin
 from apps.voice.consumer_inference import InferenceMixin
@@ -66,7 +68,11 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
         self._pending_speaker_user_id: Optional[int] = None
         self._is_speaking: bool = False
         self._pipeline_task: Optional[asyncio.Task] = None
+        self._trace_id: str = uuid.uuid4().hex
+        trace_id_var.set(self._trace_id)
         await self.accept()
+        logger.info("voice", extra={"stage": "ws.connect", "user_id": self.user_id,
+                    "device": self._is_device_connection})
         from apps.voice.services.tts_router import TTSRouter
         await self.channel_layer.group_add(TTSRouter.group_name(self.user_id), self.channel_name)
 
@@ -105,6 +111,8 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
             await voice_session_service.close_session(user_id)
 
     async def receive(self, text_data: str = None, bytes_data: bytes = None) -> None:
+        if hasattr(self, "_trace_id"):
+            trace_id_var.set(self._trace_id)
         self._last_activity = time.time()
         if bytes_data:
             await self._handle_audio_frame(bytes_data)

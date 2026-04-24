@@ -25,7 +25,10 @@ class EventMixin:
     async def _on_vad_speech_start(self, event: dict[str, Any]) -> None:
         self._is_speaking = True
         self._current_segment_id = str(uuid.uuid4())[:8]
+        self._vad_start_ts = time.monotonic()
         self._last_activity = time.time()
+        logger.info("voice", extra={"stage": "asr.vad_speech_start",
+                    "user_id": self.user_id, "seg": self._current_segment_id})
         # ambient 模式下不在 VAD 阶段设置 active_conversation，
         # 只有 AI 真正回复时才设（VoicePipeline.run_pipeline 中设置），
         # 避免房间里有人说话就导致后续任何话语跳过 LLM 直接 RESPOND。
@@ -46,6 +49,11 @@ class EventMixin:
     async def _on_transcription_completed(self, event: dict[str, Any]) -> None:
         text = event.get("text", "").strip()
         segment_id = self._current_segment_id
+        vad_start = getattr(self, "_vad_start_ts", None)
+        asr_dur_ms = int((time.monotonic() - vad_start) * 1000) if vad_start else None
+        logger.info("voice", extra={"stage": "asr.transcription",
+                    "user_id": self.user_id, "seg": segment_id,
+                    "duration_ms": asr_dur_ms, "text_len": len(text)})
         if not text:
             await self._send_json({"type": "transcription.failed", "data": {
                 "error": "未检测到有效语音内容", "segment_id": segment_id}})
@@ -98,9 +106,14 @@ class EventMixin:
     async def _identify_ambient_speaker(self, segment_id: str) -> Optional[dict]:
         """识别 ambient 模式下的说话人。返回 {speaker_user_id, speaker_label, ...} 或 None。"""
         from apps.voice.services.speaker_service import speaker_service
+        t0 = time.monotonic()
         try:
             pcm_chunks = await voice_session_service.get_audio_chunks(self.user_id, segment_id)
             if not pcm_chunks:
+                logger.info("voice", extra={"stage": "speaker.identify",
+                            "user_id": self.user_id, "seg": segment_id,
+                            "duration_ms": int((time.monotonic() - t0) * 1000),
+                            "matched": False, "result": "no_audio"})
                 return None
             pcm_data = b"".join(pcm_chunks)
             result = await speaker_service.identify_from_pcm(pcm_data)
@@ -113,17 +126,25 @@ class EventMixin:
                         "segment_id": segment_id, "speaker_user_id": profile_info["user_id"],
                         "speaker_label": profile_info["speaker_name"],
                         "confidence": result.get("confidence", 0.0), "is_identified": True}})
+                    logger.info("voice", extra={"stage": "speaker.identify",
+                                "user_id": self.user_id, "seg": segment_id,
+                                "duration_ms": int((time.monotonic() - t0) * 1000),
+                                "matched": True, "speaker_user_id": profile_info["user_id"],
+                                "confidence": result.get("confidence", 0.0)})
                     return {"speaker_user_id": profile_info["user_id"], "speaker_label": profile_info["speaker_name"]}
                 # Gateway 返回了 speaker_id 但 LinChat 没有对应 profile（数据不一致）
                 logger.warning("Gateway speaker %s not found in SpeakerProfile", gw_speaker_id)
             # 未匹配到已注册用户 → 分配 unknown 标签
-            logger.info("Speaker not matched: seg=%s, gw=%s, conf=%.3f",
-                segment_id, gw_speaker_id, result.get("confidence", 0.0))
             label = await self._assign_unknown_label(result.get("embedding_hash"))
             await self._send_json({"type": "speaker.identified", "data": {
                 "segment_id": segment_id, "speaker_user_id": None,
                 "speaker_label": label, "confidence": result.get("confidence", 0.0),
                 "is_identified": False}})
+            logger.info("voice", extra={"stage": "speaker.identify",
+                        "user_id": self.user_id, "seg": segment_id,
+                        "duration_ms": int((time.monotonic() - t0) * 1000),
+                        "matched": False, "gw_speaker_id": gw_speaker_id,
+                        "confidence": result.get("confidence", 0.0), "label": label})
             return {"speaker_user_id": None, "speaker_label": label}
         except Exception:
             logger.exception("Speaker identify error: seg=%s, fallback", segment_id)
@@ -150,6 +171,10 @@ class EventMixin:
         aggregator = getattr(self, "_aggregator", None)
         if aggregator:
             await aggregator.add(text)
+            logger.info("voice", extra={"stage": "ambient.aggregation.buffer",
+                        "user_id": self.user_id, "seg": segment_id,
+                        "buffer_count": aggregator.buffer_count,
+                        "text_len": len(text)})
             await self._send_json({"type": "aggregation.utterance_added", "data": {
                 "text": text, "buffer_count": aggregator.buffer_count,
                 "timeout_remaining": aggregator.timeout_remaining}})

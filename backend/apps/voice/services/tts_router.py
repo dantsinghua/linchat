@@ -8,6 +8,7 @@
 """
 
 import logging
+import time
 from typing import Any, Callable, Coroutine
 
 import httpx
@@ -82,12 +83,16 @@ class TTSRouter:
         await r.lpush(history_key, text)
         await r.ltrim(history_key, 0, _TTS_HISTORY_MAXLEN)
         await r.expire(history_key, _TTS_HISTORY_TTL)
+        logger.info("voice", extra={"stage": "tts.mark_start",
+                    "user_id": user_id, "text_len": len(text)})
 
     async def mark_tts_end(self, user_id: int) -> None:
         """在 TTS 播放结束时删除播放中标记。"""
         r = await get_redis()
         playing_key = _TTS_PLAYING_KEY.format(user_id=user_id)
         await r.delete(playing_key)
+        logger.info("voice", extra={"stage": "tts.mark_end",
+                    "user_id": user_id})
 
     def get_on_audio_callback(
         self, user_id: int
@@ -115,6 +120,7 @@ class TTSRouter:
         ha_url = settings.HA_URL
         ha_token = settings.HA_TOKEN
         headers = {"Authorization": f"Bearer {ha_token}", "Content-Type": "application/json"}
+        t0 = time.monotonic()
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             # 优先：xiaomi_miot.intelligent_speaker 直传文本
@@ -125,7 +131,10 @@ class TTSRouter:
                     json={"entity_id": entity_id, "text": text, "execute": False, "silent": False},
                 )
                 if resp.status_code == 200:
-                    logger.info("HA 音箱 TTS 播报成功: entity=%s, text=%s", entity_id, text[:50])
+                    logger.info("voice", extra={"stage": "tts.ha_speaker.xiaomi",
+                                "entity_id": entity_id,
+                                "duration_ms": int((time.monotonic() - t0) * 1000),
+                                "text_len": len(text)})
                     return
                 if resp.status_code == 404:
                     logger.warning("xiaomi_miot.intelligent_speaker 服务不可用(404), 降级到 play_media")
@@ -166,7 +175,10 @@ class TTSRouter:
                     },
                 )
                 resp.raise_for_status()
-                logger.info("HA play_media 降级播报成功: entity=%s", entity_id)
+                logger.info("voice", extra={"stage": "tts.ha_speaker.play_media",
+                            "entity_id": entity_id,
+                            "duration_ms": int((time.monotonic() - t0) * 1000),
+                            "text_len": len(text)})
             except HASpeakerError:
                 raise
             except Exception as e:

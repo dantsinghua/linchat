@@ -1,5 +1,6 @@
 import json as json_module
 import logging
+import time
 from difflib import SequenceMatcher
 from enum import Enum
 from typing import Optional
@@ -67,6 +68,7 @@ class ResponseDecisionService:
 
     async def _classify_intent_llm(self, text: str, user_id: int = 0) -> Optional[tuple[DecisionResult, str, float]]:
         from django.conf import settings as django_settings
+        t0 = time.monotonic()
         try:
             from apps.models.services import model_service
             from asgiref.sync import sync_to_async
@@ -94,10 +96,18 @@ class ResponseDecisionService:
             raw_decision = result.get("decision", "")
             decision_str = raw_decision if isinstance(raw_decision, str) else ""
             decision = DecisionResult.RESPOND if decision_str.upper() == "RESPOND" else DecisionResult.RECORD_ONLY
-            return decision, result.get("reason", "unknown"), float(result.get("confidence", 0.0))
+            confidence = float(result.get("confidence", 0.0))
+            reason = result.get("reason", "unknown")
+            logger.info("voice", extra={"stage": "decision.llm_classify",
+                        "user_id": user_id, "duration_ms": int((time.monotonic() - t0) * 1000),
+                        "decision": decision.value, "confidence": confidence,
+                        "reason": reason, "result": "ok"})
+            return decision, reason, confidence
         except httpx.TimeoutException:
             # 超时时安全降级为 RECORD_ONLY，避免穿透到规则链误触发 RESPOND
-            logger.info("LLM intent classify timeout: text=%s", text[:30])
+            logger.info("voice", extra={"stage": "decision.llm_classify",
+                        "user_id": user_id, "duration_ms": int((time.monotonic() - t0) * 1000),
+                        "result": "timeout", "decision": "RECORD_ONLY"})
             return DecisionResult.RECORD_ONLY, "llm_timeout", 1.0
         except Exception as e:
             logger.warning("LLM decision error: text=%s", text[:30], exc_info=True)
@@ -186,17 +196,18 @@ class ResponseDecisionService:
             r = await get_redis()
             playing_key = _TTS_PLAYING_KEY.format(user_id=user_id)
             if await r.exists(playing_key):
-                logger.debug("TTS echo detected (playing): user=%s, text=%s", user_id, text[:30])
+                logger.info("voice", extra={"stage": "tts.echo_detected",
+                            "user_id": user_id, "source": "playing",
+                            "text_len": len(text)})
                 return True
             history_key = _TTS_HISTORY_KEY.format(user_id=user_id)
             history: list[str] = await r.lrange(history_key, 0, 9)
             for tts_text in history:
                 ratio = SequenceMatcher(None, text, tts_text).ratio()
                 if ratio > _TTS_ECHO_SIMILARITY_THRESHOLD:
-                    logger.debug(
-                        "TTS echo detected (history): user=%s, ratio=%.2f, text=%s",
-                        user_id, ratio, text[:30],
-                    )
+                    logger.info("voice", extra={"stage": "tts.echo_detected",
+                                "user_id": user_id, "source": "history",
+                                "ratio": round(ratio, 3), "text_len": len(text)})
                     return True
         except Exception:
             logger.debug("TTS echo check failed (ignored): user=%s", user_id, exc_info=True)

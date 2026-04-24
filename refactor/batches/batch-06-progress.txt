@@ -29,10 +29,30 @@
   - Q6 → 不 reset: disconnect() 内不 reset trace_id_var
 - Status: PLAN_APPROVED
 
-## Phase 2b: Executor
-- (尚未开始)
+## Phase 2b: Executor (started 2026-04-24)
+- Branch: refactor/batch-06 @ HEAD=83a253f
+- Venv: /home/dantsinghua/work/linchat/linchat/bin/python (3.12.12)
+- Baseline commit: before-batch-06 (tag 已设)
+- trace_id_var import OK: apps.common.trace_id_var (ContextVar)
 
 ## Phase 2c: Validator
 - (尚未开始)
 
-STATUS: PLAN_APPROVED
+[Executor] consumers.py updated (+8 -0) — 1.1 ws.connect trace_id + 1.2 receive 恢复
+[Executor] consumer_events.py updated (+26 -2) — 2.1-2.4 vad/transcription/identify/aggregation stages
+[Executor] consumer_session.py updated (+17 -4) — 3.1 flush + 3.2 decide + 改写 166/191 stage + 保护测试 mock noqa F401
+[Executor] consumer_inference.py updated (+9 -4) — 4.1 pipeline.launch stage + 4.2 _wrapped trace_id.set + pending 日志改写 stage + noqa F401
+[Executor] voice_pipeline.py updated (+34 -6) — 5.1-5.5 pipeline.start/agent_first_token/agent_total/error/end/ha_speaker + cancel/barge_in stage 改写
+[Executor] response_decision_service.py updated (+15 -8) — 6.1/6.2 decision.llm_classify ok+timeout + 6.3 tts.echo_detected playing/history
+[Executor] tts_pipeline_manager.py updated (+13 -0) — 7.1 tts.play + 7.2 tts.dequeue + 7.3 tts.wait_done_start
+[Executor] tts_router.py updated (+17 -4) — 8.1 xiaomi + 8.2 play_media + 8.3 mark_start/mark_end
+[Executor] test_trace_id_propagation.py created — 3 cases (connect 32hex / receive consistency / distinct connections)
+
+## Phase 2b 结果（2026-04-24 收尾）
+- 总计改动：10 files / +311 -33（含 test + progress）
+- pytest backend/tests/voice/ : 691 passed / 0 failed / 13 warnings / 27.26s
+- ruff check apps/voice/ : baseline 16 errors → 14 errors（减 2，无新增；剩余全部 scope 外预存问题）
+- voice tests 27 个全绿 + 新增 test_trace_id_propagation.py 3 case 通过
+- chat + common 集成回归：407 passed / 9 skipped
+
+STATUS: EXECUTED
