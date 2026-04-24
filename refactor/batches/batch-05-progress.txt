@@ -55,6 +55,27 @@
   * 所有偏离均为注释 / 说明性内容，无业务逻辑偏离
 
 ## Phase 2c: Validator
-- (not started)
+- Started: 2026-04-24
+- Completed: 2026-04-24
+- Validation report: refactor/batches/batch-05-validation.md
+- Runtime E2E report: refactor/batches/batch-05-runtime-e2e.md
+- E2E script: scripts/validate-batch-05.sh
+- Automated checks:
+  * Gate 1 target tests  -> 478 passed / 9 skipped / 0 failed
+  * Gate 2 full suite    -> 1606 passed / 9 skipped / 0 failed (72.10s, ≥ baseline 1603)
+  * Voice regression     -> 688 passed (contextvar 幂等 set 无回归)
+  * Ruff 6 文件          -> 12 errors (baseline 13 → 当前 12, 净减 1, 零新增)
+  * Diff                 -> +45 -12 业务代码（progress.txt 自身再 +2）
+  * Rollback tag         -> before-batch-05 = d71525a ✅
+- Manual E2E (安琳 2026-04-24, 8/8 PASS):
+  * [1] 后端日志合法 JSON ✅
+  * [2a] TID 日志条数 = 23 (≥10) ✅
+  * [2b] logger 覆盖业务 + 框架层（chat_service/sse/monitoring/langfuse/uvicorn.access）✅
+  * [3a] 响应头 X-Request-ID 回写 ✅
+  * [3b] DB Message.request_id == TID ✅
+  * [4] Langfuse trace 包含 TID ✅
+  * [5] Gateway record_gateway_span — SOFT PASS（plain text chat 走 ChatOpenAI，不触发；改动 6.1/6.2 留下次多模态/文档/语音场景补证）
+  * [6] 并发 2 TID (A=24 / B=25 / 0 crosstalk) ✅
+- Final status: COMPLETED
 
-STATUS: EXECUTED
+STATUS: COMPLETED
