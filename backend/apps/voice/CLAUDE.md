@@ -154,12 +154,5 @@ pytest tests/voice/test_response_decision.py -v  # 决策链
 
 
 <claude-mem-context>
-# Recent Activity
 
-### Mar 7, 2026
-
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #1590 | 12:51 AM | 🔵 | LinChat Voice Consumer Session Management | ~719 |
-| #1579 | 12:45 AM | 🔵 | LinChat Existing Voice Consumer Architecture | ~608 |
 </claude-mem-context>

@@ -58,17 +58,5 @@
 - **配置变更**: `configuration-guide.md`（全量配置参考）
 
 <claude-mem-context>
-# Recent Activity
 
-### Feb 13, 2026
-
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #1044 | 11:00 AM | ⚖️ | Code Review Findings for Multimodal Feature Require Comprehensive Fix Plan | ~728 |
-
-### Mar 15, 2026
-
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #1884 | 12:59 AM | 🔵 | Reviewed LLM Gateway v3.0.0 comprehensive API specification | ~342 |
 </claude-mem-context>

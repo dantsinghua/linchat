@@ -1,0 +1,38 @@
+# Batch batch-06 Progress
+# Type: observability | Priority: P0 | Risk: high
+# Title: trace_id 接入 voice 链路
+# Depends on: batch-04 (COMPLETED, HEAD=552b64c)
+# Blocks SLO: voice_end_to_end_5s
+
+## Phase 2a: Initializer
+- Started: 2026-04-24
+- Plan generated: refactor/batches/batch-06-plan.md (≈ 340 lines)
+- Dependency check: batch-04 COMPLETED ✓ (trace_id_var + TraceIdMiddleware + JSON logging)
+- Files reviewed (8/8):
+  - backend/apps/voice/consumers.py (162 lines)
+  - backend/apps/voice/consumer_events.py (179 lines)
+  - backend/apps/voice/consumer_session.py (286 lines)
+  - backend/apps/voice/consumer_inference.py (98 lines)
+  - backend/apps/voice/services/voice_pipeline.py (190 lines)
+  - backend/apps/voice/services/response_decision_service.py (229 lines)
+  - backend/apps/voice/services/tts_pipeline_manager.py (148 lines)
+  - backend/apps/voice/services/tts_router.py (198 lines)
+- Total current lines: 1490 (all under 300-line hard limit)
+- Estimated delta: +98 -6 ≈ +92 net
+- Stage anchors identified: 7 主阶段 + 4 子阶段 = 11 个 trace 锚点
+- Open questions for Anlin (第 7 节): RESOLVED 2026-04-24
+  - Q1 → B: logger.info("voice", extra={"stage":..., "duration_ms":..., ...})
+  - Q2 → 改写: 旧非 stage= 日志全部改写为 stage 统一格式，不保留重复
+  - Q3 → 维持: speaker_service.py 不下探，仅 consumer 端记录 speaker.identify 耗时
+  - Q4 → 批准: baseline json 产出不视为扩 scope
+  - Q5 → 批准: 新增 test_trace_id_propagation.py (~60 行 / 3 case)
+  - Q6 → 不 reset: disconnect() 内不 reset trace_id_var
+- Status: PLAN_APPROVED
+
+## Phase 2b: Executor
+- (尚未开始)
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: PLAN_APPROVED
