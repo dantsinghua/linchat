@@ -12,6 +12,7 @@ from apps.chat.models import LangGraphExecution, MediaAttachment, Message
 from apps.chat.repositories import execution_repo, media_attachment_repo, message_repo
 from apps.chat.services.generation import register_generation, unregister_generation
 from apps.chat.services.types import StreamChunk
+from apps.common import trace_id_var
 from apps.common.exceptions import LLMException, LLMInvalidResponseError, LLMTimeoutError, map_llm_exception
 from apps.graph.agent import create_chat_agent, get_agent_config
 from apps.graph.services.helpers import (
@@ -31,6 +32,10 @@ logger = logging.getLogger(__name__)
 class AgentService:
     @staticmethod
     async def execute(user_id: int, thread_id: str, request_id: str, user_message: str, attachment_uuids: Optional[list[str]] = None) -> AsyncGenerator[StreamChunk, None]:
+        # batch-05：Voice / Celery / 测试 不经 HTTP middleware，contextvar 为空；
+        # 显式 set，保证 helpers/prompt/finalize/gateway 日志拿得到 trace_id。
+        # HTTP 路径 middleware 已 set，这里是幂等覆盖（值相同）。
+        _tid_token = trace_id_var.set(request_id)
         start_time = timezone.now()
         stop_event = register_generation(request_id)
         attachments: list[MediaAttachment] = []
@@ -164,7 +169,7 @@ class AgentService:
         except LLMException:
             raise
         except Exception as e:
-            logger.exception("Agent execution error: %s", request_id)
+            logger.exception("Agent execution error", extra={"request_id": request_id, "user_id": user_id})
             content_control = extract_content_control(e)
             if content_control:
                 await handle_execution_failure(execution, execution_repo, start_time, "ContentControl", "safety_violation", assistant_msg, message_repo, content_control)
@@ -192,9 +197,9 @@ class AgentService:
                     await message_repo.update(assistant_msg)
                     finalize_execution(execution, "interrupted", end, dur, total_prompt_tokens=total_prompt_tokens, total_completion_tokens=total_completion_tokens)
                     await execution_repo.update(execution)
-                    logger.info("SSE rescue save: request=%s, content_len=%d", request_id, len(full_response))
+                    logger.info("sse rescue save", extra={"request_id": request_id, "user_id": user_id, "content_len": len(full_response)})
                 except Exception:
-                    logger.exception("SSE rescue save failed: request=%s", request_id)
+                    logger.exception("sse rescue save failed", extra={"request_id": request_id, "user_id": user_id})
             unregister_generation(request_id)
             if cancel_task and not cancel_task.done():
                 cancel_task.cancel()
@@ -204,9 +209,13 @@ class AgentService:
                     pass
             if is_multimodal:
                 await inference_service.complete_task(user_id, request_id)
+            # batch-05：reset 必须在最后，确保 finally 内所有日志仍带 trace_id
+            trace_id_var.reset(_tid_token)
 
     @staticmethod
     async def resume(user_id: int, thread_id: str, request_id: str, message: Message) -> AsyncGenerator[StreamChunk, None]:
+        # batch-05：同 execute，reconnect/resume 也要显式 set contextvar
+        _tid_token = trace_id_var.set(request_id)
         stop_event = register_generation(request_id)
         full_response = message.content.replace("[已中断]", "")
         _finalized = False
@@ -232,7 +241,7 @@ class AgentService:
                 _finalized = True
                 yield StreamChunk(type="done", content="", message_id=message.message_id)
         except Exception:
-            logger.exception("Resume generation error: %s", request_id)
+            logger.exception("resume generation error", extra={"request_id": request_id, "user_id": user_id})
             await message_repo.update_status(message.message_id, user_id, Message.STATUS_FAILED)
             _finalized = True
             yield StreamChunk(type="error", content="恢复生成失败，请重试")
@@ -240,7 +249,8 @@ class AgentService:
             if not _finalized:
                 try:
                     await message_repo.update_content_and_status(message.message_id, user_id, full_response or "", Message.STATUS_INTERRUPTED)
-                    logger.info("SSE rescue save (resume): request=%s, content_len=%d", request_id, len(full_response))
+                    logger.info("sse rescue save (resume)", extra={"request_id": request_id, "user_id": user_id, "content_len": len(full_response)})
                 except Exception:
-                    logger.exception("SSE rescue save (resume) failed: request=%s", request_id)
+                    logger.exception("sse rescue save (resume) failed", extra={"request_id": request_id, "user_id": user_id})
             unregister_generation(request_id)
+            trace_id_var.reset(_tid_token)

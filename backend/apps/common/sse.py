@@ -60,6 +60,9 @@ def make_sse_response(stream: AsyncGenerator[StreamChunk, None], user_id: int, c
                     pending_next = None  # 已消费，下轮重新获取
                 except asyncio.TimeoutError:
                     # 心跳 data 事件：前端可感知并更新 lastDataTime，用于超时检测
+                    # batch-05：wire 保持 {"type":"heartbeat"} 不变（前端零改动）；
+                    # trace_id 仅从后端 log extra 聚合，通过 JSONFormatter 自动注入
+                    logger.debug("sse heartbeat", extra={"context_name": context_name, "user_id": user_id})
                     yield 'data: {"type":"heartbeat"}\n\n'
                     continue  # 重用同一个 pending_next
                 except StopAsyncIteration:
@@ -73,10 +76,10 @@ def make_sse_response(stream: AsyncGenerator[StreamChunk, None], user_id: int, c
                     data["data"] = chunk.data
                 yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
         except asyncio.CancelledError:
-            logger.info(f"{context_name} SSE connection cancelled for user {user_id}")
+            logger.info("sse cancelled", extra={"context_name": context_name, "user_id": user_id})
             raise
         except Exception as e:
-            logger.exception(f"{context_name} error")
+            logger.exception("sse error", extra={"context_name": context_name, "user_id": user_id})
             error_data = {"type": "error", "content": getattr(e, "message", str(e))}
             yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 

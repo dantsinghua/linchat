@@ -22,7 +22,10 @@ def build_gateway_headers(request_id: Optional[str] = None) -> dict[str, str]:
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     if not request_id:
-        request_id = str(uuid.uuid4())
+        # batch-05：优先继承 HTTP 链路的 trace_id（32-hex），确保 gateway 子请求
+        # 与父请求在日志/Langfuse 中能聚合；兜底时也用 hex 格式统一
+        from apps.common import get_trace_id
+        request_id = get_trace_id() or uuid.uuid4().hex
     headers["X-Request-ID"] = request_id
     return headers
 
@@ -112,10 +115,12 @@ def record_gateway_span(
         langfuse = _get_langfuse()
         if not langfuse:
             return
+        from apps.common import get_trace_id
         metadata: dict[str, Any] = {
             "model": model, "request_type": request_type,
             "duration": round(duration, 3), "status_code": status_code,
             "request_id": request_id or "",
+            "trace_id": get_trace_id() or request_id or "",
         }
         if error: metadata["error"] = error
         span = langfuse.start_observation(

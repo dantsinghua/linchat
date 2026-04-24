@@ -40,7 +40,7 @@ async def build_prompt_preamble(user_id: int, user_message: str = ""):
                     for r in res
                 ]
         except Exception as e:
-            logger.warning("Memory recall failed for user %d: %s", user_id, e)
+            logger.warning("memory recall failed", extra={"user_id": user_id, "error": repr(e)})
 
     preamble = builder.build_preamble(retrieved_memories=retrieved_memories)
     preamble_tokens = sum(

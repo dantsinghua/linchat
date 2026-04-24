@@ -20,9 +20,41 @@
 - Status: REVIEWED
 
 ## Phase 2b: Executor
-- (not started)
+- Started: 2026-04-23
+- Completed: 2026-04-23
+- Starting commit: d71525a (tag before-batch-05)
+- Executor path: initial subagent paused by plan mode after File 1 done + File 2 import; resumed subagent blocked by Bash permission; 最终由主线程接手完成 Files 2-6 + 验证 + commit
+- Files changed: 6 (business) + 1 (progress bookkeeping)
+  * backend/apps/chat/services/chat_service.py       (+7 -2)   — request_id 从 uuid4().hex 改为 get_trace_id() 优先 + log extra
+  * backend/apps/graph/services/agent_service.py     (+16 -6)  — trace_id_var.set 幂等覆盖 + 6 处 logger extra
+  * backend/apps/graph/services/helpers/prompt.py    (+1 -1)   — memory recall 失败日志改 extra
+  * backend/apps/graph/services/helpers/finalize.py  (+10 -0)  — logger 模块 + handle_execution_failure warning + langfuse 注释
+  * backend/apps/common/sse.py                       (+5 -2)   — heartbeat debug 日志 + cancelled/error 改 extra
+  * backend/apps/common/gateway_utils.py             (+6 -1)   — build_gateway_headers 继承 trace_id + record_gateway_span metadata 加 trace_id
+- Total diff: +47 -14（vs plan 预估 +39 -13；+8 delta 来自注释块和 finalize logger 模块导入）
+- Ruff: 12 个 E701/E702 全部 pre-existing (batch-03 精简残留)，无新增
+- Target tests (Gate 1):
+  * pytest tests/chat/            -> 369 passed / 9 skipped
+  * pytest tests/apps/graph/      -> 89 passed
+  * pytest tests/common/test_trace_id.py -> 12 passed (batch-04 回归 clean)
+  * pytest tests/integration/test_sse_async.py -> 8 passed
+- Regression (Gate 2):
+  * pytest (full)                 -> 1606 passed / 9 skipped / 0 failed (47.26s)  ≥ baseline 1603
+  * pytest tests/voice/           -> 688 passed (Q4 voice 路径幂等 set contextvar 无回归)
+- Assumptions verified:
+  * H1: apps.common.trace_id_var / get_trace_id 导入无错（ruff + 测试均通过）
+  * H2: voice_pipeline 不经 middleware，execute 内 trace_id_var.set 在并发 / cancel 路径正确 reset（voice 测试 688 绿）
+  * H3: langfuse_trace_id 字段保留（finalize.py 改动 4.2 仅加注释）
+  * H4: StreamChunk.request_id 契约未破坏（chat 369 + integration 8 绿）
+  * H5: gateway_utils 12 E701 全 batch-03 残留（vs batch-05 预估 13，少 1 条是因为 batch-05 新增非 E701 格式代码）
+  * H6: monitor.py 未动（plan 预测的 Langfuse trace_id 自动等于 HTTP trace_id）
+- Plan vs actual divergence:
+  * agent_service.py 净 +16 vs plan +15（reset 注释多 1 行）
+  * sse.py 净 +5 vs plan +3（heartbeat 注释多 2 行）
+  * gateway_utils.py 净 +6 vs plan +5（get_trace_id 注释多 1 行）
+  * 所有偏离均为注释 / 说明性内容，无业务逻辑偏离
 
 ## Phase 2c: Validator
 - (not started)
 
-STATUS: PLAN_READY
+STATUS: EXECUTED
