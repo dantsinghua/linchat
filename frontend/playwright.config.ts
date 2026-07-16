@@ -28,7 +28,8 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run build && npm run start -- -p 3784',
-    url: 'http://localhost:3784',
+    // basePath 是 /linchat，根路径 404 会被判定为"服务未就绪"而误触发 build
+    url: 'http://localhost:3784/linchat/login',
     reuseExistingServer: !process.env.CI,
     timeout: 120000, // 构建可能需要较长时间
   },
