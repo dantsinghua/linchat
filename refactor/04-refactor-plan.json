@@ -215,7 +215,8 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "此 batch 是后续所有 observability 和 performance batch 的基础。"
+      "notes": "此 batch 是后续所有 observability 和 performance batch 的基础。",
+      "actual_status": "planned"
     },
     {
       "id": "batch-05",

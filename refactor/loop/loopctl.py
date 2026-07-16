@@ -57,7 +57,11 @@ def cmd_mark(plan, bid, status):
     for b in plan["batches"]:
         if b["id"] == bid:
             b["actual_status"] = status
-            json.dump(plan, open(PLAN, "w"), ensure_ascii=False, indent=2)
+            tmp = PLAN + ".tmp"
+            with open(tmp, "w") as tf:
+                json.dump(plan, tf, ensure_ascii=False, indent=2)
+                tf.write("\n")
+            os.replace(tmp, PLAN)
             pf = os.path.join(BATCH_DIR, f"{bid}-progress.txt")
             with open(pf, "a") as f:
                 f.write(f"\nSTATUS: {status.upper()}  # loopctl {time.strftime('%F %T')}\n")
@@ -99,10 +103,15 @@ def cmd_alert(sev, subj, body):
     m["To"] = "wechat-narrator@test.local"
     m["X-WN-Category"] = "refactor"
     m["X-WN-Severity"] = sev
-    s = smtplib.SMTP("127.0.0.1", 3025, timeout=10)
-    s.send_message(m)
-    s.quit()
-    print("alert sent")
+    try:
+        s = smtplib.SMTP("127.0.0.1", 3025, timeout=10)
+        s.send_message(m)
+        s.quit()
+        print("alert sent")
+    except OSError as e:  # GreenMail down — keep the alert on disk, fail visibly
+        with open(os.path.join(ROOT, "refactor/loop/alerts-failed.log"), "a") as f:
+            f.write(f"{time.strftime('%F %T')} [{sev}] {subj}\n{body}\n---\n")
+        sys.exit(f"alert send failed ({e}); saved to alerts-failed.log")
 
 
 if __name__ == "__main__":

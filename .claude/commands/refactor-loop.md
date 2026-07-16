@@ -29,6 +29,12 @@ gates + deferred manual-review backlog (unattended policy, user-approved 2026-07
 **Preflight (first iteration only):** cd ~/work/linchat; `git checkout main && git pull`;
 working tree must be clean (leftovers → `git stash push -m loop-stash`); backend service up
 (`scripts/services.sh status`, containers postgres/redis/minio up); baseline-metrics.json exists.
+Environment (2026-07-17 crash postmortem — tmux segfault + cgroup 3G/512pid exhaustion +
+mid-run CLI auto-update): the loop session SHOULD be launched via `refactor/loop/start-loop.sh`
+(pinned binary, DISABLE_AUTOUPDATER=1, own scope 4.5G/1024pids). If `DISABLE_AUTOUPDATER` is
+unset in this session, alert remind once and continue — but re-verify before each batch that
+`readlink -f $(command -v claude)` still exists (auto-update deletes old binaries; missing ⇒
+subagent panes die with status 127).
 
 1. `BID=$(python3 refactor/loop/loopctl.py next)`
    - `ALL_DONE` → enter **Rediagnosis stage** (below). Loop only SUCCEEDS when a diagnosis
@@ -39,7 +45,15 @@ working tree must be clean (leftovers → `git stash push -m loop-stash`); backe
    (its documented flow; output plan.md + progress `STATUS: PLAN_READY`).
 3. **Gate** — `python3 refactor/loop/loopctl.py gate $BID`. FAIL → `loopctl mark $BID blocked_gate`,
    alert remind with reasons, `continue` to next batch. (Replaces human "execute confirmed".)
-4. **Execute** — `git tag -f before-$BID`; spawn `batch-executor` subagent (branch `refactor/$BID`,
+4. **Execute** — FIRST reconcile any pre-existing `refactor/$BID` branch (April-era batches
+   04/05/06 have unmerged branches + worktrees with finished work):
+   a. `git merge --no-commit --no-ff refactor/$BID` onto a clean main — clean merge →
+      `git merge --abort`, then run validate_full.sh on the BRANCH; green ⇒ skip straight to
+      step 6 (reuse the old work, merge it — don't redo).
+   b. Conflicts or red validation ⇒ `git merge --abort`; archive first (`git tag archive/$BID
+      refactor/$BID`), remove its worktree if any (`git worktree remove ../linchat-$BID
+      --force`), delete the branch, then proceed to a fresh execute below.
+   Then: `git tag -f before-$BID`; spawn `batch-executor` subagent (branch `refactor/$BID`,
    its 9-step flow, retry cap 3). FAILED → `git checkout main && git reset --hard before-$BID` is
    NOT needed on main (work was on branch); delete branch, `loopctl mark $BID failed`, failures+=1, goto 7.
 5. **Validate** — on the batch branch: `refactor/loop/validate_full.sh` MUST pass (all green).
@@ -82,5 +96,8 @@ R5. Zero new batches appended → run validate_full.sh + perf_bench.sh for the f
 - Full suite green before every merge — no exceptions, no skips, no `-k` subsets as the gate.
 - Heavy processes (pytest/npm/playwright/chrome) outside validate_full.sh: run via
   `systemd-run --user --collect --pipe` (session cgroup pids.max=512 — see qtrade-host-ops).
+- Subagents: native Agent tool ONLY. NEVER spawn OMC teams / tmux panes / SendMessage
+  teammates from the loop — pane churn crashed the tmux 3.4 server (libevent segfault,
+  2026-07-17 01:20) and killed the whole session; panes also break on CLI auto-update (127).
 - Do not restart `wechat-narrator.service` or touch GreenMail/we-mp-rss — unrelated prod.
 - Keep code concise; reuse existing services/modules over new parallel implementations.
