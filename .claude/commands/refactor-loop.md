@@ -31,8 +31,9 @@ working tree must be clean (leftovers → `git stash push -m loop-stash`); backe
 (`scripts/services.sh status`, containers postgres/redis/minio up); baseline-metrics.json exists.
 
 1. `BID=$(python3 refactor/loop/loopctl.py next)`
-   - `ALL_DONE` → run validate_full.sh + perf_bench.sh; both green+MET →
-     `loopctl alert remind "重构全部完成" <报告>` + final report; NOT met → alert + report gap; STOP.
+   - `ALL_DONE` → enter **Rediagnosis stage** (below). Loop only SUCCEEDS when a diagnosis
+     round yields zero new batches AND validate_full.sh green AND perf_bench.sh MET —
+     then `loopctl alert remind "重构全部完成" <报告>` + final report; STOP.
    - `BLOCKED:*` → alert urgent + STOP.
 2. **Plan** — if `refactor/batches/$BID-plan.md` missing: spawn `batch-initializer` subagent
    (its documented flow; output plan.md + progress `STATUS: PLAN_READY`).
@@ -49,6 +50,25 @@ working tree must be clean (leftovers → `git stash push -m loop-stash`); backe
    run validate_full.sh ONCE more on main (paranoia gate); push; `loopctl mark $BID completed`; failures=0.
 7. **Iterate** — log one-line progress (`loopctl summary | tail`), then next iteration. If self-pacing
    across long waits use ScheduleWakeup 60–270s; otherwise continue in-session.
+
+## Rediagnosis stage (covers code added AFTER the 2026-04-16 plan — keeps the loop self-updating)
+Runs when `next` says ALL_DONE. Max **3 rounds per loop run** (count `refactor/diag-*/` dirs
+created this run); hitting the cap without convergence → urgent alert + STOP (something is churning).
+
+R1. Scope: `LAST=$(git tag -l 'diag-*' | sort | tail -1)`; incremental target =
+    `git diff --stat ${LAST:-before-batch-04}..HEAD -- backend/` + backend logs since last round.
+R2. Spawn the Phase-1 subagents INCREMENTALLY (same contracts as /phase1-init, read-only):
+    `architecture-analyzer` → `refactor/diag-<YYYYMMDD>/01-architecture-delta.md` (changed modules only);
+    `log-diagnostician`     → `.../02-issue-diagnosis.md` (runtime errors = zero-bug hunting ground);
+    `call-chain-profiler`   → `.../03-hotpath-delta.md` (only if perf target not yet MET).
+    Each returns ≤200-char summary to the main loop; do NOT read their full output here.
+R3. Spawn `refactor-planner`: input = the delta reports + current 04-refactor-plan.json;
+    it APPENDS new batches (ids `batch-29+`, unique, with depends_on/priority/scope like existing
+    entries) directly into 04-refactor-plan.json and writes `.../05-addendum.md`. New-code debt
+    (e2e harness, loop scripts, anything post-April) is in scope; global_constraints unchanged.
+R4. `git add refactor/ && git commit -m "chore(refactor): diagnosis round <date>" && git tag diag-<date> && git push`.
+R5. Zero new batches appended → run validate_full.sh + perf_bench.sh for the final verdict (see step 1).
+    Otherwise → alert remind "诊断新增 N 个 batch" + goto loop step 1.
 
 ## Stop conditions (always send alert + write final report to refactor/loop/loop-report-<date>.md)
 - 2 consecutive batch failures → urgent alert, STOP.
