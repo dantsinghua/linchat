@@ -1,0 +1,5 @@
+{
+ "ts": "2026-04-16T17:42:09+08:00 (historical baseline-before-phase2)",
+ "voice_e2e_p50_ms": 10828,
+ "api_p95_ms": 16
+}
