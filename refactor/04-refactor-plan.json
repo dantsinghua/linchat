@@ -1830,7 +1830,7 @@
       "estimated_sessions": 1,
       "blocking_for_production": false,
       "notes": "非阻塞日志噪声，零 bug 目标附带项。若确认为删除-派发竞态则重点在派发前校验存在性。rediagnosis R3 新增。",
-      "actual_status": "planned"
+      "actual_status": "completed"
     }
   ],
   "phased_rollout": {

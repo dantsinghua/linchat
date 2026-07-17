@@ -86,3 +86,7 @@
   - is_voice `.save()` 边界：已一并收敛为 repo 同步方法 set_voice_flag_sync（保持一致性）。
   - PD-4 默认采纳"收敛 message_repo"方案（与 ambient_light 一致），请正式拍板。
   - voice_pipeline.py 仍 326 行（>300 硬限制），本 batch 不拆分，拆分留待后续 batch。
+
+## batch-36（2026-07-17，embedding 日志降噪）
+- 手动验证（plan manual，未在无人值守中执行）：线上运行 2 小时窗口，确认 'attachment not found id=1' WARNING 不再出现（已降为 DEBUG）且孤儿嵌入任务不再入队。
+- 根因附注：×23 噪声实为测试 test_dual_write_success 用 MagicMock(id=1) 调 save_parsed_result 且未 mock delay，真发布到共享 broker 被 worker 消费；本 batch 已 mock delay 铲除污染源 + 派发前 rowcount gate 兜底。
