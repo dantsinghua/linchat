@@ -1,0 +1,24 @@
+# Batch batch-35 Progress
+# Type: refactor | Priority: P2 | Risk: medium
+# Title: chat/services/generation.py 迁移到 graph（batch-16 延后项）
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Base HEAD: a61ca7a
+- Dependency: batch-16 COMPLETED（已核实 progress 末尾 STATUS: COMPLETED）
+- Plan generated: refactor/batches/batch-35-plan.md
+- 关键发现:
+  - generation.py 无 StopGeneration 类（简报措辞过时）；真实逻辑=_active_generations 单例+4函数+map_llm_exception re-export
+  - 生产调用点: chat/__init__(L9), chat_service(L10), graph/inference_service(L76局部), graph/agent_service(L13)
+  - 反向耦合仅 graph 两处 → 本 batch repoint 消除
+  - plan JSON files_touched 误列 test_inference_service.py（零引用）；真实是 test_inference_cancel.py（4处@patch）
+  - R1: inference_service repoint 与 4 处 @patch 目标改写必须成对提交
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor
+- (尚未开始)
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: PLAN_READY

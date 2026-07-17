@@ -120,3 +120,11 @@ STATUS: PLAN_READY
 [batch-33] 2026-07-17 PLAN_READY — voice service ORM 收敛计划生成，8 直连点，6 文件，待安琳 review（scope+media_repo / PD-4 / is_voice.save 边界）。STATUS: PLAN_READY
 
 [batch-34 PLAN_READY 2026-07-17 21:31] chat/services 剩余 6 shim + context/tokenizer 删除计划就绪（batch-15 Part B）。12 文件(6删+6改repoint)/~30行编辑。差异：scope 漏 test_document_parse_views.py(实际12非11)；multimodal_agent 实际在 subagents/ 非 tools/；rg 残留检查命中 common/CLAUDE.md 文档行。目标模块符号全核实。等 review → /phase2-execute batch-34
+
+## batch-35 PLAN_READY (2026-07-17, initializer)
+- generation.py（29行）迁 chat→graph；chat 留 re-export shim；graph 侧 2 调用点 repoint 消除反向耦合。
+- 无 StopGeneration 类（简报过时）；真实逻辑=_active_generations 单例+register/unregister/get_stop_event/signal_stop+map_llm_exception re-export。
+- plan JSON 误列 test_inference_service.py（零引用）；实为 test_inference_cancel.py 4 处 @patch 需改 chat→graph 路径。
+- 风险 R1：inference_service repoint 与 patch 目标改写须成对；R2 map_llm_exception identity 不变；R3 _active_generations 单例一致。
+- 待安琳确认：chat shim 保留多久/本批是否删、chat_service 是否也 repoint、plan JSON 测试文件名修正。
+- 产出：refactor/batches/batch-35-plan.md（PLAN_READY，无阻塞）。
