@@ -18,10 +18,10 @@ from apps.graph.services.types import InferenceTask, MessageVO, StreamChunk, _ge
 
 # 兼容层导出（已迁移到其他模块）
 from apps.graph.services.context_service import ContextService  # noqa: F401
-from apps.chat.services.document_parse_service import DocumentParseError, DocumentParseService, document_parse_service  # noqa: F401
-from apps.chat.services.inference_service import InferenceService, inference_service  # noqa: F401
-from apps.chat.services.media_service import MediaService, MediaUploadError, media_service  # noqa: F401
-from apps.chat.services.minio_service import MinioService, minio_service  # noqa: F401
+from apps.media.services.document import DocumentParseError, DocumentParseService, document_parse_service  # noqa: F401
+from apps.graph.services.inference_service import InferenceService, inference_service  # noqa: F401
+from apps.media.services.upload import MediaService, MediaUploadError, media_service  # noqa: F401
+from apps.common.storage.minio_service import MinioService, minio_service  # noqa: F401
 
 __all__ = [
     "ChatService", "HistoryService",

@@ -12,10 +12,28 @@
 - 差异记录：①scope 漏 test_document_parse_views.py（实际12文件非11）②multimodal_agent 实际在 subagents/ 非 tools/ ③rg 残留检查会命中 common/CLAUDE.md:29 文档
 - Status: WAITING_FOR_REVIEW
 
-## Phase 2b: Executor
-- (尚未开始)
+## Phase 2b: Executor (started 2026-07-17)
+- Base HEAD: 86fdb57
+- rg 复核：9 处代码引用命中，与计划一致；无 patch() 目标指向 shim 路径
+- 6 shim 全部确认为纯 re-export
+
+### 改动明细（6 删除 + 6 repoint）
+- 删 shim: chat/services/{document_parse_service,inference_service,media_service,gpu_lock,minio_service}.py + context/tokenizer.py（-42 行）
+- repoint chat/services/__init__.py L21-24 → apps.media.services.document / apps.graph.services.inference_service / apps.media.services.upload / apps.common.storage.minio_service
+- repoint context/__init__.py L30 → apps.common.tokenizer
+- repoint graph/subagents/multimodal_agent.py L17 → apps.graph.services.gpu_lock
+- repoint tests/chat/{test_document_parse_service,test_document_parse_views,test_inference_cancel}.py → 真实模块
+- 中枢 __all__ 对外契约不变
+
+### 验证结果
+- import 冒烟：apps.chat.services / apps.context / apps.graph.services 无 ImportError ✓
+- rg 残留（-g '!**/__pycache__/**' -g '!**/*.md'）：NO RESIDUAL ✓
+- ruff：仅命中项目既有 E701/E702/F401 基线（非本批改动行），本批 import 迁移零新增 lint ✓
+- pytest tests/chat/ apps/graph/：369 passed, 9 skipped, 0 failed ✓
+- pytest tests/context/ tests/media/：56 passed ✓
+- 净行数：-42 行（6 shim 删除，repoint 净 0）
 
 ## Phase 2c: Validator
 - (尚未开始)
 
-STATUS: PLAN_READY
+STATUS: EXECUTED

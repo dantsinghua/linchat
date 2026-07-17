@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.chat.services.inference_service import InferenceService
+from apps.graph.services.inference_service import InferenceService
 from apps.graph.services.types import InferenceTask
 from tests.helpers import run_async
 
