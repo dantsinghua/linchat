@@ -121,8 +121,8 @@ class MemoryService:
         try:
             memories, _ = await MemoryService.list_memories(user_id, type_filter="memory", page_size=20)
             if memories: existing = "\n".join(f"- {m.content}" for m in memories)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Summarize existing-memories load failed (ignored): user=%d, err=%s", user_id, e)
         prompt = CRONMEM_PROMPT_TEMPLATE.replace("{existing_memories}", existing or "无现有记忆").replace("{conversation_text}", content)
         summary_content = None
         for attempt in range(3):

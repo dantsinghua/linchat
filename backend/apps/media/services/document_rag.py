@@ -142,8 +142,8 @@ async def search_documents_rag(
             return {a.attachment_id: a for a in MediaAttachment.objects.filter(attachment_id__in=att_ids)}
 
         att_map = await _load_atts()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Doc RAG att_map load failed (degraded to 未知文档): user=%d, err=%s", user_id, e)
 
     results = []
     for r in ranked:

@@ -1,0 +1,29 @@
+# Batch-23 Progress
+# Type: refactor | Priority: P2 | except Exception 缩减第二批 (media+memory+common+users)
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Plan generated: refactor/batches/batch-23-plan.md
+- 审计范围: 9 文件 39 处 except Exception
+- 三分类: 收窄① 2 处 / 补日志③ 7 处 / 保留② 30 处
+- grep 计数目标: 39 → 37
+- Status: PLAN_READY
+
+## Phase 2b: Executor (started 2026-07-17)
+- team-lead 调整：document.py L155 退为仅补日志不收窄；websocket_auth L53 补最小单测后收窄；30 处保留不加注释
+- [x] media/views.py：5 处视图顶层兜底 logger.error 补 exc_info=True（补日志）
+- [x] media/services/document_rag.py L145：silent pass → logger.warning（补日志）
+- [x] media/services/document.py L155：warning 补 exc_info=True（退收窄→补日志，保留 except Exception）
+- [x] memory/services.py L124：silent pass → logger.debug（补日志）
+- [x] common/websocket_auth.py L53：except Exception → except CookieError（收窄）+ import CookieError
+- [x] tests/common/test_websocket_auth.py：新增 4 用例覆盖 CookieError 收窄路径
+- [ ] document_cache.py、media/tasks.py、memory/task_helpers.py、users/views.py：全保留无改动
+- 实际：收窄 1（websocket_auth）/ 补日志 7（views×5 + document_rag + memory；document.py 亦补 exc_info）/ 保留 30
+- except Exception 计数 9 文件：39 → 38；bare except：0
+- lint：ruff 各文件均无「新增」错误（与 HEAD 逐文件一致）；项目未配置 black/ruff-format 强制，不越界重排
+- 局部测试：media+memory+common+users+chat media = 324 passed / 9 skipped
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
