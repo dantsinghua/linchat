@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from django.conf import settings
 
@@ -16,8 +16,15 @@ logger = logging.getLogger(__name__)
 # Redis 键: 记录用户当前活跃的 ambient 设备连接
 _AMBIENT_CONN_KEY = "voice:ambient_conn:{user_id}"
 
+if TYPE_CHECKING:
+    from apps.voice.protocols import VoiceConsumerProtocol
 
-class SessionMixin:
+    _SessionBase = VoiceConsumerProtocol
+else:
+    _SessionBase = object
+
+
+class SessionMixin(_SessionBase):
 
     async def _connect_and_configure_asr(self) -> Optional[str]:
         if self._asr_client and self._asr_client.connected:
