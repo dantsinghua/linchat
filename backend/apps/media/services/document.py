@@ -153,7 +153,7 @@ class DocumentParseService:
             redis_client = await get_redis()
             await redis_client.set(f"doc_parse:{task_id}:owner", str(user_id), ex=7 * 24 * 3600)
         except Exception as e:
-            logger.warning(f"写入文档解析所有权键失败: task_id={task_id}, error={e}")
+            logger.warning(f"写入文档解析所有权键失败: task_id={task_id}, error={e}", exc_info=True)
         if not skip_background_poll:
             asyncio.create_task(DocumentParseService._poll_and_notify(user_id, task_id))
         return result

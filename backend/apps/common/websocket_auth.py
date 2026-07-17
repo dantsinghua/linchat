@@ -1,7 +1,7 @@
 import json
 import logging
 from datetime import datetime
-from http.cookies import SimpleCookie
+from http.cookies import CookieError, SimpleCookie
 from typing import Any, Callable
 
 from django.conf import settings
@@ -50,7 +50,7 @@ class WebSocketTokenAuthMiddleware:
         cookie = SimpleCookie()
         try:
             cookie.load(cookie_str)
-        except Exception:
+        except CookieError:
             logger.warning("WebSocket Cookie 解析失败"); return None
         morsel = cookie.get(TOKEN_COOKIE_NAME)
         if morsel is None: return None

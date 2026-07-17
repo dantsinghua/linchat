@@ -31,7 +31,7 @@ def upload_media(request: Request) -> Response:
     except MediaUploadError as e:
         return ApiResponse.error(code=e.code, message=e.message)
     except Exception as e:
-        logger.error(f"媒体上传异常: user_id={user_id}, error={e}")
+        logger.error(f"媒体上传异常: user_id={user_id}, error={e}", exc_info=True)
         return ApiResponse.error(message="上传失败，请稍后重试")
 
 
@@ -51,7 +51,7 @@ def get_media(request: Request, uuid: str) -> Response:
     except MediaUploadError as e:
         return ApiResponse.error(code=e.code, message=e.message, status_code=410)
     except Exception as e:
-        logger.error(f"获取媒体文件失败: uuid={uuid}, error={e}")
+        logger.error(f"获取媒体文件失败: uuid={uuid}, error={e}", exc_info=True)
         return ApiResponse.error(message="获取文件失败")
 
 
@@ -82,7 +82,7 @@ def parse_document(request: Request) -> Response:
         status_map = {"ATTACHMENT_NOT_FOUND": 404, "ATTACHMENT_ACCESS_DENIED": 403, "ATTACHMENT_EXPIRED": 410, "GATEWAY_NOT_CONFIGURED": 503, "GATEWAY_TIMEOUT": 504}
         return ApiResponse.error(code=e.code, message=e.message, data=e.details, status_code=status_map.get(e.code, 400))
     except Exception as e:
-        logger.error(f"文档解析异常: user_id={user_id}, error={e}")
+        logger.error(f"文档解析异常: user_id={user_id}, error={e}", exc_info=True)
         return ApiResponse.error(message="文档解析失败，请稍后重试")
 
 
@@ -97,7 +97,7 @@ def get_parse_task_status(request: Request, task_id: str) -> Response:
         status_map = {"TASK_NOT_FOUND": 404, "TASK_ACCESS_DENIED": 403, "E6009": 410}
         return ApiResponse.error(code=e.code, message=e.message, data=e.details, status_code=status_map.get(e.code))
     except Exception as e:
-        logger.error(f"查询解析任务异常: task_id={task_id}, error={e}")
+        logger.error(f"查询解析任务异常: task_id={task_id}, error={e}", exc_info=True)
         return ApiResponse.error(message="查询任务状态失败")
 
 
@@ -115,5 +115,5 @@ def get_parse_task_result(request: Request, task_id: str) -> Response:
         status_map = {"TASK_NOT_FOUND": 404, "TASK_ACCESS_DENIED": 403, "E6009": 410}
         return ApiResponse.error(code=e.code, message=e.message, data=e.details, status_code=status_map.get(e.code))
     except Exception as e:
-        logger.error(f"获取解析结果异常: task_id={task_id}, error={e}")
+        logger.error(f"获取解析结果异常: task_id={task_id}, error={e}", exc_info=True)
         return ApiResponse.error(message="获取解析结果失败")
