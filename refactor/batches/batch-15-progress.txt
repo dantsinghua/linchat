@@ -1,0 +1,31 @@
+# Batch batch-15 Progress
+# Type: refactor | Priority: P2
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Base HEAD: 8c4c753
+- Plan generated: refactor/batches/batch-15-plan.md
+- 核实：10 个真实 shim（3 原定义 + 7 从 batch-14 移出；generation.py 排除）
+- 调用点总数：约 26 处（prompts 5 / tasks 9 / doc_parse 3 / context_service 3 / inference 2 / media 1 / gpu_lock 1 / minio 1 / tokenizer 1 / agent_helpers 0）
+- 拆分：全量 23 文件 > 15 → 拆 Part A（本批，4 shim / 12 文件）+ Part B（延后 batch-15b，6 shim / 11 文件）
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (Part A, started 2026-07-17)
+- Branch: refactor/batch-15
+- Base HEAD: 8c4c753
+- Scope: Part A only (4 shim / 12 files)
+
+- [x] 5.1 迁移 graph/prompts.py 5 调用者 → apps.context（prompt.py / memory/services.py / graph/tools/context.py / test_performance.py / test_prompts.py）
+- [x] 5.2 迁移 context_service 3 调用者 → apps.graph.services.context_service（__init__.py:20 / test_performance.py:15 / test_context_service.py:10）
+- [x] 5.3 迁移 chat/tasks.py 9 测试调用者 → apps.media.tasks（test_media_cleanup_task.py）
+- [x] 5.4 删除 4 shim：graph/prompts.py / chat/services/context_service.py / chat/tasks.py / graph/services/agent_helpers.py（+ 清理 graph/services/CLAUDE.md 悬挂引用）
+- 迁移调用点：17 处（prompts 5 + context_service 3 + tasks 9）；agent_helpers 0-caller 死代码直接删
+- import 冒烟：5.1 / 5.2 / 5.4 均 OK
+- 局部 pytest：直接相关 4 文件 76 passed；回归 chat/memory/context/apps/integration 636 passed / 9 skipped
+- 残留扫描：NO_RESIDUAL（代码零残留）
+- 精简：4 shim 删除（9+2+6+63 行）+ CLAUDE.md -1 行
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED

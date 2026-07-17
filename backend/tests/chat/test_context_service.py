@@ -7,7 +7,7 @@ ContextService 测试 [T047] [T062] [T063]
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from apps.chat.services.context_service import (
+from apps.graph.services.context_service import (
     ContextService,
     ContextWindowTooSmallError,
     MIN_EFFECTIVE_WINDOW,

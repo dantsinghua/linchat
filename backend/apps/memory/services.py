@@ -116,7 +116,7 @@ class MemoryService:
     async def summarize_and_store(user_id: int, content: str, summary_type: str, summary_name: str) -> Optional[UserMemory]:
         if not content or not content.strip(): return None
         from apps.graph.agent import get_llm
-        from apps.graph.prompts import CRONMEM_PROMPT_TEMPLATE
+        from apps.context import CRONMEM_PROMPT_TEMPLATE
         existing = ""
         try:
             memories, _ = await MemoryService.list_memories(user_id, type_filter="memory", page_size=20)

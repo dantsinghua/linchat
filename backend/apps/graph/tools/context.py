@@ -39,7 +39,7 @@ async def context_compact(content: str) -> str:
         return content[:500] + "..." if len(content) > 500 else content
 
     from apps.graph.agent import get_llm
-    from apps.graph.prompts import COMPACTION_PROMPT_TEMPLATE
+    from apps.context import COMPACTION_PROMPT_TEMPLATE
 
     llm = await get_llm()
     from apps.graph.tools import cap_tool_result

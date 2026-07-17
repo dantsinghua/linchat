@@ -11,8 +11,8 @@ import time
 
 import pytest
 
-from apps.graph.prompts import PromptBuilder, PromptConfig, trim_messages_to_budget
-from apps.chat.services.context_service import ContextService, _total_tokens
+from apps.context import PromptBuilder, PromptConfig, trim_messages_to_budget
+from apps.graph.services.context_service import ContextService, _total_tokens
 from apps.common.tokenizer import count_messages_tokens, count_tokens
 
 

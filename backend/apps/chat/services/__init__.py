@@ -17,7 +17,7 @@ from apps.chat.services.generation import (
 from apps.chat.services.types import InferenceTask, MessageVO, StreamChunk, _get_tool_model_name
 
 # 兼容层导出（已迁移到其他模块）
-from apps.chat.services.context_service import ContextService  # noqa: F401
+from apps.graph.services.context_service import ContextService  # noqa: F401
 from apps.chat.services.document_parse_service import DocumentParseError, DocumentParseService, document_parse_service  # noqa: F401
 from apps.chat.services.inference_service import InferenceService, inference_service  # noqa: F401
 from apps.chat.services.media_service import MediaService, MediaUploadError, media_service  # noqa: F401
