@@ -1732,7 +1732,7 @@
       "estimated_sessions": 1,
       "blocking_for_production": false,
       "notes": "承接 batch-15 拆分决定（batch-15-plan §8）。与 Part A 无测试文件重叠，唯一共享文件 chat/services/__init__.py 为独立行编辑。rediagnosis R3 新增（继承 backlog 延后项）。",
-      "actual_status": "planned"
+      "actual_status": "completed"
     },
     {
       "id": "batch-35",
