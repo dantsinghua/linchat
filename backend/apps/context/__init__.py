@@ -27,7 +27,7 @@ from apps.context.builder import (BASE_SYSTEM_PROMPT,
 from apps.context.trimmer import TaggedMessage, TrimLevel, trim_messages_to_budget
 
 # Token 计数
-from apps.context.tokenizer import count_messages_tokens, count_tokens
+from apps.common.tokenizer import count_messages_tokens, count_tokens
 
 # 模板渲染
 from apps.context.loader import render as render_template

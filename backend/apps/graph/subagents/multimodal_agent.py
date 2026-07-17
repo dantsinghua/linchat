@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 async def multimodal_analyze(task: str, config: RunnableConfig) -> str:
     """加载并分析用户上传的图片、视频、音频附件（不含文档）。task 为分析指令，附件自动从上下文加载。"""
     from apps.chat.repositories import media_attachment_repo
-    from apps.chat.services.gpu_lock import GPULockTimeout, acquire_gpu_lock
+    from apps.graph.services.gpu_lock import GPULockTimeout, acquire_gpu_lock
     from apps.graph.agent import build_multimodal_messages, stream_multimodal_httpx
     from apps.models.services import model_service
     user_id = _get_user_id(config)

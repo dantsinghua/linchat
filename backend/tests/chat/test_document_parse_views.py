@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from django.test import TestCase
 
-from apps.chat.services.document_parse_service import (
+from apps.media.services.document import (
     DocumentParseError,
     DocumentParseService,
 )
