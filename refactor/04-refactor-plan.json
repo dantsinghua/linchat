@@ -1261,7 +1261,8 @@
       "risk": "low",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "如果 batch-21 已覆盖部分测试，此 batch 仅补充剩余路径。"
+      "notes": "如果 batch-21 已覆盖部分测试，此 batch 仅补充剩余路径。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-26",

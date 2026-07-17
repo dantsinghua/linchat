@@ -88,3 +88,6 @@
 
 [batch-24] PLAN_READY — 2026-07-17 — 5 委托全可清理, 实测改 6 文件 (非 04-plan 所列 3), 待安琳确认 scope 扩大
 STATUS: PLAN_READY
+
+[2026-07-17] batch-25 initializer: PLAN_READY — consumer_inference 覆盖率实测 61%（batch-21 已抬升），缺口分组 4 组(A-D)，计划 ~11 用例，目标 80%+，无豁免项。plan=refactor/batches/batch-25-plan.md
+STATUS: PLAN_READY (batch-25)
