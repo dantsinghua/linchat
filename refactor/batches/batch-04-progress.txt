@@ -1,2 +1,16 @@
+# Batch batch-04 Progress
+# Type: observability | Priority: P0
 
-STATUS: PLANNED  # loopctl 2026-07-17 01:18:51
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Plan generated: refactor/batches/batch-04-plan.md
+- Reference: 旧分支 refactor/batch-04（April，未合并）含完整蓝本
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor
+- (尚未开始)
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: PLAN_READY  # batch-initializer 2026-07-17

@@ -9,3 +9,8 @@
 ## Pending Decisions (由各子代理汇总)
 
 ## Notes
+
+## Phase 2 Batches
+- [ ] batch-04 (trace_id 中间件基础设施, P0) — batch-initializer 2026-07-17
+      Plan: refactor/batches/batch-04-plan.md
+      STATUS: PLAN_READY
