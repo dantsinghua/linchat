@@ -63,3 +63,6 @@
 
 ## batch-14（2026-07-17，核实后缩水执行）
 - 4 月 plan 的"9 个 0 调用者 shim"严重过时：仅 chat/sse.py 真正可删（已删）；8 个有调用者转 batch-15 处理；generation.py 被误列为 shim（实为含 register/signal 生产逻辑），已剔除——建议安琳复核 plan JSON 中 batch-15 条目是否需要相应修正。
+
+## batch-15 Part A（2026-07-17）
+- Part B 延后：chat/services 剩余 6 shim / 11 文件迁移（batch-15b，rediagnosis 时应入计划）。
