@@ -50,3 +50,7 @@
 - 无人值守拍板项待安琳 review：BlockingConnectionPool（超限等待，timeout=10s）+ max_connections=50。
 - 运行时观测项：服务重启后 redis-cli info clients 观察 connected_clients 是否下降且稳定（plan §5.2 只读观测）。
 - 顺带修复：test_coverage_boost.py 两用例的 get_event_loop 废弃写法（顺序依赖，batch-11 新测试暴露）。
+
+## batch-12（2026-07-17 配额中断后续作完成，P1）
+- 无人值守拍板项待安琳 review：model_config 60s TTL 缓存（ORM 直改 ModelConfig 后最长 60s 生效延迟）；明文 SM4 解密 key 进程内存留存 60s（不落日志/盘）——请复核安全性。
+- wake_words 同为 60s TTL：新增唤醒词后最长 60s 生效。
