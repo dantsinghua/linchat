@@ -14,9 +14,12 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
+from apps.models import services as models_services
 from apps.models.models import ModelConfig
 from apps.models.services import ModelService, _mask_api_key, _model_to_dict
 from apps.users.crypto import sm4_decrypt, sm4_encrypt
+
+# 进程内 model_config 缓存的清理由 backend/conftest.py 的 autouse fixture 全局兜底。
 
 
 class TestMaskApiKey(TestCase):
@@ -293,3 +296,58 @@ class TestModelServiceGetActiveModel(TestCase):
         result = self.service.get_active_model("tool")
         self.assertEqual(result["temperature"], 0.7)
         self.assertIsNone(result["top_p"])
+
+
+class TestModelServiceCache(TestCase):
+    """get_active_model 60s TTL 进程内缓存测试（batch-12）"""
+
+    def setUp(self):
+        ModelConfig.objects.all().delete()
+        self.service = ModelService()
+        self.model = ModelConfig.objects.create(
+            type=ModelConfig.TYPE_TOOL,
+            name="cached-tool",
+            url="https://api.example.com/v1",
+            api_key=sm4_encrypt("cache-key-12345678"),
+            max_context_window=65536,
+            max_input_tokens=32768,
+            max_output_tokens=8192,
+            is_active=True,
+        )
+
+    def test_get_active_model_cache_hit_skips_db(self):
+        """第二次调用命中缓存，不再查库"""
+        with patch(
+            "apps.models.services.model_repo.get_active_by_type",
+            wraps=models_services.model_repo.get_active_by_type,
+        ) as spy:
+            first = self.service.get_active_model("tool")
+            second = self.service.get_active_model("tool")
+        self.assertEqual(first["name"], "cached-tool")
+        self.assertEqual(second["name"], "cached-tool")
+        spy.assert_called_once()  # 仅第一次查库
+
+    def test_get_active_model_cache_ttl_expiry(self):
+        """越过 60s TTL 后重新查库"""
+        base = 1000.0
+        with patch("apps.models.services.time.monotonic", side_effect=[base, base + 61.0, base + 61.0]), patch(
+            "apps.models.services.model_repo.get_active_by_type",
+            wraps=models_services.model_repo.get_active_by_type,
+        ) as spy:
+            self.service.get_active_model("tool")  # 写缓存 @base
+            self.service.get_active_model("tool")  # @base+61 过期 → 再查库
+        self.assertEqual(spy.call_count, 2)
+
+    def test_update_model_invalidates_cache(self):
+        """update_model 后缓存失效，下次读到新值"""
+        self.service.get_active_model("tool")  # 预热缓存
+        self.service.update_model(self.model.id, {"name": "renamed-tool"})
+        result = self.service.get_active_model("tool")
+        self.assertEqual(result["name"], "renamed-tool")
+
+    def test_cache_returns_copy_not_shared(self):
+        """返回副本，mutate 不污染下次调用"""
+        first = self.service.get_active_model("tool")
+        first["name"] = "MUTATED"
+        second = self.service.get_active_model("tool")
+        self.assertEqual(second["name"], "cached-tool")

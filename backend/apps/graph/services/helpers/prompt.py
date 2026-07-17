@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from django.conf import settings
@@ -14,43 +15,62 @@ async def build_prompt_preamble(user_id: int, user_message: str = ""):
     from apps.common.tokenizer import count_tokens
     from apps.models.services import model_service
 
-    model_config = await sync_to_async(model_service.get_active_model)("tool")
+    async def _memory_task():
+        if not user_message:
+            return []
+        from apps.memory.services import MemoryService
+        return await MemoryService.search_memory(
+            user_id=user_id, query=user_message,
+            limit=settings.MEMORY_SEARCH_TOP_K, skip_vector=False,
+        )
+
+    # 三步 IO 输入互不依赖 → 并行；return_exceptions 保留三种既有语义：
+    # model/history 异常传播，memory 异常降级为空。
+    mc_r, mem_r, hist_r = await asyncio.gather(
+        sync_to_async(model_service.get_active_model)("tool"),
+        _memory_task(),
+        message_repo.find_latest_by_user(
+            user_id, limit=getattr(settings, "CONTEXT_HISTORY_ROUNDS", 10) * 2,
+        ),
+        return_exceptions=True,
+    )
+
+    # A: model_config —— 原本无 try/except，异常应传播
+    if isinstance(mc_r, BaseException):
+        raise mc_r
+    model_config = mc_r
     max_context_window = model_config.get("max_context_window", 128000) if model_config else 128000
     model_name = model_config.get("name", "unknown") if model_config else "unknown"
     prompt_config = PromptConfig(user_id=user_id, max_context_window=max_context_window)
     builder = PromptBuilder(config=prompt_config)
 
+    # B: memory —— 原本 try/except 降级为空
     retrieved_memories = None
     memory_results: list = []
-    if user_message:
-        try:
-            from apps.memory.services import MemoryService
-            res = await MemoryService.search_memory(
-                user_id=user_id, query=user_message,
-                limit=settings.MEMORY_SEARCH_TOP_K, skip_vector=False,
+    if isinstance(mem_r, BaseException):
+        logger.warning("memory recall failed", extra={"user_id": user_id, "error": repr(mem_r)})
+    elif mem_r:
+        memory_results = mem_r
+        retrieved_memories = [
+            RetrievedMemory(
+                content=r["memory"].content,
+                memory_type=r["memory"].type,
+                relevance_score=r["score"],
             )
-            if res:
-                memory_results = res
-                retrieved_memories = [
-                    RetrievedMemory(
-                        content=r["memory"].content,
-                        memory_type=r["memory"].type,
-                        relevance_score=r["score"],
-                    )
-                    for r in res
-                ]
-        except Exception as e:
-            logger.warning("memory recall failed", extra={"user_id": user_id, "error": repr(e)})
+            for r in mem_r
+        ]
+
+    # C: history —— 原本无 try/except，异常应传播
+    if isinstance(hist_r, BaseException):
+        raise hist_r
+    history_messages = hist_r
+    history_messages.reverse()
 
     preamble = builder.build_preamble(retrieved_memories=retrieved_memories)
     preamble_tokens = sum(
         count_tokens(m.content if hasattr(m, "content") else str(m))
         for m in preamble
     )
-    history_messages = await message_repo.find_latest_by_user(
-        user_id, limit=getattr(settings, "CONTEXT_HISTORY_ROUNDS", 10) * 2,
-    )
-    history_messages.reverse()
 
     history_dicts: list[dict[str, str]] = []
     for m in history_messages:

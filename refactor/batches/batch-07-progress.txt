@@ -63,3 +63,5 @@ perf_bench.sh → measure-voice-latency.sh 仍解析 batch-06 前旧字符串（
 - (尚未开始)
 
 STATUS: EXECUTED
+
+STATUS: COMPLETED  # loopctl 2026-07-17 10:56:20

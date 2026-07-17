@@ -1,6 +1,7 @@
 """模型配置业务逻辑层"""
 
 import logging
+import time
 from typing import Any, Optional
 
 from apps.models.models import ModelConfig
@@ -8,6 +9,18 @@ from apps.models.repositories import model_repo
 from apps.users.crypto import sm4_decrypt, sm4_encrypt
 
 logger = logging.getLogger(__name__)
+
+# get_active_model 的进程内 TTL 缓存。缓存的是 decrypt=True 的明文 dict，
+# 仅存内存、绝不落日志。经 update_model 在线改配置即时失效；直接 ORM 改表靠 TTL 兜底。
+_MODEL_CACHE_TTL = 60.0  # 秒；per-process
+_model_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def _invalidate_model_cache(model_type: Optional[str] = None) -> None:
+    if model_type is None:
+        _model_cache.clear()
+    else:
+        _model_cache.pop(model_type, None)
 
 
 def _mask_api_key(decrypted_key: str) -> str:
@@ -72,15 +85,21 @@ class ModelService:
 
         model = model_repo.update(model, **data)
         logger.info(f"Model config updated: id={model_id}, fields={list(data.keys())}")
+        _invalidate_model_cache(model.type)
         return _to_dict_with_key(model)
 
     @staticmethod
     def get_active_model(model_type: str) -> Optional[dict[str, Any]]:
+        cached = _model_cache.get(model_type)
+        if cached and (time.monotonic() - cached[0]) < _MODEL_CACHE_TTL:
+            return dict(cached[1])  # 返回副本，防调用方 mutate 污染缓存
         model = model_repo.get_active_by_type(model_type)
         if not model:
             logger.warning(f"No active model found for type: {model_type}")
             return None
-        return _to_dict_with_key(model, decrypt=True)
+        result = _to_dict_with_key(model, decrypt=True)
+        _model_cache[model_type] = (time.monotonic(), result)
+        return dict(result)
 
 
 model_service = ModelService()

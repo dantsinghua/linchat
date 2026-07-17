@@ -105,6 +105,11 @@ class TestGetLlmFromDatabase(TestCase):
         # 修改配置
         self.model.name = "deepseek-v3-updated"
         self.model.save()
+        # batch-12：get_active_model 引入 60s 进程内 TTL 缓存，生产路径经
+        # update_model 会自动失效；此处直接 .save() 绕过服务层，需显式失效以
+        # 模拟"配置变更即时生效"的既有契约。
+        from apps.models.services import _invalidate_model_cache
+        _invalidate_model_cache(self.model.type)
 
         # 第二次调用应该使用新配置
         async_to_sync(get_llm)()
