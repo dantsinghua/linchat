@@ -71,9 +71,45 @@ def delta_ms(t1, t2):
 
 # 读取日志
 events = []
+summary_pipelines = []  # batch-07+ 新格式：latency.summary 单行 JSON 汇总
+
+def try_parse_summary(line):
+    """解析 batch-07 引入的 latency.summary JSON 汇总行（JSONFormatter 整行 JSON）。"""
+    if 'latency.summary' not in line:
+        return None
+    start = line.find('{')
+    if start < 0:
+        return None
+    try:
+        obj = json.loads(line[start:])
+    except (ValueError, TypeError):
+        return None
+    if obj.get('stage') != 'latency.summary':
+        return None
+    total = obj.get('total_from_pipeline_ms')
+    if total is None:
+        return None
+    hops = obj.get('hops') or {}
+    ts_raw = obj.get('ts') or obj.get('timestamp') or obj.get('asctime') or ''
+    launch = str(ts_raw)[11:19] if len(str(ts_raw)) >= 19 else str(ts_raw)
+    return {
+        'seg': obj.get('seg', 'unknown'),
+        'total_ms': float(total),
+        'llm_ms': hops.get('llm_total'),
+        'tts_ms': (hops.get('tts_connect') or 0) + (hops.get('tts_synth') or 0)
+                  if ('tts_synth' in hops or 'tts_connect' in hops) else None,
+        'ha_ms': hops.get('ha'),
+        'launch': launch,
+    }
+
 with open(log_file, 'r', errors='replace') as f:
     for line in f:
-        m = TS_RE.match(line.strip())
+        line = line.strip()
+        s = try_parse_summary(line)
+        if s is not None:
+            summary_pipelines.append(s)
+            continue
+        m = TS_RE.match(line)
         if not m:
             continue
         ts_str, body = m.group(1), m.group(2)
@@ -135,6 +171,10 @@ while i < len(events):
         })
 
     i = j if j > i else i + 1
+
+# 合并新格式汇总行（batch-07+）与旧事件链配对结果；日志本身按时间有序，
+# 两个列表各自有序，按出现顺序简单拼接（同一次 pipeline 不会同时产生两种记录）
+pipelines = pipelines + summary_pipelines
 
 # 取最近 N 个
 pipelines = pipelines[-n_requested:]
