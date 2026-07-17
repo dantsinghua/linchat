@@ -5,3 +5,4 @@
 - [batch-10] backend/tests/voice/test_voice_pipeline.py:1200+ 行 — 远超 300 硬限（决策⑤登记，本 batch 仅追加 5 预连接测试未拆）。建议 P2 按 Test 类拆多文件（如 test_voice_pipeline_ambient.py / _persist.py）。
 - [batch-16] graph/services/types.py:19 — MediaAttachment 未使用 (F401)，本批零行为变化保留，建议下轮清理
 - [batch-17] backend/core/settings/__init__.py:435 行 — 超 300 硬限（plan §7 决策：第一批仅拆 voice/media/celery 三域，base 暂留超限）。多模态/文档网关域（LLM_GATEWAY_*/DOC_PARSE_*/DOCUMENT_SUBAGENT_*/MULTIMODAL_*）+ Memory/Context 域可作后续 batch 继续拆为 gateway.py / memory.py。
+- [batch-19] backend/apps/voice/consumer_session.py:303 行 — 超 300 硬限（本 batch +7 行 TYPE_CHECKING 类型脚手架推过线；纯类型标注 scope 仅 SessionMixin，运行时零行为变化，不宜在本 batch 做结构拆分）。建议 P2 专项：SessionMixin 按 ASR 重连/配置、ambient 聚合、response 状态三组职责拆多 mixin 或 helper。

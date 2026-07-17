@@ -1,0 +1,44 @@
+# Batch batch-19 Progress
+# Type: refactor | Priority: P2 | Risk: high(实评低)
+# Title: voice Mixin 架构整理（第一批：SessionMixin → VoiceConsumerProtocol 定义）
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Plan generated: refactor/batches/batch-19-plan.md (250 lines)
+- Deps: 无 (depends_on=[])
+- 核实结论:
+  - 共享数据属性 25 个 (22 来自 connect() + 3 延迟设置: _last_unknown_label/_reconnect_lock/_vad_start_ts)
+  - 跨 Mixin/基类方法 8+6 个
+  - protocols.py 不存在, 需新建
+  - mypy 在 venv 可用(1.19.1) 但不在 CI; consumer_session.py 当前 60 条报错(几乎全为共享面 attr-defined)
+  - 改动文件 3 个 (protocols.py 新建 / consumer_session.py +8 / consumers.py 可选)
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- Branch: refactor/batch-19 (from 4bdae8e)
+- Baseline: consumer_session.py mypy 60 errors
+- MRO baseline: ['VoiceConsumer','SessionMixin','EventMixin','InferenceMixin','AsyncWebsocketConsumer','AsyncConsumer','object']
+- SessionMixin.__bases__ == (object,)
+
+## Phase 2b: Executor (results 2026-07-17)
+- 方案：主方案（SessionMixin 在 TYPE_CHECKING 期继承 VoiceConsumerProtocol；运行时 _SessionBase=object）
+- 文件 1 新建 protocols.py（78 行）：VoiceConsumerProtocol，25 共享属性 + 14 方法（含基类 close/send/accept）；ruff/black/isort 全绿，mypy 零报错
+- 文件 2 consumer_session.py：+7 行（import TYPE_CHECKING + 条件基类块 + class 行）；296→303 行
+- 文件 3 consumers.py：0 改动（按 plan 跳过可选注释）
+- mypy consumer_session.py：60 → 6
+  - 消除全部 53 attr-defined 共享面报错 + 1 var-annotated（共 54，本 batch 目标全达成）
+  - 残留 6 均为预存在、与本 batch 无关（已核对 cs_orig.py 同行同码）：
+    4×has-type(_asr_client/_pending_text 自赋值) + 1×misc(lambda:150) + 1×assignment(:292)
+  - 备选方案（类体注解）会得同样残留（残留源于本地自赋值，非继承机制），故主方案最优
+- ruff：All checks passed（F401=0）；black/isort：本次改动引入 0 新问题（预存在长行不属本 scope，无 CI black/isort 门禁）
+- 运行时零行为变化验证：
+  - VoiceConsumer.__mro__ 与基线逐项相等
+  - SessionMixin.__bases__ == (object,)（运行时未继承 Protocol）
+  - 无 isinstance；import 冒烟 OK
+- 局部 pytest：tests/voice/ 730 passed（27s，0 fail）
+- >300 硬限（consumer_session 303 行）：结构拆分超本 batch scope，已登记 simplify-candidates.md
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
