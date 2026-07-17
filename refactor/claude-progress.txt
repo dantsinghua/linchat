@@ -14,3 +14,31 @@
 - [ ] batch-04 (trace_id 中间件基础设施, P0) — batch-initializer 2026-07-17
       Plan: refactor/batches/batch-04-plan.md
       STATUS: PLAN_READY
+- [ ] batch-07 (端到端语音延迟精细埋点, P0) — batch-initializer 2026-07-17
+      Plan: refactor/batches/batch-07-plan.md
+      Depends: batch-06 (COMPLETED)
+      STATUS: PLAN_READY
+
+[2026-07-17 10:59] batch-28 (celery trace_id 透传) PLAN_READY — 3 文件 / 7 步 / 风险 low；依赖 batch-04 已 COMPLETED；无阻塞，待安琳 review
+
+## batch-08 (2026-07-17 11:14)
+- Phase 2a initializer 完成，plan.md 就绪，STATUS: PLAN_READY，等待安琳 review（含 D1-D5 待决策）
+
+[2026-07-17 11:44] batch-09 PLAN_READY — Agent token 流式转发 TTS 增量合成 (P1/high, blocks voice_end_to_end_5s)
+  依赖 batch-07 已满足；计划 refactor/batches/batch-09-plan.md (221行)
+  方案：单条常驻 TTS 会话流式 send_text_delta（非逐句多连接），voice_chat/ambient/ambient-light 三路共用循环体一处覆盖
+  开关 VOICE_TTS_INCREMENTAL_ENABLED 回滚；5 项待安琳确认（打点语义/settings scope/并发/测试超限/压测基线）
+
+## batch-10 (initializer) 2026-07-17 12:08
+- TTS WS 连接复用/预连接执行计划已生成：refactor/batches/batch-10-plan.md
+- 核实 batch-09 已实现常驻流式会话；本 batch 增量 = ① pipeline 起点并行预连接（省~1s）② cleanup_ws_connection 关闭顺序修复(1006→1000)
+- 6 项待安琳确认（新开关/ASR 测试 scope/1006 运行时佐证/收益压测/测试超限/连接池取舍）
+- STATUS: PLAN_READY
+
+## batch-11 (Redis 连接池改造) — 2026-07-17
+- Phase 2a Initializer 完成，plan.md 已生成 (223 行)，无阻塞依赖
+- 设计: core/redis.py get_redis 改为按事件循环隔离的共享 ConnectionPool，调用点零改动
+- 待安琳决策: max_connections 取值 / 是否 BlockingConnectionPool / settings.py 是否拆分 / timedelta 清理
+- STATUS: PLAN_READY
+
+[2026-07-17] batch-12 initializer: plan ready (refactor/batches/batch-12-plan.md). 4 files, 3 改动步骤(gather并行/model_config TTL缓存/wake_words缓存)+1新测试. 5 待决策项. STATUS: PLAN_READY

@@ -22,6 +22,18 @@ _TTS_PLAYING_KEY = "voice:tts_playing:{user_id}"
 _TTS_HISTORY_KEY = "voice:tts_history:{user_id}"
 _TTS_ECHO_SIMILARITY_THRESHOLD = 0.7
 
+# wake_words 极少变更，decide() 每次都查 DB → 加 60s 进程内 TTL 缓存。
+# 失败结果不缓存（回落默认词）。
+_WAKE_WORDS_TTL = 60.0
+_wake_words_cache: dict[int, tuple[float, list[str]]] = {}
+
+
+def invalidate_wake_words_cache(user_id: Optional[int] = None) -> None:
+    if user_id is None:
+        _wake_words_cache.clear()
+    else:
+        _wake_words_cache.pop(user_id, None)
+
 
 class DecisionResult(Enum):
     RESPOND = "RESPOND"
@@ -162,9 +174,14 @@ class ResponseDecisionService:
 
     async def _load_wake_words(self, user_id: int) -> list[str]:
         from django.conf import settings
+        cached = _wake_words_cache.get(user_id)
+        if cached and (time.monotonic() - cached[0]) < _WAKE_WORDS_TTL:
+            return cached[1]
         try:
             vs, _ = await voice_settings_repo.get_or_create(user_id)
-            return vs.wake_words if isinstance(vs.wake_words, list) and vs.wake_words else settings.VOICE_DEFAULT_WAKE_WORDS
+            words = vs.wake_words if isinstance(vs.wake_words, list) and vs.wake_words else settings.VOICE_DEFAULT_WAKE_WORDS
+            _wake_words_cache[user_id] = (time.monotonic(), words)
+            return words
         except Exception:
             return settings.VOICE_DEFAULT_WAKE_WORDS
 

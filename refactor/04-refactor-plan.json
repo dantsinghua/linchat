@@ -317,7 +317,8 @@
       "risk": "high",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "voice 模块最高风险。仅添加日志/trace 注入，不修改业务逻辑。"
+      "notes": "voice 模块最高风险。仅添加日志/trace 注入，不修改业务逻辑。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-07",
@@ -366,7 +367,8 @@
       "risk": "high",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "此 batch 产出基线数据，是后续所有 P1 语音优化的前提。不允许先优化再埋点。"
+      "notes": "此 batch 产出基线数据，是后续所有 P1 语音优化的前提。不允许先优化再埋点。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-08",
@@ -417,7 +419,8 @@
       "risk": "high",
       "estimated_sessions": 2,
       "blocking_for_production": false,
-      "notes": "这是 5s SLO 攻坚的最大收益点（预计削减 4-5s）。需安琳确认 ambient 短回复是否需要记忆召回能力（Open Question Q3 from 03-call-chain-analysis）。"
+      "notes": "这是 5s SLO 攻坚的最大收益点（预计削减 4-5s）。需安琳确认 ambient 短回复是否需要记忆召回能力（Open Question Q3 from 03-call-chain-analysis）。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-09",
@@ -465,7 +468,8 @@
       "risk": "high",
       "estimated_sessions": 2,
       "blocking_for_production": false,
-      "notes": "需确认 Gateway TTS text.delta 接口的最小文本单元（Open Question Q4 from 03-call-chain-analysis）。"
+      "notes": "需确认 Gateway TTS text.delta 接口的最小文本单元（Open Question Q4 from 03-call-chain-analysis）。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-10",
@@ -514,7 +518,8 @@
       "risk": "high",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "batch-08/09/10 三个 P1 优化合计预期从 10.8s 削减到 ~3.8s，达成 5s SLO。"
+      "notes": "batch-08/09/10 三个 P1 优化合计预期从 10.8s 削减到 ~3.8s，达成 5s SLO。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-27",
@@ -602,7 +607,8 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "需确认 Channels DB3 不受影响（Open Question Q6 from 03-call-chain-analysis）。"
+      "notes": "需确认 Channels DB3 不受影响（Open Question Q6 from 03-call-chain-analysis）。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-12",
@@ -1392,7 +1398,8 @@
       "risk": "low",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "batch-04 的 R4 延后项（2026-04-23 安琳批复拆出）。依赖 batch-04 的 TraceIdMiddleware / build_logging_dict / trace_id_var 已就绪后才能启动。"
+      "notes": "batch-04 的 R4 延后项（2026-04-23 安琳批复拆出）。依赖 batch-04 的 TraceIdMiddleware / build_logging_dict / trace_id_var 已就绪后才能启动。",
+      "actual_status": "completed"
     }
   ],
   "phased_rollout": {

@@ -1,0 +1,24 @@
+# Batch-12 Progress
+# Type: refactor | Priority: P1 (performance) | Risk: medium
+# Title: PromptBuilder 记忆召回并行化 + model_config 缓存
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Base: main HEAD=84865f2 (batch-04~11+28 已合入)
+- Plan generated: refactor/batches/batch-12-plan.md (207 lines)
+- Depends_on: [] (无前置，满足)
+- Status: WAITING_FOR_REVIEW
+- 待决策项: 5 项 (见 plan 第 7 节) — Q1 依赖确认 / model缓存直改ORM失效窗口 / wake_words失效策略 / 测试文件scope微扩 / 明文key内存留存
+
+## Phase 2b: Executor (started 2026-07-17)
+- Branch: refactor/batch-12 (from main HEAD=84865f2)
+- 无人值守决策已拍板：gather(return_exceptions=True) / model 缓存 60s TTL + update_model 失效钩子 / wake_words 60s TTL / 测试文件 scope 微扩批准 / 明文 key 内存 60s 可接受
+- 性能 baseline：无 batch-12-before.json 且禁止启停服务 → 跳过 before/after 采集
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTING
+
+STATUS: EXECUTING_INTERRUPTED  # 2026-07-17 13:10 账号月度消费上限（monthly spend limit），非代码失败。
+# 工作区半成品已 commit 为 WIP 保留在 refactor/batch-12 分支，限额恢复后可续作（未经完整测试，勿直接合并）。

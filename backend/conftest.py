@@ -2,6 +2,7 @@
 import os
 
 import django
+import pytest
 from django.conf import settings
 
 # 确保 Django 设置在测试前加载
@@ -19,3 +20,17 @@ def pytest_configure():
         "DEFAULT_THROTTLE_CLASSES": [],
         "DEFAULT_THROTTLE_RATES": {},
     }
+
+
+@pytest.fixture(autouse=True)
+def _clear_process_caches():
+    """清 batch-12 引入的进程内 TTL 缓存（model_config / wake_words），
+    防跨测试污染（如 config-change-takes-effect 类断言读到上个用例的缓存）。"""
+    from apps.models import services as _model_services
+    from apps.voice.services import response_decision_service as _rds
+
+    _model_services._invalidate_model_cache()
+    _rds.invalidate_wake_words_cache()
+    yield
+    _model_services._invalidate_model_cache()
+    _rds.invalidate_wake_words_cache()

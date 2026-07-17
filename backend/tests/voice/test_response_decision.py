@@ -34,7 +34,16 @@ from apps.voice.services.response_decision_service import (
     ResponseDecisionService,
     _edit_distance,
     _pinyin_similarity,
+    invalidate_wake_words_cache,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_wake_words_cache():
+    """清 _load_wake_words 进程内缓存，防跨用例参数化 wake_words 串味（batch-12）。"""
+    invalidate_wake_words_cache()
+    yield
+    invalidate_wake_words_cache()
 
 
 def run_async(coro):
@@ -602,6 +611,25 @@ class TestWakeWordLoading:
             )
         assert result == DecisionResult.RESPOND
         assert reason == "exact_wake_word"
+
+    def test_wake_words_cache_hit_skips_db(self, service):
+        """连续两次 decide 同一 user -> get_or_create 只查一次 DB（60s TTL 缓存）"""
+        mock_settings_obj = MagicMock()
+        mock_settings_obj.wake_words = ["小鱼"]
+        mock_get_or_create = AsyncMock(return_value=(mock_settings_obj, False))
+        with patch(
+            "apps.voice.services.response_decision_service.voice_settings_repo.get_or_create",
+            mock_get_or_create,
+        ), patch(
+            "apps.voice.services.response_decision_service.voice_session_service.is_active_conversation",
+            AsyncMock(return_value=False),
+        ), patch(
+            "apps.voice.services.response_decision_service.get_redis",
+            AsyncMock(return_value=_build_redis_mock(0)),
+        ):
+            run_async(service.decide("今天天气真好", None, 77))
+            run_async(service.decide("我去买东西", None, 77))
+        mock_get_or_create.assert_called_once()
 
     def test_db_error_fallback_to_default(self, service):
         """数据库异常 -> 回退到 settings 默认值"""
