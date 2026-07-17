@@ -85,3 +85,6 @@
 [2026-07-17 16:41:41] batch-22 initializer: plan 生成完成 (refactor/batches/batch-22-plan.md, 171行). 10文件实测49处 except Exception: 收窄8/补日志7/保留34, grep 49->41. 待安琳确认: 50%目标不可达(仅8可安全收窄)/L124置信中/L86混合channel/validation路径修正/2文件>300暂不拆. STATUS: PLAN_READY
 
 [2026-07-17 16:59] batch-23 PLAN_READY — except Exception 第二批(media+memory+common+users): 9 文件 39 处审计完成, 收窄2/补日志7/保留30, plan.md 已生成待 review
+
+[batch-24] PLAN_READY — 2026-07-17 — 5 委托全可清理, 实测改 6 文件 (非 04-plan 所列 3), 待安琳确认 scope 扩大
+STATUS: PLAN_READY
