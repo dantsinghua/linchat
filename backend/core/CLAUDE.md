@@ -8,7 +8,7 @@
 
 | 文件 | 职责 |
 |------|------|
-| `settings.py` | Django 全局配置（数据库、Redis、LLM、媒体、Celery、Langfuse、安全、语音等） |
+| `settings/` | Django 全局配置包（batch-17 由单文件拆分）：`__init__.py` 为 base（数据库、Redis、LLM、Langfuse、安全、多模态/文档网关等）并聚合 import `voice.py`（语音+Channels）/`media.py`（MinIO+上传+媒体限制）/`celery_conf.py`（Celery） |
 | `urls.py` | 顶层 URL 路由分发（`api/v1/` 前缀，含媒体、推理取消、graph 子路由） |
 | `asgi.py` | ASGI 入口，ProtocolTypeRouter 分发 HTTP 和 WebSocket（语音）请求 |
 | `wsgi.py` | WSGI 入口（已废弃，禁止使用） |
@@ -37,7 +37,7 @@
 - `ProtocolTypeRouter` 区分 HTTP（Django ASGI）和 WebSocket
 - WebSocket 经 `WebSocketTokenAuthMiddleware` 鉴权后路由到 voice consumer
 
-## Redis 分配 (redis.py + settings.py)
+## Redis 分配 (redis.py + settings/)
 
 | DB | 用途 |
 |----|------|
@@ -56,7 +56,7 @@
 | `memory.embedding_health_check` | 每小时整点 | Embedding 健康检查 |
 | `media.clean_expired_media` | 每日凌晨 3:00 | 清理过期媒体文件 |
 
-## 关键配置分组 (settings.py)
+## 关键配置分组 (settings/)
 
 | 分组 | 说明 |
 |------|------|

@@ -1,0 +1,40 @@
+# Batch batch-17 Progress
+# Type: refactor | Priority: P2 | Risk: medium
+# Title: settings.py 域拆分（第一批：voice/media/celery 配置提取）
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Base: main HEAD=ccfc7e3
+- Plan generated: refactor/batches/batch-17-plan.md
+- 核实结论:
+  - settings.py 实测 490 行 / 122 getenv（计划书原 513/117，已修正为现状）
+  - trap① BASE_DIR: 变包后需 parent.parent.parent（已纳入改动 2.1）
+  - trap② 域间依赖: voice/media/celery 均仅用 os.getenv/字面量，无跨域变量依赖
+  - trap③ 直接 import: 全库 0 处 `from core.settings import`
+  - trap④ 启动引用: manage/asgi/wsgi/celery/conftest/pytest.ini 全用 core.settings 字符串，无需改
+- 待确认: base(__init__.py) 拆后仍 ~320 行 > 300（第一批仅拆三域）；CLAUDE.md 描述文字是否顺带更新
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- Base branch: refactor/batch-17 (from main HEAD=ccfc7e3)
+- diffsettings baseline saved: /tmp/diffsettings_before.txt (159 行)
+- 拆分执行:
+  - git rm core/settings.py → core/settings/ 包（4 文件）
+  - celery_conf.py (20 行) / media.py (39 行) / voice.py (136 行) / __init__.py base (435 行)
+  - BASE_DIR 修正 parent.parent.parent（trap①）→ 实测指向 /backend ✅
+  - import json 移入 voice.py；base 删除未用 import json；import re 加 # noqa: E402
+- 验证结果:
+  - ruff / black / isort 全绿（black 已格式化，仅布局无值变更）
+  - manage.py check: no issues
+  - diffsettings before vs after: **完全一致（NO_DIFF）** —— BASE_DIR/STATIC_ROOT/三域全键无差
+  - 属性访问 smoke: VOICE/MINIO/CELERY/CHANNEL 全部可读，值正确
+  - 全量 pytest: 1672 passed, 9 skipped, 0 failed (50s，systemd-run 包裹)
+- 顺带同步 doc: backend/core/CLAUDE.md ×3、backend/CLAUDE.md ×1（settings.py → settings/ 包）
+- 债务登记: simplify-candidates.md 追加 base 435 行 > 300（第一批仅拆三域，后续 batch 拆 gateway/memory）
+- [x] 改完 core/settings/ 包（4 文件全部拆分+验证通过）
+- [x] 精简 __init__.py: 无未用 import/无注释代码/无裸 except；435>300 为 plan §7 接受债务
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED

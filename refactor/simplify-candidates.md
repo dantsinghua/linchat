@@ -4,3 +4,4 @@
 - [batch-10] backend/apps/voice/services/tts_pipeline_manager.py:266 行 — 超 200 软限（既有）。comfort 队列路径 _play_text 与流式 _run_stream 有相似 connect/configure/wait_done 结构，建议 P2 抽公共 _tts_session helper。
 - [batch-10] backend/tests/voice/test_voice_pipeline.py:1200+ 行 — 远超 300 硬限（决策⑤登记，本 batch 仅追加 5 预连接测试未拆）。建议 P2 按 Test 类拆多文件（如 test_voice_pipeline_ambient.py / _persist.py）。
 - [batch-16] graph/services/types.py:19 — MediaAttachment 未使用 (F401)，本批零行为变化保留，建议下轮清理
+- [batch-17] backend/core/settings/__init__.py:435 行 — 超 300 硬限（plan §7 决策：第一批仅拆 voice/media/celery 三域，base 暂留超限）。多模态/文档网关域（LLM_GATEWAY_*/DOC_PARSE_*/DOCUMENT_SUBAGENT_*/MULTIMODAL_*）+ Memory/Context 域可作后续 batch 继续拆为 gateway.py / memory.py。
