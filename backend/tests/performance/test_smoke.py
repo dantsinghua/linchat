@@ -222,10 +222,10 @@ class TestServiceLayerOverhead(TestCase):
             msg.response_time_ms = None
             mock_messages.append(msg)
 
-        # 测试转换性能
-        start_time = time.time()
+        # 测试转换性能（纯 CPU 操作用 process_time，避免共享主机负载导致 wall-time 抖动）
+        start_time = time.process_time()
         vos = [MessageVO.from_entity(m) for m in mock_messages]
-        end_time = time.time()
+        end_time = time.process_time()
 
         latency = (end_time - start_time) * 1000  # 转换为毫秒
 
@@ -236,7 +236,7 @@ class TestServiceLayerOverhead(TestCase):
 
     def test_stream_chunk_creation_performance(self):
         """测试 StreamChunk 创建性能"""
-        start_time = time.time()
+        start_time = time.process_time()
 
         # 创建 1000 个 StreamChunk
         chunks = []
@@ -248,7 +248,7 @@ class TestServiceLayerOverhead(TestCase):
             )
             chunks.append(chunk)
 
-        end_time = time.time()
+        end_time = time.process_time()
         latency = (end_time - start_time) * 1000
 
         # 1000 个 chunk 创建应该在 50ms 内完成
@@ -273,7 +273,7 @@ class TestValidationOverhead(TestCase):
         ]
 
         for name, content in test_cases:
-            start_time = time.time()
+            start_time = time.process_time()
 
             # 执行 1000 次验证
             for _ in range(1000):
@@ -281,7 +281,7 @@ class TestValidationOverhead(TestCase):
                 is_empty = len(trimmed) == 0
                 is_too_long = len(content) > settings.MAX_MESSAGE_LENGTH
 
-            end_time = time.time()
+            end_time = time.process_time()
             latency = (end_time - start_time) * 1000
 
             # 1000 次验证应该在 10ms 内完成
@@ -302,22 +302,22 @@ class TestGenerationManagementOverhead(TestCase):
         from apps.chat.services import register_generation, unregister_generation
 
         # 测试 100 次注册
-        start_time = time.time()
+        start_time = time.process_time()
         request_ids = []
         for i in range(100):
             req_id = f"perf-test-{i}"
             register_generation(req_id)
             request_ids.append(req_id)
 
-        end_time = time.time()
+        end_time = time.process_time()
         register_latency = (end_time - start_time) * 1000
 
         # 测试 100 次取消注册
-        start_time = time.time()
+        start_time = time.process_time()
         for req_id in request_ids:
             unregister_generation(req_id)
 
-        end_time = time.time()
+        end_time = time.process_time()
         unregister_latency = (end_time - start_time) * 1000
 
         # 100 次操作应该在 10ms 内完成
