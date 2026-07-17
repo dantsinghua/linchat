@@ -116,3 +116,5 @@ STATUS: PLAN_READY
 - Plan generated: refactor/batches/batch-32-plan.md
 - Dep batch-29 COMPLETED；方案=句末标点即时 flush + dark-launch flag + 保留超时兜底
 - STATUS: PLAN_READY
+
+[batch-33] 2026-07-17 PLAN_READY — voice service ORM 收敛计划生成，8 直连点，6 文件，待安琳 review（scope+media_repo / PD-4 / is_voice.save 边界）。STATUS: PLAN_READY

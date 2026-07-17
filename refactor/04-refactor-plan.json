@@ -1677,7 +1677,7 @@
       "estimated_sessions": 1,
       "blocking_for_production": false,
       "notes": "voice 高风险区，纯分层重构必带回归测试。落地前需安琳对 PD-4 拍板（本 batch 默认采纳'收敛 message_repo'，与 ambient_light 一致）。rediagnosis R3 新增。",
-      "actual_status": "planned"
+      "actual_status": "completed"
     },
     {
       "id": "batch-34",

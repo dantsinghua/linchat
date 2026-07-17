@@ -76,3 +76,13 @@
 ## batch-32（2026-07-17，dark-launch）
 - **需安琳决策**：VOICE_AMBIENT_ADAPTIVE_FLUSH_ENABLED（默认 false）是否开启——句末标点即时 flush 可省最多 1.5s 聚合等待；风险为 ASR 中途给出标点导致拆句（矩阵已覆盖已知模式）。
 - 三个 dark-launch 开关（batch-30 短路 / 31 HA 并行 / 32 自适应 flush）+ batch-10 预连接开关，建议 Gateway 恢复后用 trigger_voice_e2e.py 分别开关对比 latency.summary 数据再定。
+
+## batch-33（2026-07-17，voice service ORM 收敛）
+- 手动验证（plan §7.2，未在无人值守中执行）：
+  - 触发 ambient 语音持久化：确认 Message.is_voice 标记 + MediaAttachment 音频写入 + record-only 超限清理行为不变。
+  - 声纹注册后追溯匹配：未知 speaker 历史消息正确改归属（§3 直连点 7）。
+- 无人值守拍板项待安琳复核（plan §9）：
+  - scope 扩项：MediaAttachment.objects.create 收敛落在 media/repositories.py，files_touched 5→6 文件（已按分层原则执行）。
+  - is_voice `.save()` 边界：已一并收敛为 repo 同步方法 set_voice_flag_sync（保持一致性）。
+  - PD-4 默认采纳"收敛 message_repo"方案（与 ambient_light 一致），请正式拍板。
+  - voice_pipeline.py 仍 326 行（>300 硬限制），本 batch 不拆分，拆分留待后续 batch。
