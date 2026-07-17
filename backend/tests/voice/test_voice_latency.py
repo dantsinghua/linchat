@@ -154,3 +154,44 @@ def test_max_entries_eviction(clock):
         latency_start(1, f"seg{i}")
     assert len(voice_latency._LATENCY) <= voice_latency._MAX_ENTRIES
     assert "1:seg0" not in voice_latency._LATENCY  # 最旧已被淘汰
+
+
+def test_delta_vad_pct_covers_pre_pipeline_hops(clock, summary_handler):
+    """batch-29-T7: 三缺跳补入后 hop_sum 跨越 t0 之前，delta_pct（对 pipeline 段）失真变负，
+    新增 delta_vad_pct 以 total_from_vad_ms 为基准衡量整链覆盖率误差 < 10%。"""
+    clock.t = 1000.0
+    latency_anchor(1, "segV", "vad_start")
+    # t0 之前三缺跳（本批新增归因）
+    latency_record(1, "segV", "speaker_identify", 400)
+    latency_record(1, "segV", "aggregation_wait", 1500)
+    latency_record(1, "segV", "decision_llm", 1100)
+    clock.t = 1003.0  # pipeline 起点：vad 后 3.0s
+    latency_start(1, "segV")
+    latency_record(1, "segV", "llm_total", 1800)
+    latency_record(1, "segV", "tts_connect", 100)
+    latency_record(1, "segV", "tts_synth", 1500)
+    clock.t = 1006.5  # flush：vad 后 6.5s，pipeline 后 3.5s
+    latency_flush(1, "segV")
+
+    rec = _summaries(summary_handler)[0]
+    assert rec.hop_sum_ms == 6400  # 400+1500+1100+1800+100+1500
+    assert rec.total_from_pipeline_ms == 3500
+    assert rec.total_from_vad_ms == 6500
+    # delta_pct 对 pipeline 段失真变负（hop_sum 含 t0 之前）— 符合预期，保留兼容
+    assert rec.delta_pct < 0
+    # delta_vad_pct 才是本批度量：(6500-6400)/6500 ≈ 0.0154，整链覆盖误差 < 10%
+    assert rec.delta_vad_pct == 0.0154
+    assert abs(rec.delta_vad_pct) < 0.10
+
+
+def test_delta_vad_pct_none_without_vad_anchor(clock, summary_handler):
+    """batch-29-T8: 无 vad_start 锚点（voice_chat 直连未走 vad）时 delta_vad_pct 为 None，不报错。"""
+    latency_start(1, "segN")
+    latency_record(1, "segN", "llm_total", 2000)
+    clock.advance(3.0)
+    latency_flush(1, "segN")
+
+    rec = _summaries(summary_handler)[0]
+    assert rec.delta_vad_pct is None
+    assert rec.total_from_vad_ms is None
+    assert rec.delta_pct is not None  # pipeline 段口径仍有效
