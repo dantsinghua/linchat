@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from django.conf import settings
 from django.test import override_settings
 
-from apps.chat.services.types import StreamChunk
+from apps.graph.services.types import StreamChunk
 
 # 被测模块
 _VP = "apps.voice.services.voice_pipeline"

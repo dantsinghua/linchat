@@ -20,7 +20,7 @@ import pytest
 from django.utils import timezone
 
 from apps.graph.services.inference_service import InferenceService, _task_key as _get_inference_task_key
-from apps.chat.services.types import InferenceTask
+from apps.graph.services.types import InferenceTask
 
 
 class TestInferenceService:

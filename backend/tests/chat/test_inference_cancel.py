@@ -22,7 +22,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.chat.services.inference_service import InferenceService
-from apps.chat.services.types import InferenceTask
+from apps.graph.services.types import InferenceTask
 from tests.helpers import run_async
 
 

@@ -6,7 +6,7 @@ from typing import AsyncGenerator, Optional
 from django.http import HttpRequest, JsonResponse, StreamingHttpResponse
 from rest_framework import serializers
 
-from apps.chat.services.types import StreamChunk
+from apps.graph.services.types import StreamChunk
 
 logger = logging.getLogger(__name__)
 

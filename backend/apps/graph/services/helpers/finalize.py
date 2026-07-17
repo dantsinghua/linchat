@@ -95,7 +95,7 @@ async def create_first_token_messages(
 ):
     from apps.chat.models import Message
     from apps.chat.repositories import media_attachment_repo, message_repo
-    from apps.chat.services.types import _get_tool_model_name
+    from apps.graph.services.types import _get_tool_model_name
 
     user_msg = Message(
         message_uuid=str(uuid.uuid4()), user_id=user_id,
