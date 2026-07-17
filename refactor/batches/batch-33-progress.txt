@@ -34,6 +34,10 @@
 - lint: 改动文件无新增 ruff 错误，F401 全清
 - sync/async 二分正确（1/2/3 同步不破坏事务原子性；4~8 异步）
 
+## Phase 2b: Executor (completed 2026-07-17)
+- Commit: 395c334
+- Pushed to: origin/refactor/batch-33
+
 ## Phase 2c: Validator
 - (尚未开始)
 
