@@ -1,0 +1,52 @@
+# Batch-22 Progress
+# Type: refactor | Priority: P2 | Risk: medium
+# Title: except Exception 缩减（第一批：voice + graph 高频文件）
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Plan generated: refactor/batches/batch-22-plan.md (171 lines)
+- Audit: 10 files, 49 except Exception (实测, 非 4 月清单 79)
+- 分类: 收窄 8 / 补日志 7 / 保留 34
+- grep 计数目标: 49 -> 41
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- Branch: refactor/batch-22 (from main 52878e5)
+- Baseline grep 'except Exception' 合计: 49 (匹配 plan)
+  - response_decision=6 voice_pipeline=5 voice_persist=5 consumers=5 consumer_session=4
+  - context=6 agent=6 inference=5 monitor=4 memory=3
+- 计划: 收窄 8 / 补日志 7 / 保留 34 -> 目标 41
+
+### 逐文件执行
+- [x] F1 response_decision_service.py: 补日志 2 (L185 wake_words, L195 speaker_count)
+      L124/L195 收窄→降为补日志(铁律: TestRedisErrorHandling 用 generic Exception mock 断言吞全部异常契约)
+      pytest 159 passed; except count 6 不变
+- [x] F2 voice_pipeline.py: 补日志 2 (L225 tts.completed pass→debug, L308 加 exc_info) ruff clean, 57 passed
+- [x] F3 voice_persist_service.py: 全保留(补偿/兜底), 无改动
+- [x] F4 consumers.py: 补日志 3 (L84/L98/L104 disconnect pass→debug) ruff clean, 61 passed
+- [x] F5 consumer_session.py: 全保留, 无改动
+- [x] F6 context_service.py: 收窄 1 (L118 lock.release→RedisError,LockError) +import; 19 passed; ruff 无新增(12=12)
+- [x] F7 agent_service.py: 全保留(顶层/rescue/LLMException raise 红线), 无改动
+- [x] F8 inference_service.py: 全保留(收窄 4→0)。铁律偏离依据:
+      test_get_active_task_error/register_task_error/refresh_task_ttl_error 均用 generic
+      Exception mock 断言吞全部异常契约; 4 方法为同一 Redis-helper 类, 一致保留。已有 logger.error。30 passed 不变
+- [x] F9 monitor.py: 补日志 1 (L72 tool 事件 pass→debug) ruff clean, 25 passed
+- [x] F10 memory.py: 收窄 1 (L16 _is_django_mode→ImportError,AttributeError) 无测试引用, ruff clean, 18 passed
+
+### 与 plan 的偏离(全部朝更保守方向, 不改吞/抛语义)
+- 计划 收窄 8 → 实际 收窄 2 (context L118, memory L16); 补日志 7 → 实际 8
+- 下调原因: response_decision L124/L195 与 inference L25/L43/L96 的收窄会破坏既有
+  swallow-all 单测(generic Exception mock)且违反铁律 → 降为「补日志/保留」
+- grep 'except Exception' 合计: 49 → 47 (仅 2 处收窄)
+- bare `except:` 新增 0
+
+### 集成验证 (systemd-run 包裹)
+- ruff 改动文件全部 0 新增错误 (repo-wide 73 为既存 E701/E702 风格债, 非本批)
+- pytest tests/voice/ : 748 passed
+- pytest tests/apps/graph/ : 94 passed
+- pytest chat(context/inference/inference_cancel/agent)+context/monitoring : 88 passed
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED

@@ -82,7 +82,7 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
             try:
                 await self.channel_layer.group_discard(TTSRouter.group_name(user_id), self.channel_name)
             except Exception:
-                pass
+                logger.debug("group_discard failed on disconnect (ignored): user=%s", user_id, exc_info=True)
         agg = getattr(self, "_aggregator", None)
         if agg:
             agg.destroy()
@@ -96,13 +96,13 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
             try:
                 await self._unregister_ambient_connection()
             except Exception:
-                pass
+                logger.debug("unregister ambient connection failed (ignored): user=%s", user_id, exc_info=True)
         if user_id:
             try:
                 from apps.voice.services.voice_pipeline import VoicePipeline
                 await VoicePipeline.cancel(user_id)
             except Exception:
-                pass
+                logger.debug("VoicePipeline.cancel failed on disconnect (ignored): user=%s", user_id, exc_info=True)
         if getattr(self, "_asr_client", None) and self._asr_client.connected:
             await self._asr_client.disconnect()
         if user_id:

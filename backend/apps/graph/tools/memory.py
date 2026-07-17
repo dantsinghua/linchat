@@ -13,7 +13,7 @@ def _is_django_mode() -> bool:
     try:
         import django
         return django.apps.apps.ready
-    except Exception:
+    except (ImportError, AttributeError):
         return False
 
 

@@ -3,6 +3,7 @@ import logging
 from typing import Any, Optional
 
 from django.conf import settings
+from redis.exceptions import LockError, RedisError
 
 from apps.context import (COMPACTION_PROMPT_TEMPLATE, PromptBuilder,
                           PromptConfig, RetrievedMemory, TrimLevel,
@@ -115,7 +116,7 @@ class ContextService:
         finally:
             if acquired:
                 try: await lock.release()
-                except Exception: pass
+                except (RedisError, LockError): pass
         return messages, compaction_summary
 
     @staticmethod

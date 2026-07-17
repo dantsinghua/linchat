@@ -223,7 +223,7 @@ class VoicePipeline:
                     from apps.voice.services.tts_router import TTSRouter
                     await TTSRouter().send_control(user_id, "tts.completed")
                 except Exception:
-                    pass
+                    logger.debug("tts.completed control failed (ignored): user=%s", user_id, exc_info=True)
 
         # 016: HA 音箱 TTS 路由 — Agent 完成后将文本发送到 HA 音箱
         if not error_occurred and full_response.strip() and mode == "ambient":
@@ -306,4 +306,4 @@ class VoicePipeline:
                     user_id, "ha_speaker_unreachable", "音箱不可达，已降级到浏览器播放",
                 )
         except Exception as e:
-            logger.error("HA TTS 路由异常: user=%s, err=%s", user_id, e)
+            logger.error("HA TTS 路由异常: user=%s, err=%s", user_id, e, exc_info=True)

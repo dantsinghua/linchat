@@ -70,6 +70,7 @@ def handle_tool_end_event(event, breakdown, tool_processes):
         })
         return tool_name == "memory_subagent"
     except Exception:
+        logger.debug("monitor process failed (ignored)", exc_info=True)
         return False
 
 
