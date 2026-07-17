@@ -66,3 +66,6 @@
 
 ## batch-15 Part A（2026-07-17）
 - Part B 延后：chat/services 剩余 6 shim / 11 文件迁移（batch-15b，rediagnosis 时应入计划）。
+
+## batch-30（2026-07-17，dark-launch）
+- **需安琳产品决策**：VOICE_DECISION_SHORTCIRCUIT_ENABLED（默认 false）是否开启——短路疑问句可省 decision_llm 一跳（约数百 ms~1s），但与历史"防人际问答误触发"调参方向相反（BC2 争议，见 batch-30-plan.md §7）。建议先看 batch-29 埋点数据中 decision_llm 实际耗时再定。

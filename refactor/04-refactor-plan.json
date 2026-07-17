@@ -1523,7 +1523,7 @@
       "estimated_sessions": 1,
       "blocking_for_production": false,
       "notes": "voice 高风险区，改动决策逻辑需回归测试覆盖误判边界。收益依赖 batch-29 埋点量化。对齐 03-hotpath-delta Open Question Q1。rediagnosis R3 新增。",
-      "actual_status": "planned"
+      "actual_status": "completed"
     },
     {
       "id": "batch-31",
