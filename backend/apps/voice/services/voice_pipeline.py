@@ -152,7 +152,7 @@ class VoicePipeline:
             else:
                 agent_gen = AgentService.execute(
                     user_id=user_id, thread_id=f"user_{user_id}",
-                    request_id=request_id, user_message=voice_text)
+                    request_id=request_id, user_message=voice_text, channel="voice")
             async for chunk in agent_gen:
                 if chunk.type == "content":
                     if first_token_ts is None and chunk.content:

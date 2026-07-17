@@ -135,7 +135,10 @@ async def create_cronmem_agent(prompt=None):
         yield agent
 
 
-def get_agent_config(user_id: int, callbacks: Optional[list] = None) -> dict:
-    config: dict = {"configurable": {"thread_id": get_thread_id(user_id), "user_id": str(user_id)}}
+def get_agent_config(user_id: int, callbacks: Optional[list] = None, channel: str = "web") -> dict:
+    config: dict = {"configurable": {
+        "thread_id": get_thread_id(user_id), "user_id": str(user_id), "channel": channel,
+    }}
+    config["metadata"] = {"langfuse_tags": [f"channel:{channel}"], "channel": channel}
     if callbacks: config["callbacks"] = callbacks
     return config

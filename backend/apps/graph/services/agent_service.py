@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 class AgentService:
     @staticmethod
-    async def execute(user_id: int, thread_id: str, request_id: str, user_message: str, attachment_uuids: Optional[list[str]] = None) -> AsyncGenerator[StreamChunk, None]:
+    async def execute(user_id: int, thread_id: str, request_id: str, user_message: str, attachment_uuids: Optional[list[str]] = None, channel: str = "web") -> AsyncGenerator[StreamChunk, None]:
         # batch-05：Voice / Celery / 测试 不经 HTTP middleware，contextvar 为空；
         # 显式 set，保证 helpers/prompt/finalize/gateway 日志拿得到 trace_id。
         # HTTP 路径 middleware 已 set，这里是幂等覆盖（值相同）。
@@ -78,7 +78,7 @@ class AgentService:
             max_seq = await message_repo.get_max_sequence(user_id)
             execution.status = LangGraphExecution.STATUS_RUNNING
             await execution_repo.update(execution)
-            config = get_agent_config(user_id, [langfuse_handler] if langfuse_handler else None)
+            config = get_agent_config(user_id, [langfuse_handler] if langfuse_handler else None, channel=channel)
             if attachment_uuids:
                 config["configurable"]["attachment_uuids"] = attachment_uuids
             config["configurable"].update(stop_event=stop_event, request_id=request_id)

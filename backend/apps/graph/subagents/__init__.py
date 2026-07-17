@@ -53,4 +53,10 @@ def get_subagent_tools() -> list[BaseTool]:
 
     tools.append(history_search)
 
+    # 公众号知识库检索工具：OA_SEARCH_ENABLED 开关灰度
+    if getattr(settings, "OA_SEARCH_ENABLED", False):
+        from apps.graph.tools.oa_search import oa_search
+
+        tools.append(oa_search)
+
     return tools

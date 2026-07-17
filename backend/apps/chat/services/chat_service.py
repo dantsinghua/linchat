@@ -42,7 +42,7 @@ class ChatService:
         thread_id = get_thread_id(user_id)
         async for chunk in AgentService.execute(
             user_id=user_id, thread_id=thread_id, request_id=request_id,
-            user_message=content, attachment_uuids=attachment_uuids):
+            user_message=content, attachment_uuids=attachment_uuids, channel="web"):
             yield chunk
 
     @staticmethod

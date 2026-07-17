@@ -30,3 +30,11 @@ HA_ENABLED = bool(HA_URL and HA_TOKEN)  # 有配置才启用
 HA_LAN_HOST = os.getenv(
     "HA_LAN_HOST", "192.100.2.100"
 )  # 局域网可达地址（HA 音箱 play_media 降级路径）
+
+
+# ============ 公众号知识库检索 (oa_search / wn-linchat-brain C1) ============
+OA_SEARCH_DB_PATH = os.getenv(
+    "OA_SEARCH_DB_PATH",
+    "/home/dantsinghua/clawd/scripts/wechat-narrator/oa_fts.db",
+)
+OA_SEARCH_ENABLED = os.getenv("OA_SEARCH_ENABLED", "false").lower() == "true"
