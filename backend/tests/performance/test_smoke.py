@@ -206,20 +206,32 @@ class TestServiceLayerOverhead(TestCase):
 
     def test_message_vo_conversion_performance(self):
         """测试 MessageVO 转换性能"""
-        # 创建 100 个 mock 消息
+        from types import SimpleNamespace
+
+        # 创建 100 个轻量 stub 消息。不用 MagicMock：其 attachments.all()
+        # 返回不可迭代对象，每条消息都走异常+warning 日志路径，测的是
+        # mock/日志开销而非 VO 转换本身（全量套件下曾因此超阈值）。
+        class _EmptyAttachments:
+            def all(self):
+                return []
+
         mock_messages = []
         for i in range(100):
-            msg = MagicMock()
-            msg.message_id = i + 1
-            msg.message_uuid = f"uuid-{i}"
-            msg.role = "user"
-            msg.content = f"Content {i}"
-            msg.status = 1
-            msg.sequence = i + 1
-            msg.created_time = datetime.now()
-            msg.request_id = f"req-{i}"
-            msg.model_name = None
-            msg.response_time_ms = None
+            msg = SimpleNamespace(
+                message_id=i + 1,
+                message_uuid=f"uuid-{i}",
+                role="user",
+                content=f"Content {i}",
+                status=1,
+                sequence=i + 1,
+                created_time=datetime.now(),
+                request_id=f"req-{i}",
+                model_name=None,
+                response_time_ms=None,
+                attachments=_EmptyAttachments(),
+                is_voice=False,
+                speaker_id=None,
+            )
             mock_messages.append(msg)
 
         # 测试转换性能（纯 CPU 操作用 process_time，避免共享主机负载导致 wall-time 抖动）
