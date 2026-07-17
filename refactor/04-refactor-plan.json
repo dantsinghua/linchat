@@ -646,7 +646,8 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "需确认 PromptBuilder 三步 IO 无因果依赖（Open Question Q1 from 03-call-chain-analysis）。"
+      "notes": "需确认 PromptBuilder 三步 IO 无因果依赖（Open Question Q1 from 03-call-chain-analysis）。",
+      "actual_status": "failed"
     },
     {
       "id": "batch-13",
