@@ -16,7 +16,6 @@
 | `AudioPlayer.tsx` | 音频播放器（播放/暂停、进度条、`stopAndClear()` 外部打断接口） |
 | `AudioRecorder.tsx` | 语音录音组件（开始/停止/预览/发送/取消、时长限制 1-60 秒） |
 | `ContextMonitorPanel.tsx` | 上下文监控面板（MonitorSidebar 侧边栏、ContextStatusBar 状态条、MonitorToggleButton 切换按钮、useContextMonitor Hook） |
-| `ContextMonitorPanel.design.tsx` | 上下文监控面板设计稿（静态预览，含模拟数据） |
 | `MarkdownRenderer.tsx` | Markdown 渲染（GFM 支持、代码高亮 rehype-highlight、HTML 标签 rehype-raw、Mermaid 图表委托、引用标记 `[[N]]` 转上标） |
 | `MermaidRenderer.tsx` | Mermaid 图表渲染（语法验证、异步渲染、加载/错误状态、源代码查看） |
 

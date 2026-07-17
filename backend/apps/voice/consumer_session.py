@@ -75,9 +75,6 @@ class SessionMixin:
             from apps.voice.services.utterance_aggregator import UtteranceAggregator
             self._aggregator = UtteranceAggregator(on_aggregated=self._on_utterance_aggregated)
             self._speaker_aggregators = {}
-            # [DEPRECATED] diarize 功能暂时废弃
-            # from apps.voice.repositories import speaker_profile_repo
-            # self._diarize_enabled = await speaker_profile_repo.any_exists()
         configured_data: dict[str, Any] = {
             "status": "active", "session_id": self._asr_client.session_id, "mode": self._mode,
             **({"features": {"utterance_aggregation": True, "llm_decision": settings.VOICE_DECISION_USE_LLM,
