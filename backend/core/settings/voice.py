@@ -58,6 +58,12 @@ VOICE_TTS_INCREMENTAL_ENABLED = (
 VOICE_TTS_PRECONNECT_ENABLED = (
     os.getenv("VOICE_TTS_PRECONNECT_ENABLED", "false").lower() == "true"
 )
+# batch-31：小爱 HA 下发与浏览器 TTS wait_idle 解耦——full_response 就绪即并行下发 HA，
+# 不再等浏览器 Gateway TTS 整段合成。默认 false 便于灰度；压测确认小爱 P50 减 >1s 后置 true。
+# false 回退旧串行行为（HA 在 finally.wait_idle 之后下发，代码路径保留，运行时可回滚）。
+VOICE_HA_PARALLEL_TTS_ENABLED = (
+    os.getenv("VOICE_HA_PARALLEL_TTS_ENABLED", "false").lower() == "true"
+)
 VOICE_ASR_SPEECH_PAD_MS = int(os.getenv("VOICE_ASR_SPEECH_PAD_MS", "2000"))
 VOICE_ASR_LANGUAGE = os.getenv("VOICE_ASR_LANGUAGE", "zh")
 VOICE_MAX_SEGMENT_DURATION = int(

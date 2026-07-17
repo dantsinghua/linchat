@@ -1297,3 +1297,170 @@ class TestAmbientRespondLatencyHops:
         assert "aggregation_wait" not in hops
         assert "decision_llm" not in hops
         c._start_voice_pipeline.assert_not_awaited()
+
+
+# ──────────────────────────────────────────────
+# batch-31: 小爱 HA 下发与浏览器 TTS wait_idle 解耦（VOICE_HA_PARALLEL_TTS_ENABLED）
+# ──────────────────────────────────────────────
+
+def _ha_vs(device: str = "ha_speaker", entity: str = "media_player.xiaoai"):
+    """构造 VoiceSettings mock（tts_output_device / ha_speaker_entity_id）。"""
+    vs = MagicMock()
+    vs.tts_output_device = device
+    vs.ha_speaker_entity_id = entity
+    return vs
+
+
+@pytest.mark.asyncio(loop_scope="function")
+class TestHaSpeakerParallelDispatch:
+    """batch-31：full_response 就绪即并行下发 HA，与 finally.wait_idle 时间重叠。"""
+
+    async def _run_ambient(self, *, parallel: bool, device: str = "ha_speaker",
+                           agent_side=_mock_agent_execute_normal,
+                           wait_idle_side=None, ha_send_side=None,
+                           latency_record_patch=None, latency_flush_patch=None):
+        """跑一次 ambient run_pipeline，返回 (router_inst, tts_mgr)。"""
+        from apps.voice.services.voice_pipeline import VoicePipeline
+
+        VoicePipeline._active_ha_tasks.pop(1, None)
+        consumer = _make_consumer()
+
+        tts = MagicMock()
+        for m in ("start", "enqueue", "stop_comfort_timer",
+                  "begin_stream", "feed_text", "end_stream"):
+            setattr(tts, m, MagicMock())
+        tts.abort_stream = AsyncMock()
+        tts.wait_idle = AsyncMock(side_effect=wait_idle_side)
+        tts.shutdown = AsyncMock()
+        tts.cancel = AsyncMock()
+
+        router_inst = MagicMock()
+        router_inst.get_on_audio_callback.return_value = AsyncMock()
+        router_inst.send_control = AsyncMock()
+        router_inst.send_to_ha_speaker = AsyncMock(side_effect=ha_send_side)
+        router_inst.send_warning = AsyncMock()
+
+        repo = MagicMock()
+        repo.get_or_create = AsyncMock(return_value=(_ha_vs(device), False))
+
+        # 逐层 enter（可选的 latency patch 动态挂载）
+        import contextlib
+        with contextlib.ExitStack() as es:
+            _infer = es.enter_context(patch(f"{_VP}.InferenceService"))
+            _infer.register_task = AsyncMock(return_value=True)
+            _infer.cancel_task = AsyncMock(return_value=(True, "req123"))
+            _infer.complete_task = AsyncMock()
+            es.enter_context(override_settings(
+                VOICE_AMBIENT_LIGHT_ENABLED=False,
+                VOICE_HA_PARALLEL_TTS_ENABLED=parallel))
+            sess = es.enter_context(patch(f"{_VP}.voice_session_service"))
+            sess.check_llm_rate_limit = AsyncMock(return_value=True)
+            sess.set_active_conversation = AsyncMock()
+            persist = es.enter_context(patch(f"{_VP}.voice_persist_service"))
+            persist.persist_audio_attachment = AsyncMock()
+            agent = es.enter_context(patch(f"{_VP}.AgentService"))
+            agent.execute = MagicMock(side_effect=agent_side)
+            es.enter_context(patch(f"{_VP}.TTSPipelineManager", return_value=tts))
+            es.enter_context(patch("apps.voice.services.tts_router.TTSRouter",
+                                   return_value=router_inst))
+            es.enter_context(patch("apps.voice.repositories.voice_settings_repo", repo))
+            if latency_record_patch is not None:
+                es.enter_context(patch(f"{_VP}.latency_record", latency_record_patch))
+            if latency_flush_patch is not None:
+                es.enter_context(patch(f"{_VP}.latency_flush", latency_flush_patch))
+
+            await VoicePipeline.run_pipeline(
+                user_id=1, text="现在几点", segment_id="seg",
+                consumer=consumer, mode="ambient")
+
+        return router_inst, tts
+
+    async def test_flag_on_ha_send_not_later_than_wait_idle(self):
+        """T1: flag ON → HA send 不晚于 wait_idle 完成（并行/提前）。"""
+        events: list[str] = []
+
+        async def wait_idle_side():
+            await asyncio.sleep(0.03)
+            events.append("wait_idle_done")
+
+        async def ha_send_side(entity, text):
+            events.append("ha_send")
+
+        router_inst, _ = await self._run_ambient(
+            parallel=True, wait_idle_side=wait_idle_side, ha_send_side=ha_send_side)
+
+        router_inst.send_to_ha_speaker.assert_awaited_once()
+        assert "ha_send" in events and "wait_idle_done" in events
+        assert events.index("ha_send") < events.index("wait_idle_done")
+
+    async def test_flag_off_ha_send_after_wait_idle(self):
+        """T2: flag OFF → 回退旧串行，HA send 在 wait_idle 之后（regression guard）。"""
+        events: list[str] = []
+
+        async def wait_idle_side():
+            await asyncio.sleep(0.03)
+            events.append("wait_idle_done")
+
+        async def ha_send_side(entity, text):
+            events.append("ha_send")
+
+        router_inst, _ = await self._run_ambient(
+            parallel=False, wait_idle_side=wait_idle_side, ha_send_side=ha_send_side)
+
+        router_inst.send_to_ha_speaker.assert_awaited_once()
+        assert events.index("wait_idle_done") < events.index("ha_send")
+
+    async def test_cancel_pops_and_cancels_ha_task(self):
+        """T3: barge-in cancel() → _active_ha_tasks 被 pop 且首任务 .cancel() 调用。"""
+        from apps.voice.services.voice_pipeline import VoicePipeline
+
+        async def _slow():
+            await asyncio.sleep(5)
+
+        task = asyncio.create_task(_slow())
+        VoicePipeline._active_ha_tasks[1] = task
+        with patch(f"{_VP}.InferenceService") as infer:
+            infer.cancel_task = AsyncMock(return_value=(False, None))
+            await VoicePipeline.cancel(1)
+
+        await asyncio.sleep(0)  # 让取消传播
+        assert 1 not in VoicePipeline._active_ha_tasks
+        assert task.cancelled() or task.done()
+
+    async def test_ha_latency_hop_recorded_before_flush(self):
+        """T4: flag ON 下 latency_record(...,'ha',...) 在 latency_flush 之前记录。"""
+        order: list[str] = []
+
+        def rec_side(*a, **k):
+            if len(a) >= 3 and a[2] == "ha":
+                order.append("ha")
+
+        def flush_side(*a, **k):
+            order.append("flush")
+
+        await self._run_ambient(
+            parallel=True,
+            latency_record_patch=MagicMock(side_effect=rec_side),
+            latency_flush_patch=MagicMock(side_effect=flush_side))
+
+        assert "ha" in order and "flush" in order
+        assert order.index("ha") < order.index("flush")
+
+    async def test_non_ha_speaker_device_no_send_no_residual(self):
+        """T5: 非 ha_speaker 设备 → 早返回无 send；flag ON 也不残留任务。"""
+        from apps.voice.services.voice_pipeline import VoicePipeline
+
+        router_inst, _ = await self._run_ambient(parallel=True, device="browser")
+
+        router_inst.send_to_ha_speaker.assert_not_awaited()
+        assert 1 not in VoicePipeline._active_ha_tasks
+
+    async def test_error_path_no_spawn_no_residual(self):
+        """T6: error_occurred 路径不 spawn HA 任务，_active_ha_tasks 无残留。"""
+        from apps.voice.services.voice_pipeline import VoicePipeline
+
+        router_inst, _ = await self._run_ambient(
+            parallel=True, agent_side=_mock_agent_execute_error)
+
+        router_inst.send_to_ha_speaker.assert_not_awaited()
+        assert 1 not in VoicePipeline._active_ha_tasks

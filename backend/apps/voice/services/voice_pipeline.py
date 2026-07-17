@@ -54,6 +54,7 @@ def _split_sentences(buf: str, min_chars: int = 8) -> tuple[list[str], str]:
 
 class VoicePipeline:
     _active_managers: ClassVar[dict[int, TTSPipelineManager]] = {}
+    _active_ha_tasks: ClassVar[dict[int, asyncio.Task]] = {}  # batch-31：并行 HA 下发任务，供 barge-in 取消
 
     @classmethod
     async def cancel(cls, user_id: int) -> bool:
@@ -61,6 +62,9 @@ class VoicePipeline:
         if success:
             logger.info("voice", extra={"stage": "pipeline.cancel",
                         "user_id": user_id, "request_id": request_id})
+        ha_task = cls._active_ha_tasks.pop(user_id, None)
+        if ha_task and not ha_task.done():
+            ha_task.cancel()  # batch-31：打断时取消尚未完成的 HA 下发（best-effort，POST 已发出则见 §4 残留说明）
         mgr = cls._active_managers.pop(user_id, None)
         if mgr:
             await mgr.cancel()
@@ -123,6 +127,7 @@ class VoicePipeline:
         error_occurred, full_response = False, ""
         agent_start = time.monotonic()
         first_token_ts: Optional[float] = None
+        ha_task: Optional[asyncio.Task] = None  # batch-31：并行 HA 下发任务，finally 后 await/cancel
         # batch-09：开关开启且有 tts_manager 时循环内按句边界切片经常驻 TTS 会话送稿（合成与推理重叠），否则整体 enqueue 旧路径
         incremental = getattr(settings, "VOICE_TTS_INCREMENTAL_ENABLED", False) and tts_manager is not None
         min_sentence_chars = getattr(settings, "VOICE_TTS_MIN_SENTENCE_CHARS", 8)
@@ -198,6 +203,12 @@ class VoicePipeline:
                     tts_manager.stop_comfort_timer()
                     if full_response.strip():
                         tts_manager.enqueue(full_response, "response")
+            # batch-31：full_response 就绪即并行 spawn HA 下发，与 finally.wait_idle 时间重叠（省串行浪费）。
+            parallel_ha = getattr(settings, "VOICE_HA_PARALLEL_TTS_ENABLED", False)
+            if parallel_ha and not error_occurred and full_response.strip() and mode == "ambient":
+                ha_task = asyncio.create_task(
+                    VoicePipeline._try_ha_speaker_tts(user_id, full_response, segment_id))
+                VoicePipeline._active_ha_tasks[user_id] = ha_task   # 与浏览器 wait_idle 并行执行
         except Exception as e:
             error_occurred = True
             logger.error("voice", extra={"stage": "pipeline.error",
@@ -225,8 +236,17 @@ class VoicePipeline:
                 except Exception:
                     logger.debug("tts.completed control failed (ignored): user=%s", user_id, exc_info=True)
 
-        # 016: HA 音箱 TTS 路由 — Agent 完成后将文本发送到 HA 音箱
-        if not error_occurred and full_response.strip() and mode == "ambient":
+        # batch-31: 并行开关开→await 已 spawn 的 HA 任务（与 finally.wait_idle 重叠，此处通常已就绪）；
+        #           开关关→回退旧串行行为（HA 在浏览器 TTS wait_idle 之后下发）。
+        if ha_task is not None:
+            VoicePipeline._active_ha_tasks.pop(user_id, None)
+            try:
+                await ha_task
+            except asyncio.CancelledError:
+                logger.info("voice", extra={"stage": "tts.ha_speaker.cancelled",
+                            "user_id": user_id, "seg": segment_id})
+        elif not error_occurred and full_response.strip() and mode == "ambient":
+            # 016: HA 音箱 TTS 路由 — Agent 完成后将文本发送到 HA 音箱
             await VoicePipeline._try_ha_speaker_tts(user_id, full_response, segment_id)
 
         conn_uid = connection_user_id or user_id
