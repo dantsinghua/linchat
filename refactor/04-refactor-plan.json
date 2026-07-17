@@ -1472,7 +1472,7 @@
       "estimated_sessions": 1,
       "blocking_for_production": false,
       "notes": "voice 高风险区，纯埋点。必须先于 batch-30/31/32 完成，否则优化收益无法量化归因。rediagnosis R3 新增。",
-      "actual_status": "planned"
+      "actual_status": "completed"
     },
     {
       "id": "batch-30",
