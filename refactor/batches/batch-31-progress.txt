@@ -1,0 +1,39 @@
+# Batch 31 Progress
+# Type: refactor(performance) | Priority: P1 | Risk: high (voice 最高风险区)
+# Title: 小爱 HA 下发与浏览器 TTS wait_idle 解耦（消除串行浪费）
+
+## Phase 2a: Initializer
+- Started: 2026-07-17 20:32
+- Plan generated: refactor/batches/batch-31-plan.md (194 行)
+- Dependency batch-29: COMPLETED (verified — batch-29-progress.txt 末尾 STATUS: COMPLETED)
+- 耦合点核实: voice_pipeline.py:216 finally.wait_idle → :229 _try_ha_speaker_tts 串行浪费
+- 解耦方案: full_response 就绪即 asyncio.create_task(_try_ha_speaker_tts)，与 wait_idle 并行；
+            flag VOICE_HA_PARALLEL_TTS_ENABLED 运行时回滚；barge-in cancel 取消 HA 任务
+- 并发风险: C1 barge-in 残留(best-effort cancel, POST 后限制→PD-6) / C4 ha hop 时序保留
+- 改动文件: 3 (voice_pipeline.py + settings/voice.py[scope 外待确认] + 测试; tts_router.py 无需动)
+- 待确认: 5 项 (scope 外 settings / tts_router 不动 / 开关默认值 / 300 行不拆 / C1 残留 PD-6)
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17 20:34)
+- 分支 refactor/batch-31 created (from 721ddec)
+- 5 项待确认已由 team-lead 拍板：settings 纳入 scope / tts_router 不动 / flag 默认 false（dark-launch）/ 300 行不拆（登记债务）/ C1 best-effort cancel
+- STATUS: EXECUTING
+
+## Phase 2b: Executor (completed 2026-07-17 20:40)
+- 改动 3 文件（严格按 plan §3，无越界）：
+  - apps/voice/services/voice_pipeline.py: 改动 1.1/1.2/1.3/1.4（+35 -6，309→329 行）
+  - core/settings/voice.py: 改动 2.1 新增 VOICE_HA_PARALLEL_TTS_ENABLED（默认 false，dark-launch，111→148 行）
+  - tests/voice/test_voice_pipeline.py: 新增 TestHaSpeakerParallelDispatch（T1-T6，+167 行）
+- lint: ruff 全绿（3 文件）；black/isort 对 .before 同样报错=既有非本仓门禁，未动
+- flag OFF 现状一致性守护：test_flag_off_ha_send_after_wait_idle PASSED + 现有 43 passed
+- 新测试：TestHaSpeakerParallelDispatch 6 passed
+- voice 全量回归：793 passed（基线 777 + 新 6，warnings 为既有无关项）
+- 精简：voice_pipeline 无 F401/注释码/裸 except，无需精简
+- 技术债登记：voice_pipeline.py 329 行 > 300 行软限，按 plan §7④（team-lead 拍板）本批不拆
+- baseline/after 性能采集：需起服务违反环境红线，留待安琳真实链路手动采集（plan §5.4）
+- C1 残留（PD-6）：POST 已发出无法截停，best-effort cancel，接受现状（team-lead 拍板）
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
