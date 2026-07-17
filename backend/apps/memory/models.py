@@ -12,6 +12,8 @@ class UserMemory(models.Model):
         COMPACTION = "compaction", "上下文压缩"
         DAILY_SUMMARY = "daily-summary", "每日总结"
         MONTHLY_SUMMARY = "monthly-summary", "每月总结"
+        WECHAT = "wechat", "微信对话"
+        OA = "oa", "公众号"
 
     class EmbeddingStatus(models.TextChoices):
         PENDING = "pending", "待处理"

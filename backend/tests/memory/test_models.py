@@ -41,7 +41,9 @@ class TestUserMemoryModel(TestCase):
         assert UserMemory.MemoryType.COMPACTION == "compaction"
         assert UserMemory.MemoryType.DAILY_SUMMARY == "daily-summary"
         assert UserMemory.MemoryType.MONTHLY_SUMMARY == "monthly-summary"
-        assert len(UserMemory.MemoryType.choices) == 4
+        assert UserMemory.MemoryType.WECHAT == "wechat"
+        assert UserMemory.MemoryType.OA == "oa"
+        assert len(UserMemory.MemoryType.choices) == 6
 
     def test_embedding_status_choices(self) -> None:
         """EmbeddingStatus TextChoices 枚举值验证"""

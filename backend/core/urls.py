@@ -19,6 +19,7 @@ urlpatterns = [
         path("models/", include("apps.models.urls")),
         path("memories/", include("apps.memory.urls")),
         path("voice/", include("apps.voice.urls")),
+        path("internal/", include("apps.memory.internal_urls")),
         path("", include("apps.common.urls")),
     ])),
 ]

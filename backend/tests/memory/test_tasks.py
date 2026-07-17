@@ -424,6 +424,51 @@ class TestGenerateDailySummary:
         assert mock_summarize.call_count == 2
 
 
+class TestDailySummaryIsolatesExternalSources:
+    """daily-summary 隔离回归：collect_content 只抓 primary_type，绝不混入 wechat/oa 摄入记忆。"""
+
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        from apps.chat.models import Message
+        UserMemoryEmbedding.objects.all().delete()
+        UserMemory.objects.all().delete()
+        Message.objects.all().delete()
+        yield
+        UserMemory.objects.all().delete()
+        Message.objects.all().delete()
+
+    def _create_memory_at(self, user_id, content, mem_type, target_time):
+        m = UserMemory.objects.create(user_id=user_id, content=content, type=mem_type)
+        UserMemory.objects.filter(id=m.id).update(created_at=target_time)
+        return m
+
+    def test_daily_summary_excludes_wechat_type(self):
+        """造 COMPACTION + WECHAT 记忆同用户同窗口 → collect_content(COMPACTION) 只含 compaction，不含 wechat 文本。"""
+        from apps.memory.task_helpers import collect_content
+
+        yesterday = timezone.now().date() - timedelta(days=1)
+        start = timezone.make_aware(
+            timezone.datetime.combine(yesterday, timezone.datetime.min.time())
+        )
+        end = start + timedelta(days=1)
+        ts = start + timedelta(hours=3)
+
+        self._create_memory_at(
+            user_id=7, content="COMPACTION_上下文压缩内容",
+            mem_type=UserMemory.MemoryType.COMPACTION, target_time=ts,
+        )
+        self._create_memory_at(
+            user_id=7, content="WECHAT_微信家人对话隐私内容",
+            mem_type=UserMemory.MemoryType.WECHAT, target_time=ts,
+        )
+
+        content, source = collect_content(7, UserMemory.MemoryType.COMPACTION, start, end, 100)
+
+        assert "COMPACTION_上下文压缩内容" in content
+        assert "WECHAT_微信家人对话隐私内容" not in content
+        assert source == UserMemory.MemoryType.COMPACTION
+
+
 class TestGenerateMonthlySummary:
     """generate_monthly_summary Celery 任务测试 [T068]"""
 

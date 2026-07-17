@@ -15,6 +15,14 @@ class MemoryUpdateSerializer(serializers.Serializer):
     content = serializers.CharField(max_length=settings.MEMORY_CONTENT_MAX_LENGTH)
 
 
+class InternalIngestSerializer(serializers.Serializer):
+    """内部摄入端点入参（设备 token 鉴权，不属对外 API 契约）。"""
+    content = serializers.CharField(max_length=settings.MEMORY_CONTENT_MAX_LENGTH)
+    name = serializers.CharField(max_length=200)
+    tag = serializers.CharField(max_length=100, required=False, allow_null=True, default=None)
+    source = serializers.ChoiceField(choices=["wechat", "oa"], default="wechat")
+
+
 class MemoryResponseSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserMemory

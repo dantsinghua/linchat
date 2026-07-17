@@ -6,7 +6,7 @@ from asgiref.sync import sync_to_async
 from django.conf import settings
 
 from apps.common.exceptions import BusinessException
-from apps.memory.models import UserMemory
+from apps.memory.models import UserMemory, UserMemoryEmbedding
 from apps.memory.repositories import embedding_repo, memory_repo
 
 logger = logging.getLogger(__name__)
@@ -75,6 +75,40 @@ class MemoryService:
             user_id=user_id, content=content, name=name, type=type,
             embedding_status=UserMemory.EmbeddingStatus.PENDING, retry_count=0, tags=[tag] if tag else None))
         await MemoryService._dispatch_embedding(memory); return memory
+    @staticmethod
+    async def ingest_memory(user_id: int, content: str, name: str,
+                            source: str = "wechat", tag: Optional[str] = None) -> tuple[UserMemory, bool]:
+        """内部摄入：name 作自然幂等键；同步生成 embedding（绕过 has_active_users 门禁的 celery）。
+        返回 (memory, deduped)。embed 失败不阻断落库（status=FAILED，health_check 后续重试）。"""
+        existing = await memory_repo.get_by_type_and_name(user_id, source, name)
+        deduped = existing is not None
+        if existing:
+            existing.content = content
+            if tag is not None:
+                existing.tags = [tag]
+            existing.embedding_status = UserMemory.EmbeddingStatus.PENDING
+            existing.retry_count = 0
+            memory = await memory_repo.update(existing)
+        else:
+            memory = await memory_repo.create(UserMemory(
+                user_id=user_id, content=content, name=name, type=source,
+                embedding_status=UserMemory.EmbeddingStatus.PENDING, retry_count=0,
+                tags=[tag] if tag else None))
+        try:
+            vec = await EmbeddingClient.generate_embedding(content)
+            await embedding_repo.delete_by_memory_id(memory.id)
+            await embedding_repo.create(UserMemoryEmbedding(
+                memory=memory, user_id=user_id, type=source, name=name,
+                chunk_index=0, chunk_text=content, embedding=vec))
+            memory.embedding_status = UserMemory.EmbeddingStatus.DONE
+            memory = await memory_repo.update(memory)
+        except Exception as e:
+            logger.warning("Ingest embedding failed (memory_id=%s): %s", memory.id, e)
+            memory.embedding_status = UserMemory.EmbeddingStatus.FAILED
+            memory.retry_count += 1
+            await memory_repo.update(memory)
+        return memory, deduped
+
     @staticmethod
     async def update_memory(memory_id: int, user_id: int, content: str, tag: Optional[str] = None) -> UserMemory:
         memory = await MemoryService._get_or_404(memory_id, user_id)

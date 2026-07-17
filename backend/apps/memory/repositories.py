@@ -75,6 +75,13 @@ class MemoryRepository:
 
     @staticmethod
     @sync_to_async
+    def get_by_type_and_name(user_id: int, type: str, name: str) -> Optional[UserMemory]:
+        _require_user_id(user_id)
+        return UserMemory.objects.filter(
+            user_id=user_id, type=type, name=name).order_by("-created_at").first()
+
+    @staticmethod
+    @sync_to_async
     def find_by_type_and_date_range(user_id: int, type: str, start_date, end_date) -> list[UserMemory]:
         _require_user_id(user_id)
         return list(UserMemory.objects.filter(
