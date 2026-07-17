@@ -9,3 +9,13 @@
 
 ## batch-06（合并于 2026-07-17，复用 April 分支工作；April 未做 Phase 2c，全部 manual 项待人工）
 - 通过 reSpeaker 说话触发完整语音链路，检查日志中 trace_id 从 ASR 到 HA 播报全程一致
+
+## batch-07（executor 执行于 2026-07-17，端到端语音延迟精细埋点 P0）
+- **[新文件 review]** 无人值守循环拍板新增 backend/apps/voice/services/voice_latency.py（收集器 registry，04-plan scope.new_files=[]），
+  理由：内聚小模块优于塞进 voice_pipeline.py；请安琳事后确认落点是否接受。
+- **[口径确认]** 汇总行双 total：total_from_vad_ms（含聚合1.5s，对齐 5s SLO）/ total_from_speech_end_ms；请确认 SLO 基线取 total_from_vad_ms 的 p50。
+- **[ambient 近似归因]** ambient 聚合模式 pipeline segment_id 与上游 ASR 段可能不一致，asr/vad/speech_end 为近似（asr_approx）；push-to-talk 精确。可接受？
+- **[手动性能基线待跑]** plan 5.3 基线需 live Gateway/HA：触发 ≥10 次完整语音链路后 grep '"stage": "latency.summary"' /tmp/linchat-backend.log，
+  聚合 total_from_vad_ms 的 P50/P95 写入 refactor/baselines/batch-07-voice-latency.json（预期 P50 ~10.8s）。
+- **[perf_bench 对齐待办]** scripts/measure-voice-latency.sh 自 batch-06 起已失效（解析旧字符串），本 batch 未修（决策4）；
+  loop 需改 measure 脚本为解析 latency.summary 单行（样例行见 batch-07-progress.txt），勿改 perf_bench.sh。

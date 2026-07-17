@@ -86,6 +86,12 @@ class UtteranceAggregator:
         aggregated = AggregatedMessage(
             text=" ".join(self._utterances), utterance_count=len(self._utterances),
             first_ts=self._timestamps[0], last_ts=self._timestamps[-1])
+        # batch-07 跳5：聚合器静默等待打点（03 分析 4 号瓶颈，固定 ~1.5s 等待需量化）
+        # 无 user_id/segment_id 上下文，只记 wait/span 供人工核对；不写入 latency tracker。
+        logger.info("voice", extra={"stage": "ambient.aggregation.flush",
+                    "utterance_count": aggregated.utterance_count,
+                    "wait_ms": int((time.monotonic() - self._timestamps[-1]) * 1000),
+                    "span_ms": int((self._timestamps[-1] - self._timestamps[0]) * 1000)})
         self._utterances.clear()
         self._timestamps.clear()
         self._state = "AGGREGATED"

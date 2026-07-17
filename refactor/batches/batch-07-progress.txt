@@ -1,0 +1,65 @@
+# Batch batch-07 Progress
+# Type: observability | Priority: P0 | Risk: high
+# Title: 端到端语音延迟精细埋点
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Plan generated: refactor/batches/batch-07-plan.md (201 lines)
+- Depends on: batch-06 (COMPLETED ✅)
+- Scope: 6 files (voice pipeline/tts/decision/aggregator + 2 consumer mixins)
+- 复用 batch-04 基础设施：trace_id_var + JSONFormatter（logger.info("voice", extra={...})）
+- 对齐 batch-06 已有 11 个 stage 锚点，补齐聚合等待/TTS拆分/汇总行
+- 6 项待安琳确认（见 plan 第 7 节）：registry 落点/新文件、total 口径、
+  ambient 聚合归因、HA 传参、measure 脚本失效、无 TTS 兜底 flush
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- 分支：refactor/batch-07（基于 main HEAD=ebb06c2）
+- 已拍板 6 项决策：新建 voice_latency.py / 双 total 口径 / _approx 近似 / 不修 measure 脚本 / 保守选项
+- 设计：flush 收敛到 pipeline.end 单一保证出口（决策6 兜底 flush，规避高风险 TTS 异步路径内 flush）
+
+### 改动文件（6：5 源文件 + 1 新测试）
+- [x] 新建 backend/apps/voice/services/voice_latency.py（收集器 registry + 5 纯函数，~135 行，ruff clean）
+- [x] utterance_aggregator.py：+聚合静默等待打点 ambient.aggregation.flush（wait_ms/span_ms，跳5）
+- [x] voice_pipeline.py：latency_start(跳起点) + llm_first_token/llm_total 跳 + _setup_tts 注入 seg + HA 跳 + pipeline.end 单点 flush
+- [x] tts_pipeline_manager.py：connect_ms/synth_ms 拆分（跳9/10）+ response 类型 record（无 flush）
+- [x] consumer_events.py：vad_start/speech_end 锚点 + asr 跳（ambient 用 asr_approx）
+- [x] 新建 backend/tests/voice/test_voice_latency.py（6 用例，可控假时钟断言 total/delta_pct/子阶段排除/防泄漏）
+
+### 精简
+- 5 源文件均 <300 行，纯加日志/计时，无 F401/注释代码/裸 except；无需精简（code-simplifier 规则未触发）。
+
+### 与 plan 的授权偏差（均在 team lead 已拍板决策范围内）
+- flush 收敛到 pipeline.end **单一保证出口**（替代 plan 改动3 在 TTS worker 内 flush）：
+  pipeline.end 严格晚于 TTS(finally wait_idle/shutdown) 与 HA，且兜底覆盖无 TTS(RECORD_ONLY/降级) 场景，
+  避免高风险异步路径内 flush 的泄漏/时序问题。对应 plan §7 决策6「pipeline.end 兜底 flush」。
+- response_decision_service.py / consumer_inference.py **未改动**：plan 改动4/改动6 明确允许「+0」。
+  decision 跳归因需在 out-of-scope 的 consumer_session 透传 segment_id；本 batch 不扩 scope。
+  decision.llm_classify（batch-06）日志仍在，供人工关联。
+
+### 验证结果
+- ruff apps/voice：14 errors（== batch-06 baseline，0 新增）；新文件+测试 ruff clean
+- pytest tests/voice/：697 passed（baseline 691 + 6 新）
+- pytest tests/apps/graph/：89 passed（voice_pipeline→AgentService 无回归）
+- black/isort 非本仓强制门（现存 batch-06 文件亦 would-reformat）；门禁为 ruff
+- 性能 baseline（plan 5.3）：measure-voice-latency.sh 需 live Gateway/HA，延后至安琳手动执行
+
+### ⚠️ perf_bench.sh 兼容性（给 loop 后续对齐，勿改 perf_bench.sh 本身）
+perf_bench.sh → measure-voice-latency.sh 仍解析 batch-06 前旧字符串（"Pipeline launch:"/"TTS WS connected:"），
+自 batch-06 起已失效（team lead 决策4：本 batch 不修）。本 batch 汇总行自带全部字段，
+建议 loop 改 measure 脚本为「grep 单行 latency.summary + jq 提取」。新格式规范样例行：
+
+  {"stage": "latency.summary", "user_id": 1, "seg": "abc123", "hops": {"asr": 800, "llm_first_token": 500, "llm_total": 2000, "tts_connect": 100, "tts_synth": 1500, "ha": 300}, "hop_sum_ms": 4700, "total_from_pipeline_ms": 4750, "total_from_vad_ms": 8200, "total_from_speech_end_ms": 6500, "delta_pct": 0.0105, "trace_id": "<32hex>"}
+
+字段口径：
+- total_from_vad_ms         端到端（vad_speech_start 起，含 ASR+聚合1.5s 等待）→ 对齐 5s SLO；perf_bench 应取此值的 p50
+- total_from_speech_end_ms  speech_end 起（不含用户说话时长）
+- total_from_pipeline_ms    pipeline 起点起（delta_pct 覆盖率校验基准）
+- hop_sum_ms                各跳耗时之和（排除子阶段 llm_first_token）
+- delta_pct                 (total_from_pipeline_ms - hop_sum_ms)/total_from_pipeline_ms，|delta|<0.05 为覆盖达标
+- asr_approx / *_approx     ambient 聚合模式下的近似归因跳
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED

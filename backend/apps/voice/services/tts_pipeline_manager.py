@@ -8,6 +8,7 @@ from django.conf import settings
 
 from apps.common.async_utils import cancel_task, cancel_task_sync
 from apps.voice.services.tts_stream_client import TTSStreamClient
+from apps.voice.services.voice_latency import latency_record
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,9 @@ class TTSPipelineManager:
         self._idle.set()
         self._last_end: float = 0.0
         self._current_tts: TTSStreamClient | None = None
+        # batch-07：延迟归因上下文，由 VoicePipeline._setup_tts 构造后注入
+        self._user_id: int | None = None
+        self._segment_id: str | None = None
 
     def start(self) -> None:
         self._worker_task = asyncio.create_task(self._worker())
@@ -94,7 +98,7 @@ class TTSPipelineManager:
                     self._queue.task_done()
                     break
                 await self._ensure_gap()
-                await self._play_text(item.text)
+                await self._play_text(item.text, item.item_type)
                 self._last_end = time.monotonic()
                 if item.item_type == "comfort" and self._comfort_enabled:
                     self.start_comfort_timer()
@@ -104,19 +108,24 @@ class TTSPipelineManager:
         except asyncio.CancelledError:
             return
 
-    async def _play_text(self, text: str) -> None:
+    async def _play_text(self, text: str, item_type: str = "response") -> None:
         tts = TTSStreamClient(on_audio=self._on_audio)
         self._current_tts = tts
         t0 = time.monotonic()
+        connect_ms = synth_ms = None
         try:
+            t_connect = time.monotonic()
             await tts.connect()
             await tts.configure(voice=self._voice)
+            connect_ms = int((time.monotonic() - t_connect) * 1000)  # batch-07 跳9：TTS 连接
             await tts.send_text_delta(text)
             await tts.send_text_done()
             logger.info("voice", extra={"stage": "tts.wait_done_start",
                         "text_len": len(text),
                         "timeout_s": settings.VOICE_TTS_TIMEOUT})
+            t_synth = time.monotonic()
             await tts.wait_for_done(timeout=settings.VOICE_TTS_TIMEOUT)
+            synth_ms = int((time.monotonic() - t_synth) * 1000)  # batch-07 跳10：TTS 合成
         except Exception:
             logger.warning("TTS play failed: text=%s", text[:30])
         finally:
@@ -127,7 +136,13 @@ class TTSPipelineManager:
                 pass
             logger.info("voice", extra={"stage": "tts.play",
                         "duration_ms": int((time.monotonic() - t0) * 1000),
+                        "connect_ms": connect_ms, "synth_ms": synth_ms,
                         "text_len": len(text)})
+            # batch-07：仅 response 类型（非 comfort/error/sentinel）计入延迟归因；
+            # 汇总行由 VoicePipeline._run_inner 在 pipeline.end 统一 flush。
+            if item_type == "response" and self._segment_id:
+                latency_record(self._user_id, self._segment_id, "tts_connect", connect_ms)
+                latency_record(self._user_id, self._segment_id, "tts_synth", synth_ms)
 
     async def _ensure_gap(self) -> None:
         if self._last_end <= 0:
