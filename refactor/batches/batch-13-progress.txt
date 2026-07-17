@@ -1,0 +1,23 @@
+# Batch batch-13 Progress
+# Type: refactor（死文件删除） | Priority: P2
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Plan generated: refactor/batches/batch-13-plan.md
+- 核实结论：ContextMonitorPanel.design.tsx 零 import（唯一提及在 CLAUDE.md 文档）；models/tests.py 仍是 3 行空桩；DEPRECATED 行号已漂移 consumers.py 65-66、consumer_session.py 78-80（均纯注释）。
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (2026-07-17)
+- git rm frontend/src/components/chat/ContextMonitorPanel.design.tsx (-680)
+- git rm backend/apps/models/tests.py (-3)
+- consumers.py: 删 DEPRECATED diarize 注释 2 行
+- consumer_session.py: 删 DEPRECATED diarize 注释 3 行
+- frontend/src/components/chat/CLAUDE.md:19: 删 .design.tsx 文档行（唯一 .design.tsx 引用；hooks/CLAUDE.md 等指向存活组件，未动）
+- 验证：rg 全仓 frontend/src+backend 无 ContextMonitorPanel.design 残留
+- AST parse OK（两 consumer 文件，仅删注释无逻辑改动；venv 无 ruff）
+- pytest tests/voice/test_consumers.py + test_voice_session.py + tests/models/ = 197 passed
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED

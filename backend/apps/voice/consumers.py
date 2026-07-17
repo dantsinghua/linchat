@@ -62,8 +62,6 @@ class VoiceConsumer(SessionMixin, EventMixin, InferenceMixin, AsyncWebsocketCons
         self._segment_timer_task: Optional[asyncio.Task] = None
         self._aggregator = None
         self._speaker_aggregators: dict[int, Any] = {}
-        # [DEPRECATED] diarize 功能暂时废弃
-        # self._diarize_enabled: bool = False
         self._pending_text: Optional[str] = None
         self._pending_speaker_user_id: Optional[int] = None
         self._is_speaking: bool = False
