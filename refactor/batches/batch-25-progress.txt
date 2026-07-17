@@ -1,0 +1,25 @@
+# Batch batch-25 Progress
+# Type: test | Priority: P3
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Plan generated: refactor/batches/batch-25-plan.md (139 lines)
+- Dependency batch-21: COMPLETED
+- Measured baseline coverage: consumer_inference.py = 61% (miss 27: lines 42, 58-61, 69-92, 106-112)
+- Target: >80% (纯新增测试, 业务代码零改动)
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor
+- Started: 2026-07-17
+- Branch: refactor/batch-25 (from main HEAD 978c7c2)
+- 唯一改动文件: backend/tests/voice/test_consumer_inference.py (纯新增, 业务代码零改动)
+- 新增 13 个用例 (分组 A×4 / B×3 / C×4 / D×2)
+- ruff check: All checks passed
+- 覆盖率 consumer_inference.py: 61% → 97% (miss 仅 113-114 = D3 CancelledError, plan 标注可选)
+- 局部测试: 18 passed (test_consumer_inference.py)
+- voice 全量回归: 761 passed (基线 748, +13 新用例), 0 failures
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
