@@ -60,3 +60,6 @@
 - 测量工具已就绪：refactor/loop/trigger_voice_e2e.py（模拟 reSpeaker 推 wav，单次冒烟已验证到 ASR connect 环节，设备认证/trace_id/WS 协议全通）。
 - **待安琳**：拉起 GPU 机器上的 llmgateway（或检查 STCP server 侧），恢复后运行：
   `linchat/bin/python refactor/loop/trigger_voice_e2e.py 20 && ./scripts/measure-voice-latency.sh 20`
+
+## batch-14（2026-07-17，核实后缩水执行）
+- 4 月 plan 的"9 个 0 调用者 shim"严重过时：仅 chat/sse.py 真正可删（已删）；8 个有调用者转 batch-15 处理；generation.py 被误列为 shim（实为含 register/signal 生产逻辑），已剔除——建议安琳复核 plan JSON 中 batch-15 条目是否需要相应修正。
