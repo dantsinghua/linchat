@@ -1076,7 +1076,8 @@
       "risk": "high",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": ""
+      "notes": "",
+      "actual_status": "completed"
     },
     {
       "id": "batch-22",

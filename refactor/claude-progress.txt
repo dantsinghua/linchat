@@ -79,3 +79,5 @@
 - 差集：属性 0 缺；方法缺 3（_start_segment_timer / _get_or_create_aggregator / _reconnect_asr）→ 补入 protocols.py
 - 接线照抄 SessionMixin；新建 tests/voice/test_consumer_events.py 覆盖 missing 分支（基线 84%）
 - STATUS: PLAN_READY
+
+[2026-07-17 16:29:37] batch-21 initializer: plan 生成完成 (refactor/batches/batch-21-plan.md). 差集为空(protocols.py 不改), 触碰 2 文件. 待安琳确认: protocols零改动 + 与batch-25测试分工. STATUS: PLAN_READY

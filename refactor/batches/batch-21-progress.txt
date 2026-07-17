@@ -25,3 +25,5 @@
 - 运行时零行为变化（else: object，MRO 不变）
 
 STATUS: EXECUTED
+
+STATUS: COMPLETED  # loopctl 2026-07-17 16:36:12
