@@ -117,3 +117,31 @@ async def test_preamble_returns_seven_values():
     assert len(result) == 7
     # 第 6 项 model_name 来自 model_config["name"]
     assert result[5] == "kimi-k2.5"
+
+
+# ============ C2 老公人设注入（方案A）============
+# 注意：以下两例刻意**不** patch PromptBuilder（用真实 builder + 真实 j2 渲染），
+# 以验证 settings.WECHAT_PERSONA_INSTRUCTION 是否真正流入 system prompt。
+
+
+@pytest.mark.asyncio
+async def test_preamble_wechat_channel_injects_persona():
+    """channel=wechat → 主 prompt 系统段含老公人设关键词。"""
+    p_model, p_mem, p_hist = _patch_io()
+    with p_model, p_mem, p_hist:
+        preamble, *_ = await build_prompt_preamble(
+            user_id=1, user_message="你好", channel="wechat")
+    sys_text = preamble[0].content
+    assert "老公" in sys_text
+    assert "装修" in sys_text
+
+
+@pytest.mark.asyncio
+async def test_preamble_web_channel_no_persona():
+    """channel=web（默认）→ 不注入人设，防污染 Web/语音。"""
+    p_model, p_mem, p_hist = _patch_io()
+    with p_model, p_mem, p_hist:
+        preamble_web, *_ = await build_prompt_preamble(
+            user_id=1, user_message="你好", channel="web")
+    sys_web = preamble_web[0].content
+    assert "做老婆最坚实的情绪后盾" not in sys_web

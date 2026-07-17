@@ -8,7 +8,7 @@ from apps.context import PromptBuilder, PromptConfig, RetrievedMemory
 logger = logging.getLogger(__name__)
 
 
-async def build_prompt_preamble(user_id: int, user_message: str = ""):
+async def build_prompt_preamble(user_id: int, user_message: str = "", channel: str = "web"):
     from asgiref.sync import sync_to_async
 
     from apps.chat.repositories import message_repo
@@ -43,6 +43,13 @@ async def build_prompt_preamble(user_id: int, user_message: str = ""):
     model_name = model_config.get("name", "unknown") if model_config else "unknown"
     prompt_config = PromptConfig(user_id=user_id, max_context_window=max_context_window)
     builder = PromptBuilder(config=prompt_config)
+
+    # 方案A 人设注入：仅 channel=wechat 注入老公人设（进 build_system_prompt 附加指令段，
+    # 被 token breakdown.system_prompt 统计）。channel=web/voice 默认不注入，防污染 Web/语音。
+    if channel == "wechat":
+        persona = getattr(settings, "WECHAT_PERSONA_INSTRUCTION", "")
+        if persona:
+            builder.add_system_instruction(persona)
 
     # B: memory —— 原本 try/except 降级为空
     retrieved_memories = None

@@ -86,7 +86,7 @@ class AgentService:
             if is_multimodal and attachments:
                 hm_content = f"{user_message}\n\n[用户上传了 {len(attachments)} 个附件: {'、'.join(f'{a.file_name}({a.media_type})' for a in attachments)}]"
             input_message = {"messages": [HumanMessage(content=hm_content)]}
-            preamble, ptokens, eff_win, breakdown, mem_results, model_name, max_ctx = await build_prompt_preamble(user_id, user_message)
+            preamble, ptokens, eff_win, breakdown, mem_results, model_name, max_ctx = await build_prompt_preamble(user_id, user_message, channel=channel)
             monitor_data, last_alert = await init_monitor_data(breakdown, max_ctx, model_name, mem_results, [], request_id, user_id)
             tool_procs: list[dict[str, Any]] = []
             try:
