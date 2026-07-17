@@ -19,3 +19,8 @@
   聚合 total_from_vad_ms 的 P50/P95 写入 refactor/baselines/batch-07-voice-latency.json（预期 P50 ~10.8s）。
 - **[perf_bench 对齐待办]** scripts/measure-voice-latency.sh 自 batch-06 起已失效（解析旧字符串），本 batch 未修（决策4）；
   loop 需改 measure 脚本为解析 latency.summary 单行（样例行见 batch-07-progress.txt），勿改 perf_bench.sh。
+
+## batch-07（2026-07-17 全新执行）
+- 无人值守拍板项待安琳 review：① 新增 backend/apps/voice/services/voice_latency.py（plan scope new_files 原为空，为避免 voice_pipeline.py 膨胀而批准）；② total 双口径（total_from_vad_ms 对齐 5s SLO / total_from_speech_end_ms）。
+- scripts/measure-voice-latency.sh 自 batch-06 起解析失效，本 batch 未修；建议改为 grep latency.summary + jq 提取（新格式样例见 refactor/batches/batch-07-progress.txt）。
+- 真实语音会话下 latency.summary 汇总行落盘验证（hops 完整性 + delta_pct<0.05）尚未在生产路径抽查。
