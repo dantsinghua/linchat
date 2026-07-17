@@ -1,0 +1,39 @@
+# Batch batch-20 Progress
+# Type: refactor | Priority: P2 | Risk: high (实测纯类型接线，运行时零变化)
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Depends: batch-19 → COMPLETED ✅
+- Plan generated: refactor/batches/batch-20-plan.md (176 行)
+- 差集: 属性 0 缺失；方法缺 3（_start_segment_timer / _get_or_create_aggregator / _reconnect_asr）
+- mypy 基线: consumer_events.py 37 errors (34 attr-defined + 2 misc + 1 arg-type)
+- 覆盖基线: consumer_events.py 84%（全量 voice 口径），missing 分支已列 test 用例
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- 分支: refactor/batch-20（基于 main b84b84a）
+- SessionMixin 三方法签名已核对，与 plan 1.1 一致
+- [x] 改完 protocols.py（改动 1.1：补 3 方法签名 _start_segment_timer/_get_or_create_aggregator/_reconnect_asr）
+- [x] 改完 consumer_events.py（改动 2.1 TYPE_CHECKING 接线 + 2.2 class EventMixin(_EventBase)）
+- [x] 新建 tests/voice/test_consumer_events.py（13 用例，覆盖 plan 5.4 全部 missing 分支）
+- 精简：三文件 ruff clean，无 F401/裸 except/注释代码；consumer_events 219<300；无精简触发
+
+### 验证结果
+- import 冒烟: EventMixin.__bases__ == (object,) ✅ 运行时零继承；MRO 与基线一致
+- mypy consumer_events.py 前: 37 errors (34 attr-defined + 2 misc + 1 arg-type)
+- mypy consumer_events.py 后: 本文件仅 3 残留（:29 arg-type / :174 misc / :179 misc，均预存在，行号因 +7 偏移），attr-defined 归零 ✅
+- mypy protocols.py: 无新增 syntax/name 错 ✅
+- ruff: All checks passed（3 文件）✅
+- 新测试: 13 passed（tests/voice/test_consumer_events.py）
+- 全量 voice: 743 passed（基线 730 + 新增 13）✅
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
+
+## Phase 2b: Executor (completed 2026-07-17)
+- Commit: 24a59f65c5e516617651b66ddd34610210141043
+- Pushed to: origin/refactor/batch-20
+
+STATUS: COMPLETED  # loopctl 2026-07-17 16:23:53

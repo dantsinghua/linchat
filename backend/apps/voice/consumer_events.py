@@ -1,15 +1,22 @@
 import logging
 import time
 import uuid
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from apps.voice.services.voice_latency import latency_anchor, latency_record
 from apps.voice.services.voice_session_service import voice_session_service
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from apps.voice.protocols import VoiceConsumerProtocol
 
-class EventMixin:
+    _EventBase = VoiceConsumerProtocol
+else:
+    _EventBase = object
+
+
+class EventMixin(_EventBase):
 
     async def _handle_asr_event(self, event: dict[str, Any]) -> None:
         handlers = {

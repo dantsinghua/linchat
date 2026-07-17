@@ -561,7 +561,8 @@
       "risk": "low",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "如果 P50 仍 > 5s，需进一步分析：考虑聚合超时缩短（1.5s→0.8s）、LLM 意图分类并行化等 P2 优化。"
+      "notes": "如果 P50 仍 > 5s，需进一步分析：考虑聚合超时缩短（1.5s→0.8s）、LLM 意图分类并行化等 P2 优化。",
+      "actual_status": "blocked_gate"
     },
     {
       "id": "batch-11",
@@ -653,7 +654,7 @@
       "estimated_sessions": 1,
       "blocking_for_production": false,
       "notes": "需确认 PromptBuilder 三步 IO 无因果依赖（Open Question Q1 from 03-call-chain-analysis）。",
-      "actual_status": "planned"
+      "actual_status": "completed"
     },
     {
       "id": "batch-13",
@@ -694,7 +695,8 @@
       "risk": "low",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "最低风险 batch，纯删除。"
+      "notes": "最低风险 batch，纯删除。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-14",
@@ -740,7 +742,8 @@
       "risk": "low",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "generation.py 29 行不全是 re-export（含 StopGeneration 类），需仔细检查是否有调用者。chat/tasks.py 有 1 个测试调用者，归入 batch-15。"
+      "notes": "generation.py 29 行不全是 re-export（含 StopGeneration 类），需仔细检查是否有调用者。chat/tasks.py 有 1 个测试调用者，归入 batch-15。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-15",
@@ -787,7 +790,8 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "graph/prompts.py → apps.context 迁移需确认不引入新循环依赖（Open Question Q4 from 01-architecture-map）。memory/services.py 的 CRONMEM_PROMPT_TEMPLATE 导入改为 from apps.context.xxx。"
+      "notes": "graph/prompts.py → apps.context 迁移需确认不引入新循环依赖（Open Question Q4 from 01-architecture-map）。memory/services.py 的 CRONMEM_PROMPT_TEMPLATE 导入改为 from apps.context.xxx。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-16",
@@ -837,7 +841,8 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "此迁移缓解 chat<->graph 循环依赖（01-architecture-map#2 最严重循环依赖）。"
+      "notes": "此迁移缓解 chat<->graph 循环依赖（01-architecture-map#2 最严重循环依赖）。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-17",
@@ -887,7 +892,8 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "不改变配置值本身，仅拆分文件组织。使用 from .xxx import * 保持向后兼容。"
+      "notes": "不改变配置值本身，仅拆分文件组织。使用 from .xxx import * 保持向后兼容。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-18",
@@ -935,7 +941,8 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": ""
+      "notes": "",
+      "actual_status": "completed"
     },
     {
       "id": "batch-19",
@@ -978,7 +985,8 @@
       "risk": "high",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "voice 模块高风险，仅添加类型约束不改逻辑。Protocol 定义为后续 batch-20/21 的基础。"
+      "notes": "voice 模块高风险，仅添加类型约束不改逻辑。Protocol 定义为后续 batch-20/21 的基础。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-20",
@@ -1022,7 +1030,8 @@
       "risk": "high",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": ""
+      "notes": "",
+      "actual_status": "completed"
     },
     {
       "id": "batch-21",

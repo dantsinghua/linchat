@@ -42,3 +42,40 @@
 - STATUS: PLAN_READY
 
 [2026-07-17] batch-12 initializer: plan ready (refactor/batches/batch-12-plan.md). 4 files, 3 改动步骤(gather并行/model_config TTL缓存/wake_words缓存)+1新测试. 5 待决策项. STATUS: PLAN_READY
+
+[batch-13] 2026-07-17T14:42:08+08:00 PLAN_READY — 死文件删除计划生成，等待 review。核实：design.tsx 零引用/models tests 空桩/DEPRECATED 行号漂移已按内容定位。STATUS: PLAN_READY
+
+[2026-07-17] batch-14 initializer: PLAN_READY — 核实后可删 1 (chat/sse.py)，其余 8 个有调用者移出至 batch-15（含非 shim 的 generation.py）。计划见 refactor/batches/batch-14-plan.md，待安琳 review。
+
+## batch-15 initializer (2026-07-17)
+- Plan: refactor/batches/batch-15-plan.md (145 lines)
+- 10 shims verified @ HEAD 8c4c753; agent_helpers=0 callers; no circular dep (context !-> graph)
+- Full change = 23 files > 15 limit => split Part A (this batch, 4 shims/12 files) + Part B (defer batch-15b, 6 shims/11 files)
+- STATUS: PLAN_READY
+
+[2026-07-17] batch-16 initializer: PLAN_READY
+- types.py 迁移 graph 计划已出 (refactor/batches/batch-16-plan.md, 157 行)
+- 调用方: 直接 12 / 间接 3; 本批改 9 处, 3 NEW voice 走 shim
+- generation.py 延后 (生产双向共享 + 4 mock.patch 字符串目标); 循环依赖 medium 风险靠冒烟验证
+- STATUS: PLAN_READY
+
+## batch-17 (settings.py 域拆分 第一批) — 2026-07-17
+- Initializer 完成，plan 已生成: refactor/batches/batch-17-plan.md
+- 核实: settings.py 490 行/122 getenv; 4 大 trap 全部闭环(BASE_DIR层级/无跨域依赖/0直接import/启动引用兼容)
+- 待确认: base 拆后仍 >300 行(第一批只拆 voice/media/celery); CLAUDE.md 描述文字更新与否
+- STATUS: PLAN_READY
+
+## batch-18 (2026-07-17) — settings 域拆分第二批 PLAN
+- Initializer 完成: refactor/batches/batch-18-plan.md (196 行)
+- 拆分 __init__.py(435) → llm/security/logging_conf/third_party 四新文件, base 落点 ~200 行
+- 陷阱处理: 域间 DEBUG 依赖用私有 _DEBUG 重算避循环; 下划线变量不被 import * 导出
+- 验证: manage.py check + diffsettings 前后一致 + 全量 pytest (禁重启服务, 仅静态)
+- STATUS: PLAN_READY (等安琳 review, 4 项确认见 plan §7)
+
+[2026-07-17] batch-19 initializer: PLAN_READY — VoiceConsumerProtocol 定义计划就绪 (25 共享属性/3 文件/纯类型标注零运行时). 见 refactor/batches/batch-19-plan.md. STATUS: PLAN_READY
+
+## batch-20 (voice EventMixin Protocol 适配) — 2026-07-17
+- 依赖 batch-19 已 COMPLETED；plan 已生成 refactor/batches/batch-20-plan.md
+- 差集：属性 0 缺；方法缺 3（_start_segment_timer / _get_or_create_aggregator / _reconnect_asr）→ 补入 protocols.py
+- 接线照抄 SessionMixin；新建 tests/voice/test_consumer_events.py 覆盖 missing 分支（基线 84%）
+- STATUS: PLAN_READY
