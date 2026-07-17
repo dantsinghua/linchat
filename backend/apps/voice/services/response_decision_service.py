@@ -183,6 +183,7 @@ class ResponseDecisionService:
             _wake_words_cache[user_id] = (time.monotonic(), words)
             return words
         except Exception:
+            logger.debug("load wake_words failed, using default: user=%s", user_id, exc_info=True)
             return settings.VOICE_DEFAULT_WAKE_WORDS
 
     @staticmethod
@@ -193,6 +194,7 @@ class ResponseDecisionService:
             await r.aclose()
             return count
         except Exception:
+            logger.debug("recent_speaker_count failed (ignored): user=%s", user_id, exc_info=True)
             return 0
 
     async def _is_tts_echo(self, text: str, user_id: int) -> bool:
