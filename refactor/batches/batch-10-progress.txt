@@ -1,0 +1,51 @@
+# Batch batch-10 Progress
+# Type: refactor | Priority: P1 | Risk: high
+# Title: TTS WebSocket 连接复用/预连接
+# blocks_slo: voice_end_to_end_5s
+
+## Phase 2a: Initializer
+- Started: 2026-07-17 12:08
+- Depends: batch-07 = COMPLETED (batch-04~09+28 全部 COMPLETED)
+- Plan generated: refactor/batches/batch-10-plan.md (208 lines)
+- 现状核实：batch-09 已实现常驻流式会话；本 batch 仅需增量
+  ① 预连接提前到 pipeline 起点（并行 Agent 推理）
+  ② ws_client_base 关闭顺序修复（1006→1000）
+- 待安琳确认：6 项（见 plan 第7节：settings 开关 / ASR 测试 scope / 1006 运行时佐证 /
+  收益压测 / 测试超限债务 / 会话级连接池取舍）
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- 分支：refactor/batch-10（起始 HEAD=44fd700）
+- 无人值守 6 项决策已拍板：①新增 PRECONNECT 开关默认off ②ASR回归纳入scope
+  ③1006根因延后backlog(按反转方案执行) ④收益压测延后backlog(跳过baseline)
+  ⑤测试超限登记债务 ⑥只做begin_stream提前的最小增量
+- 拆两个 commit：A=关闭顺序修复(可独立上线) B=预连接提前(flag默认off)
+
+### Commit A — 4.1 关闭顺序修复（目标②，可独立上线）
+- [x] 改完 ws_client_base.py：cleanup_ws_connection 反转顺序（先 ws.close(code=1000) 再拆 recv_task）+6 -4
+- [x] 新增 ASR 回归测试 test_asr_stream_client.py：2 个（关闭顺序 + code=1000 断言）
+- [x] 顺带删除既有未用 import MagicMock（精简规则1）
+- 验证：ruff OK；ASR 11 passed（+2）；TTS stream/pipeline/incremental 39 passed（共用零回归）
+- 既存债务（非本改动引入）：ws_client_base.py 第32/69行 mypy(websockets16移除WebSocketClientProtocol)；
+  该文件旧日志行超black88行宽（plan未涉及，不越界改）
+
+### Commit B — 4.2 预连接提前（目标①，flag 默认 off）
+- [x] settings.py：新增 VOICE_TTS_PRECONNECT_ENABLED（默认 false，决策①）+3
+- [x] tts_pipeline_manager.py：_current_tts 延迟认领——从 connect 处下移到首帧 delta；
+      finally 加「仅清本流认领」防御，隔离预连接×comfort 时间窗竞争 +8 -2
+- [x] voice_pipeline.py：pipeline 起点并行预连接分支 + comfort_stopped 解耦（首句真正出声才撤）+11 -2
+- [x] test_voice_pipeline.py：mock_tts fixture 补齐流式动词 + 新增 TestTTSPreconnect 5 测试
+- 验证：ruff OK；预连接 5 passed；voice_pipeline 41 passed；incremental 15 passed；
+  全量 tests/voice/ 729 passed
+- mypy：改动逻辑行零新增 error（既有：websockets16 类型 / django import / latency_record int|None 类型债）
+- 精简：无未用import/注释代码/裸except；voice_pipeline 309行、pipeline_manager 266行、
+  test 文件超限 → 均既有尺寸，登记 simplify-candidates.md（P2 拆分，含决策⑤）
+- 延后 backlog（决策③④）：1006 运行时佐证（线下触发3次语音看日志）+ 收益压测 P50 佐证
+
+### 环境红线遵守
+- 全程只读改代码/跑lint/跑pytest(systemd-run包裹)/git；未碰 docker/services.sh/构建产物
+
+## Phase 2c: Validator
+- (尚未开始，可运行 /phase2-validate batch-10)
+
+STATUS: EXECUTED

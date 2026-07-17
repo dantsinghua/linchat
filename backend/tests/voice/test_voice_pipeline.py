@@ -120,6 +120,11 @@ def mock_tts():
         mgr.start = MagicMock()
         mgr.enqueue = MagicMock()
         mgr.stop_comfort_timer = MagicMock()
+        # batch-09/10：流式会话动词（增量送稿 + 预连接）
+        mgr.begin_stream = MagicMock()
+        mgr.feed_text = MagicMock()
+        mgr.end_stream = MagicMock()
+        mgr.abort_stream = AsyncMock()
         mgr.wait_idle = AsyncMock()
         mgr.shutdown = AsyncMock()
         mgr.cancel = AsyncMock()
@@ -1105,3 +1110,117 @@ class TestRecordOnlyCleanup:
 
             # 不应抛异常
             await voice_persist_service._cleanup_record_only(user_id=1)
+
+
+# ──────────────────────────────────────────────
+# batch-10: TTS 预连接（VOICE_TTS_PRECONNECT_ENABLED）
+# ──────────────────────────────────────────────
+
+async def _run_preconnect(agent_gen, mock_tts, mode: str = "voice_chat"):
+    """便捷执行 run_pipeline（预连接测试用）：patch 推理/限流/AgentService，返回 consumer。"""
+    from apps.voice.services.voice_pipeline import VoicePipeline, _pipeline_locks
+    _pipeline_locks.pop(1, None)
+    consumer = _make_consumer()
+    with (
+        patch(f"{_VP}.InferenceService") as inf,
+        patch(f"{_VP}.voice_session_service") as vss,
+        patch(f"{_VP}.voice_persist_service") as vps,
+        patch(f"{_VP}.AgentService") as MockAgent,
+    ):
+        inf.register_task = AsyncMock(return_value=True)
+        inf.cancel_task = AsyncMock(return_value=(True, "req"))
+        inf.complete_task = AsyncMock()
+        vss.check_llm_rate_limit = AsyncMock(return_value=True)
+        vss.set_active_conversation = AsyncMock()
+        vps.persist_audio_attachment = AsyncMock()
+        MockAgent.execute = MagicMock(side_effect=agent_gen)
+        await VoicePipeline.run_pipeline(
+            user_id=1, text="测试", segment_id="seg-pc", consumer=consumer, mode=mode)
+    return consumer
+
+
+@pytest.mark.asyncio(loop_scope="function")
+class TestTTSPreconnect:
+    """batch-10：pipeline 起点并行预连接（begin_stream 提前 + comfort 延迟撤）。"""
+
+    @override_settings(VOICE_TTS_PRECONNECT_ENABLED=False, VOICE_TTS_INCREMENTAL_ENABLED=True)
+    async def test_preconnect_disabled_keeps_lazy_begin_stream(self, mock_tts):
+        """PRECONNECT off → begin_stream 首句就绪时才惰性开（batch-09 行为零回归）。"""
+        _, mgr = mock_tts
+        seen = {}
+
+        async def agent(*a, **k):
+            seen["begin_called_at_first_token"] = mgr.begin_stream.called
+            yield _content_chunk("今天天气非常好呀真不错。")
+            yield _done_chunk()
+
+        await _run_preconnect(agent, mock_tts)
+        assert seen["begin_called_at_first_token"] is False   # 首 token 前未建连（惰性）
+        mgr.begin_stream.assert_called_once()                 # 首句就绪才开
+
+    @override_settings(VOICE_TTS_PRECONNECT_ENABLED=True, VOICE_TTS_INCREMENTAL_ENABLED=True)
+    async def test_preconnect_begins_stream_before_first_token(self, mock_tts):
+        """PRECONNECT on + incremental on → begin_stream 在进入 agent 循环前即被调用一次。"""
+        _, mgr = mock_tts
+        seen = {}
+
+        async def agent(*a, **k):
+            seen["begin_called_at_first_token"] = mgr.begin_stream.called
+            yield _content_chunk("今天天气非常好呀真不错。")
+            yield _done_chunk()
+
+        await _run_preconnect(agent, mock_tts)
+        assert seen["begin_called_at_first_token"] is True    # 首 token 前已建连（预连接）
+        mgr.begin_stream.assert_called_once()                 # 仅一次，循环内不重复开
+
+    @override_settings(VOICE_TTS_PRECONNECT_ENABLED=True, VOICE_TTS_INCREMENTAL_ENABLED=True)
+    async def test_preconnect_comfort_stopped_only_on_first_sentence(self, mock_tts):
+        """预连接期间 comfort 未撤，首句 feed 前才 stop_comfort_timer。"""
+        _, mgr = mock_tts
+        order: list[str] = []
+        mgr.begin_stream.side_effect = lambda: order.append("begin")
+        mgr.stop_comfort_timer.side_effect = lambda: order.append("stop_comfort")
+        mgr.feed_text.side_effect = lambda t: order.append("feed")
+        seen = {}
+
+        async def agent(*a, **k):
+            seen["comfort_stopped_at_first_token"] = mgr.stop_comfort_timer.called
+            yield _content_chunk("今天天气非常好呀真不错。")
+            yield _done_chunk()
+
+        await _run_preconnect(agent, mock_tts)
+        assert seen["comfort_stopped_at_first_token"] is False   # 预连接期未撤 comfort
+        assert order == ["begin", "stop_comfort", "feed"]        # 先建连，首句才撤 comfort 再送稿
+        mgr.stop_comfort_timer.assert_called_once()
+
+    @override_settings(VOICE_TTS_PRECONNECT_ENABLED=True, VOICE_TTS_INCREMENTAL_ENABLED=True)
+    async def test_preconnect_empty_response_graceful_end(self, mock_tts):
+        """预连接后 agent 无 content → end_stream 收尾、无异常、response.end 正常。"""
+        _, mgr = mock_tts
+
+        async def agent(*a, **k):
+            yield _done_chunk()   # 无任何 content
+
+        consumer = await _run_preconnect(agent, mock_tts)
+        mgr.begin_stream.assert_called_once()     # 预连接已建连
+        mgr.end_stream.assert_called_once()       # 优雅收尾
+        mgr.feed_text.assert_not_called()
+        mgr.abort_stream.assert_not_awaited()
+        types = [c.args[0]["type"] for c in consumer._send_json.call_args_list]
+        assert types[-1] == "response.end"
+
+    @override_settings(VOICE_TTS_PRECONNECT_ENABLED=True, VOICE_TTS_INCREMENTAL_ENABLED=True)
+    async def test_preconnect_error_before_sentence_aborts(self, mock_tts):
+        """预连接后首个 chunk 即 error → abort_stream 调用、error enqueue。"""
+        from django.conf import settings as dj_settings
+        _, mgr = mock_tts
+
+        async def agent(*a, **k):
+            yield _error_chunk("网关炸了", data={"gateway_error": "BOOM"})
+
+        consumer = await _run_preconnect(agent, mock_tts)
+        mgr.begin_stream.assert_called_once()
+        mgr.abort_stream.assert_awaited_once()    # 丢弃预连接半截会话
+        mgr.enqueue.assert_any_call(dj_settings.VOICE_TTS_ERROR_TEXT, "error")
+        types = [c.args[0]["type"] for c in consumer._send_json.call_args_list]
+        assert "error" in types

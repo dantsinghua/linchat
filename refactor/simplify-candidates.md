@@ -1,2 +1,5 @@
 - [batch-02a] backend/tests/memory/test_models.py:8 — `import pytest` 未使用（F401，预存在），删除即可。本 batch 范围为 fix 不做精简清理
 - [batch-02b] backend/apps/voice/consumer_session.py:11 — `get_redis` 未使用（F401，预存在），删除即可。本 batch 范围为 fix 不做精简清理
+- [batch-10] backend/apps/voice/services/voice_pipeline.py:309 行 — 超 300 硬限（本 batch +8 行推过线，既有编排文件）。拆分 _run_inner（~130 行）风险高、超本 batch scope，建议 P2 专项：抽 TTS 送稿循环/收尾为独立方法或 helper 模块。
+- [batch-10] backend/apps/voice/services/tts_pipeline_manager.py:266 行 — 超 200 软限（既有）。comfort 队列路径 _play_text 与流式 _run_stream 有相似 connect/configure/wait_done 结构，建议 P2 抽公共 _tts_session helper。
+- [batch-10] backend/tests/voice/test_voice_pipeline.py:1200+ 行 — 远超 300 硬限（决策⑤登记，本 batch 仅追加 5 预连接测试未拆）。建议 P2 按 Test 类拆多文件（如 test_voice_pipeline_ambient.py / _persist.py）。

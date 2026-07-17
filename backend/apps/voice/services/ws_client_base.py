@@ -10,16 +10,20 @@ logger = logging.getLogger(__name__)
 
 
 async def cleanup_ws_connection(ws, recv_task) -> None:
+    # batch-10：先发正常关闭 frame（code=1000）完成握手，再拆 recv_task。
+    # 反顺序（先 cancel recv_task 后 close）会中断 _receive_loop 的 async for 读取，
+    # 使 close 握手读不到对端 close echo，websockets 16.0 在 close_timeout 后强关 TCP →
+    # 对端记 code=1006（02#7.3：19/20 pipeline 出现 1006）。close-first 后 async for 自然退出。
+    if ws:
+        try:
+            await ws.close(code=1000, reason="")
+        except Exception:
+            pass
     if recv_task and not recv_task.done():
         recv_task.cancel()
         try:
             await recv_task
         except asyncio.CancelledError:
-            pass
-    if ws:
-        try:
-            await ws.close()
-        except Exception:
             pass
 
 

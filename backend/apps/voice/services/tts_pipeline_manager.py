@@ -81,7 +81,10 @@ class TTSPipelineManager:
     async def _run_stream(self) -> None:
         tts = TTSStreamClient(on_audio=self._on_audio)
         self._stream_tts = tts
-        self._current_tts = tts   # 复用 cancel() 的 _current_tts.disconnect() 分支覆盖 barge-in
+        # batch-10：_current_tts 延迟到首帧 delta 送出时才认领（见循环内）。
+        # 预连接把 begin_stream 提前到 pipeline 起点，与 comfort 播报时间窗重叠；
+        # 空转期间 _current_tts 仍归 comfort 所有，避免 barge-in 断错连接。
+        # barge-in 经 cancel(_stream_task) 断预连接流，与 _current_tts 无关，语义正确。
         t0 = time.monotonic()
         connect_ms = synth_ms = None
         t_synth: float | None = None
@@ -98,6 +101,7 @@ class TTSPipelineManager:
                     break
                 if t_synth is None:
                     t_synth = time.monotonic()   # 首帧 delta 送出时刻
+                    self._current_tts = tts      # batch-10：真正出声才认领 _current_tts
                 await tts.send_text_delta(chunk)  # type: ignore[arg-type]
                 self._stream_queue.task_done()
             await tts.send_text_done()
@@ -110,7 +114,8 @@ class TTSPipelineManager:
         except Exception:
             logger.warning("TTS stream play failed")
         finally:
-            self._current_tts = None
+            if self._current_tts is tts:   # batch-10：仅清本流认领的（预连接空转期不误清 comfort）
+                self._current_tts = None
             self._stream_tts = None
             try:
                 await tts.disconnect()

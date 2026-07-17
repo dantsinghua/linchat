@@ -128,6 +128,13 @@ class VoicePipeline:
         min_sentence_chars = getattr(settings, "VOICE_TTS_MIN_SENTENCE_CHARS", 8)
         sent_buffer = ""          # 已收到、尚未成句送出的尾巴
         stream_started = False
+        comfort_stopped = False   # comfort 是否已撤（预连接下与 stream_started 解耦）
+        # batch-10：预连接——pipeline 起点即 begin_stream 建连，与整段 Agent 推理并行，
+        # 首句到达时连接已就绪（省 ~1s connect）。comfort 保留到首句真正出声才撤（见循环内）。
+        preconnect = incremental and getattr(settings, "VOICE_TTS_PRECONNECT_ENABLED", False)
+        if preconnect and tts_manager is not None:
+            tts_manager.begin_stream()   # 立即建连；无内容前 park 在 _stream_queue.get()
+            stream_started = True
         try:
             # batch-08：ambient + 开关开启走轻量推理路径（跳过 LangGraph/工具/记忆召回，直调 Gateway）；
             # voice_chat 或开关关闭仍走完整 AgentService.execute。循环体不变，batch-07 埋点零改动。
@@ -157,9 +164,11 @@ class VoicePipeline:
                         sentences, sent_buffer = _split_sentences(sent_buffer, min_sentence_chars)
                         for s in sentences:
                             if not stream_started:
-                                tts_manager.stop_comfort_timer()   # 首句就绪即撤安慰语音
-                                tts_manager.begin_stream()          # 开一条常驻 TTS 会话
+                                tts_manager.begin_stream()          # 惰性开常驻 TTS 会话（未预连接时）
                                 stream_started = True
+                            if not comfort_stopped:
+                                tts_manager.stop_comfort_timer()    # 首句真正出声才撤安慰语音
+                                comfort_stopped = True
                             tts_manager.feed_text(s)
                 elif chunk.type == "interrupted":
                     break   # 收尾由循环后统一处理（stream_started 时收播已产文本）
