@@ -1,0 +1,34 @@
+# Batch batch-26 Progress
+# Type: test | Priority: P3
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Plan generated: refactor/batches/batch-26-plan.md
+- 实测覆盖率（main HEAD, systemd-run 包裹）:
+    apps/users/views.py                            105 stmts  50%  (missing 28-29,34-37,47-52,62-102,113-123,133,167,178-179,207-219)
+    apps/voice/services/voice_persist_service.py   108 stmts  66%  (missing 59-74,80-95,128-140)
+- 新增 2 个测试文件: tests/users/test_views.py + tests/voice/test_voice_persist_service.py
+- 计划用例数: users/views 15 例 (A-E) + voice_persist 9 例 (F-H) = 24 例
+- 业务代码零改动
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- 分支: refactor/batch-26
+- 起始 commit: 296861f
+
+- 新增文件:
+    tests/users/test_views.py                    (+18 例, A-E)
+    tests/voice/test_voice_persist_service.py    (+9 例, F-H)
+- 用例总数: 27（计划 24，巩固分支补至 27）
+- lint: ruff/black 全绿（无 isort 配置，与既有测试一致）
+- 覆盖率（全套件测量，同 plan 基线口径）:
+    apps/users/views.py                          50% → 100%  (tests/users/ 102 passed, was 84)
+    apps/voice/services/voice_persist_service.py 66% → 100%  (tests/voice/ 770 passed, was 761)
+- 隔离测量（仅新文件）: users/views 90% / voice_persist 72%（其余分支由既有套件覆盖）
+- 回归: 无下降，业务代码零改动
+- 精简: 两文件均 <300 行，ruff 无 F401/注释代码/裸 except，无需精简
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
