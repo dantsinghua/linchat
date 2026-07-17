@@ -1,3 +1,3 @@
-{"ts": "2026-07-17T10:22:38+08:00", "passed": 1606, "failed": 0, "duration_s": 64,
+{"ts": "2026-07-17T10:29:12+08:00", "passed": 1606, "failed": 0, "duration_s": 52,
  "green": true,
- "summary": "================ 1606 passed, 9 skipped, 14 warnings in 59.76s ================="}
+ "summary": "================ 1606 passed, 9 skipped, 14 warnings in 46.57s ================="}
