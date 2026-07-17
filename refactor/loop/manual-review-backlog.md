@@ -54,3 +54,9 @@
 ## batch-12（2026-07-17 配额中断后续作完成，P1）
 - 无人值守拍板项待安琳 review：model_config 60s TTL 缓存（ORM 直改 ModelConfig 后最长 60s 生效延迟）；明文 SM4 解密 key 进程内存留存 60s（不落日志/盘）——请复核安全性。
 - wake_words 同为 60s TTL：新增唤醒词后最长 60s 生效。
+
+## batch-27（SLO 测量 — 2026-07-17 15:00 被外部依赖阻塞）
+- ASR/TTS Gateway 离线：frpc visitor 127.0.0.1:8100 本地监听正常，但 STCP 对端 llm-gateway 无 HTTP 响应（health 000）。语音链路第一跳 ASR connect failed，无法触发测量。
+- 测量工具已就绪：refactor/loop/trigger_voice_e2e.py（模拟 reSpeaker 推 wav，单次冒烟已验证到 ASR connect 环节，设备认证/trace_id/WS 协议全通）。
+- **待安琳**：拉起 GPU 机器上的 llmgateway（或检查 STCP server 侧），恢复后运行：
+  `linchat/bin/python refactor/loop/trigger_voice_e2e.py 20 && ./scripts/measure-voice-latency.sh 20`
