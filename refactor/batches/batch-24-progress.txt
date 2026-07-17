@@ -1,0 +1,41 @@
+# Batch batch-24 Progress
+# Type: refactor | Priority: P2
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Plan generated: refactor/batches/batch-24-plan.md
+- Delegators found: 5 (get_cached_result / save_parsed_result / clear_parsed_cache / chunk_document / search_documents_rag)
+- Cleanable: 5/5
+- Real files touched: 6 (document.py, views.py, tasks.py, test_document_cache/chunk/rag)
+- Scope note: 04-plan.json 列的 document_cache.py + test_document_agent.py 无需改动（见 plan 第7节）
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- Branch: refactor/batch-24
+- Start commit: 1e79a5aef419b1f8ed74e463c142811b2eacc11c
+
+## Phase 2b: Executor 改动清单
+- [x] 改完 apps/media/views.py (导入 get_cached_result + 调用点直连)
+- [x] 改完 apps/media/tasks.py (导入 chunk_document + 调用点直连，删 DocumentParseService import)
+- [x] 改完 tests/media/test_document_cache.py (直连 import + 调用；精简删未用 pytest import)
+- [x] 改完 tests/media/test_document_chunk.py (直连 import + 调用；精简删未用 pytest import)
+- [x] 改完 tests/media/test_document_rag.py (函数内直连 import + 调用；精简删未用 pytest import)
+- [x] 改完 apps/media/services/document.py (删除 5 个 backward-compat delegators, 216→189 行, -27)
+- [x] 精简 3 个测试文件: 各删 1 处未用 import pytest（ruff F401）
+  注: document.py 全文件 E701/E702 单行风格为既有约定（main 上已 13 处），非本次引入，不在本 batch 处理
+
+## Phase 2b: Executor (completed 2026-07-17)
+- 清理委托: 5/5 (get_cached_result/save_parsed_result/clear_parsed_cache/chunk_document/search_documents_rag)
+- 改动文件: 6 (document.py, views.py, tasks.py, test_document_cache/chunk/rag)
+- 验证结果:
+  - tests/media/ 全量: 31 passed
+  - tests/apps/graph/test_document_agent.py (SubAgent 回归): 17 passed
+  - ruff check 6 个 touched 文件: All checks passed
+  - 全局残留扫描: 无遗漏的 DocumentParseService.<delegator> 调用（仅 docstring）
+- Gateway 契约: parse_document/poll_task_status/create_parse_task/get_task_result 全部保留不动，轮询路径 /v1/documents/tasks/{id} 零变化
+- 遗留债务: test_document_agent.py 335 行 > 300 硬限，本 batch 不拆（独立 tech-debt，已登记）
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
