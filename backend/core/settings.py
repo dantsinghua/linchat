@@ -55,6 +55,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # trace_id 必须最先执行，使所有后续中间件 / 视图 / 日志可读 trace_id（batch-04）
+    "core.middleware.TraceIdMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -469,45 +471,7 @@ AGENT_MULTIMODAL_TIMEOUT = int(os.getenv("AGENT_MULTIMODAL_TIMEOUT", "2400"))  #
 SSE_HEARTBEAT_INTERVAL = int(os.getenv("SSE_HEARTBEAT_INTERVAL", "15"))  # 心跳间隔: 15秒
 
 
-# 日志配置
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "verbose": {
-            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
-            "style": "{",
-        },
-        "simple": {
-            "format": "{levelname} {asctime} {message}",
-            "style": "{",
-        },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "simple",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": "INFO",
-    },
-    "loggers": {
-        "django": {
-            "handlers": ["console"],
-            "level": os.getenv("DJANGO_LOG_LEVEL", "INFO"),
-            "propagate": False,
-        },
-        "apps": {
-            "handlers": ["console"],
-            "level": "DEBUG" if DEBUG else "INFO",
-            "propagate": False,
-        },
-        "apps.context.monitoring": {
-            "handlers": ["console"],
-            "level": "DEBUG",
-            "propagate": False,
-        },
-    },
-}
+# 日志配置 — 统一 JSON + trace_id 注入（batch-04）
+from core.logging_config import build_logging_dict  # noqa: E402
+
+LOGGING = build_logging_dict(debug=DEBUG, log_level=os.getenv("DJANGO_LOG_LEVEL", "INFO"))

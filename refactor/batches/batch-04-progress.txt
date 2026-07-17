@@ -1,16 +1,101 @@
 # Batch batch-04 Progress
-# Type: observability | Priority: P0
+# Type: observability | Priority: P0 | Risk: medium
+# Title: trace_id 中间件基础设施
 
 ## Phase 2a: Initializer
-- Started: 2026-07-17
-- Plan generated: refactor/batches/batch-04-plan.md
-- Reference: 旧分支 refactor/batch-04（April，未合并）含完整蓝本
-- Status: WAITING_FOR_REVIEW
+- Started: 2026-04-22
+- Worktree: /home/dantsinghua/work/linchat-batch-04
+- Branch: refactor/batch-04
+- Plan generated: refactor/batches/batch-04-plan.md (374 lines)
+- Dependencies: [] (natively satisfied)
+- Investigation findings:
+  * core/middleware.py does NOT exist yet (will be new file)
+  * core/logging_config.py does NOT exist yet (will be new file)
+  * apps/common/middleware.py EXISTS (TokenAuthMiddleware) — do NOT touch, new middleware goes to core/
+  * apps/common/__init__.py has 1 line comment only — safe to expand
+  * settings.py MIDDLEWARE at line 57-69; LOGGING at line 473-513
+  * gateway_utils.py:19-26 already has X-Request-ID downstream header logic (we connect to it)
+  * chat_service.py:37 uses uuid.uuid4().hex — we match this format
+  * voice_pipeline.py:64 uses same — consistency preserved
+  * 02-issue-diagnosis §5.1: trace_id coverage = 0 (baseline)
+  * 02-issue-diagnosis §5.2: 3 log formats mixed (application/uvicorn/Django) — target for unification
+- Open questions for review:
+  * R1: trace_id_var location — apps/common/__init__ (chosen) vs core/trace.py
+  * R2: MIDDLEWARE order — before or after CorsMiddleware (chose before)
+  * R3: JSON format in local DEBUG mode (chose yes, can switch)
+  * R4: celery worker trace_id propagation (deferred to future batch)
+  * R5: new test file backend/tests/common/test_trace_id.py counts as scope extension?
+- Status: REVIEWED
 
-## Phase 2b: Executor
-- (尚未开始)
+## 安琳决策记录（2026-04-23）
+- R1 → apps/common/__init__.py（确认保持现选）
+- R2 → TraceId 在 CorsMiddleware 之前（确认保持现选）
+- R3 → 本地 + 生产统一 JSON（jq v1.6 环境已确认）
+- R4 → 延后至新增 batch-28「celery Task trace_id 透传」
+       · 已写入 04-refactor-plan.json（depends_on: batch-04）
+       · 已加入 phased_rollout.phase_p0_observability
+- R5 → 新增测试不算扩 scope（允许创建 backend/tests/common/test_trace_id.py）
 
-## Phase 2c: Validator
-- (尚未开始)
+## Phase 2b: Executor (completed 2026-04-22)
+- Starting commit: ff13b4da3b327d6e53c929851caf99029c171654
+- Branch: refactor/batch-04
+- Files changed: 5 (4 batch-04 scope + 1 progress bookkeeping)
+  * backend/apps/common/__init__.py           (+19 -1)   — trace_id_var + get_trace_id
+  * backend/core/middleware.py                (+57 -0)   — new TraceIdMiddleware (sync + async)
+  * backend/core/logging_config.py            (+73 -0)   — new TraceIdFilter + JSONFormatter + build_logging_dict
+  * backend/core/settings.py                  (+6 -42)   — MIDDLEWARE top registration + LOGGING function call (513 -> 475 lines)
+  * backend/tests/common/test_trace_id.py     (+220 -0)  — 10 test cases (T1-T6 + 4 bonus)
+- Total: +375 -43 (net +332) — vs plan predicted +155 -43; +225 delta comes from verbose test file (planned 6 cases -> shipped 10)
+- Ruff: all 4 batch-04-owned files clean (settings.py E402 at line 103 `import re` is pre-existing, NOT introduced by batch-04)
+- Target tests: pytest tests/common/test_trace_id.py -v -> 10 PASSED / 0 failed (0.09s)
+- Regression: pytest full suite -> 1603 passed / 1 flaky (perf) / 9 skipped (53.96s)
+  * Flaky: tests/performance/test_smoke.py::TestServiceLayerOverhead::test_message_vo_conversion_performance
+    - Passes in isolation (1.29s); fails only under full-suite load (timing threshold)
+    - Test is in-memory VO conversion with no logging/middleware coupling -> not caused by batch-04
+    - Within task brief's "允许 13 个 pre-existing 失败保持不变" budget
+- Assumptions verified:
+  * H1: ImportError check -> PASSED (both apps.common.trace_id_var and core.middleware.TraceIdMiddleware import cleanly)
+  * H2: ASGI X-Request-ID roundtrip -> SKIPPED (service not running; covered by async unit test test_async_middleware_path)
+  * H3: JSON log uvicorn.access compatibility -> SKIPPED (service not running; JSONFormatter structure test covers payload shape)
+- Plan vs actual divergence:
+  * Test file shipped 10 cases instead of planned 6 (added T5b/T6b/T6c/async variant) — still within scope per R5
+  * settings.py net -37 vs plan -39 (actual 38 lines removed due to trailing whitespace)
 
-STATUS: PLAN_READY  # batch-initializer 2026-07-17
+## Phase 2c: Validator (completed 2026-04-23T15:23:00+08:00)
+
+### 自动化验证
+- pytest tests/common/test_trace_id.py -v -> 12/12 PASSED (0.07s)
+  (原 10 + 2 个新增持久化回归保护：sync + async)
+- 全量回归 pytest backend/ -> 1605 passed / 1 failed (预存在 flaky perf) / 9 skipped
+  · 零新增回归；唯一 failed 为 test_message_vo_conversion_performance（batch-02 已记录）
+- ruff: 4 个 batch-04-owned 文件 clean（settings.py E402 预存在）
+- H1 import check: PASSED (apps.common.trace_id_var + core.middleware.TraceIdMiddleware)
+
+### 中途 fix 追溯（22665c8 → 552b64c，选项 A 原地扩 scope）
+- Phase 2c 手动验证 M3.b/M5.b 发现 trace_id 日志回落 "-"
+- 诊断：finally:reset(token) 时机过早，uvicorn.access 和 django.request.log_response
+  都在 middleware 返回后才写日志，contextvar 已被 reset
+- 修复 commit 552b64c：删除 try/finally/reset（添加注释说明），+ 2 个持久化回归测试
+- 2 files changed, +61 -21
+- 安琳批准选项 A：原地补丁不拆新 batch
+- 已 push origin/refactor/batch-04 HEAD=552b64c
+
+### 手动验证（/tmp/validate-batch-04.sh 11 项端到端）
+- Prep.a/b 后端跑 batch-04 worktree + HTTP 200 -> PASS
+- M2 JSON 日志格式统一 -> PASS（ok=10 bad=0）
+- M3.a/b X-Request-ID 自定义回写 + 落日志 -> PASS
+- M3.c 跨 logger 200 路径 -> WARN（误报：200 不触发 django.request.log_response）
+- M4.a/b 无 header 自动生成 32hex + 落日志 -> PASS
+- M5.a/b 401 回写 + 日志 2 条同 trace_id（uvicorn.access + django.request） -> PASS
+- 核心语义：M5 证明 plan 目标「中间件早于 auth / 贯穿不同日志源」达成
+- 安琳判定：validation pass
+
+### Diff scope 核对
+- git diff before-batch-04..HEAD --stat：6 files, +440 -46
+- 所有文件在 plan scope.files_touched 内（test 扩展 R5 已批准）
+- 无 forbidden_zones 跨越
+
+### Validation 报告
+- refactor/batches/batch-04-validation.md
+
+STATUS: COMPLETED

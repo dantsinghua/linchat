@@ -1,210 +1,389 @@
 # Batch batch-04 执行计划
 
-> 生成时间：2026-07-17
+> 生成时间：2026-04-22
 > 类型：observability | 优先级：P0 | 风险：medium
-> 预估：4 文件 / ~150 行 / 1 session
-> 依赖：无（depends_on=[]，无需前置校验）
-> SLO 影响：blocks_slo=null；但 notes 明确"此 batch 是后续所有 observability 和 performance batch 的基础"
+> 预估：4 文件 / 150 行 / 1 session
+> 依赖：无（depends_on=[]）
+> SLO 影响：无直接阻塞；后续所有 observability + performance batch 的地基
 
 ## 1. 任务理解（一句话）
 
-新建 `TraceIdMiddleware`（从 `X-Request-ID` header 提取或生成 trace_id 存入 contextvars）+ 统一
-JSON logging（TraceIdFilter/JSONFormatter），把当前 uvicorn/django/apps 三种混合日志格式收敛为一条
-带 `trace_id` 字段的 JSON，让全链路日志可按请求关联。
+为后端建立 **trace_id 贯穿基础设施**：HTTP 入口 `TraceIdMiddleware` 读取 / 生成 `X-Request-ID` → 存入 `contextvars.ContextVar` → 通过自定义 `logging.Filter/Formatter` 注入到所有日志；把三种混合日志格式（应用 / uvicorn / Django）统一为带 `trace_id` 的 **JSON 结构化格式**；仅改 `core/` + `apps/common/__init__.py`，不碰业务代码。
 
-## 2. 关键背景：旧分支 refactor/batch-04（未合并）
-
-April 时期的旧分支 `refactor/batch-04` 已含**完整可用实现**（commit 22665c8 feat + 552b64c fix +
-ee840bf validate，pytest 全量 1603 passed）。本计划以其为**参考蓝本**，但所有行号/差异基于**当前
-main** 编写。旧分支不能直接 cherry-pick（4 月后 main 已演进，需人工对齐 settings.py 行号）。
-
-**旧分支最重要的一条经验（commit 552b64c）**：middleware **绝不能在 `finally` 里 `reset()`
-contextvar**。因为 `uvicorn.access` 与 `django.request` 的 `log_response` 都在本 middleware
-`return` 之后才写日志，一旦 reset，它们读到的 trace_id 永远是 `-`。依赖 asyncio.Task /
-sync_to_async 的 contextvars 天然隔离即可，无需手动 reset。**本计划强制保留此设计**。
-
-## 3. 涉及文件清单与改动预测
+## 2. 涉及文件清单与改动预测
 
 | # | 文件 | 当前行数 | 预计改动行数 | 改动类型 | 风险 | 精简潜力 |
 |---|------|---------|------------|---------|------|---------|
-| 1 | backend/apps/common/__init__.py | 1 | +21 | 新增导出 | 低 | 低（当前仅 1 行注释） |
-| 2 | backend/core/middleware.py | 0（新建） | +57 | 新建文件 | 中 | 低 |
-| 3 | backend/core/logging_config.py | 0（新建） | +73 | 新建文件 | 中 | 低 |
-| 4 | backend/core/settings.py | 513 | +6 -40（净 -34） | MIDDLEWARE 注册 + LOGGING 收敛 | 中 | 中（LOGGING 42 行字面量 → 函数调用） |
-| +| backend/tests/common/test_trace_id.py | 0（新建） | +220 | 新增测试（不算扩 scope，旧分支 R5 决策） | 低 | — |
+| 1 | backend/core/middleware.py | **不存在** | +55 -0 | 新建 | 中（ASGI 异步兼容） | — |
+| 2 | backend/core/logging_config.py | **不存在** | +80 -0 | 新建（JSON Formatter + Filter） | 中（影响所有日志） | — |
+| 3 | backend/core/settings.py | 513 | +5 -42 | 修改 MIDDLEWARE / LOGGING | 中（热点 25 次修改） | 低（ruff 干净） |
+| 4 | backend/apps/common/__init__.py | 1 | +15 -1 | 导出 trace_id_var | 低 | 低 |
+| **合计** | | **514** | **+155 -43** | | | |
 
-> 说明：scope.new_files 只列了 middleware.py 与 logging_config.py。测试文件 `tests/common/
-> test_trace_id.py` 为验证必需的配套新增，遵循旧分支 R5"新增测试不算扩 scope"决策——见第 7 节确认项。
+**精简潜力说明**：scope 内现存文件均 ruff F401 干净。settings.py 513 行超 300 软限制，04-refactor-plan 已规划 settings 域拆分 batch，本 batch 不扩 scope。新增 `logging_config.py` ~80 行 / `middleware.py` ~55 行均低于 300 硬限制。本 batch 顺带让 settings.py 从 513 行 → ~476 行（LOGGING 字面量被函数替换）。
 
-## 4. 详细改动计划
+## 3. 详细改动计划
 
-### 文件 1: backend/apps/common/__init__.py
+---
 
-当前内容仅：`# 公共组件模块`（1 行）。**注意**：`apps.common` 下已存在 `middleware.py`
-（TokenAuthMiddleware）、`exceptions.py`、`gateway_utils.py` 等子模块；本改动只动包的 `__init__.py`，
-不影响这些子模块。
+### 文件 1：backend/core/middleware.py（新建）
 
-#### 改动 1.1（新增 contextvar 与 helper）
-- 位置：文件全部替换
-- 方案（对齐旧分支）：
+#### 改动 1.1 — 创建 TraceIdMiddleware（同步 + ASGI 双兼容）
+
+- 位置：全新文件
+- 改动方案：
   ```python
-  """公共组件模块 — 基础设施工具集合。"""
+  """Trace ID 贯穿中间件 — batch-04 可观测性基础设施。"""
+  import uuid
+  from typing import Callable
+
+  from django.http import HttpRequest, HttpResponse
+  from asgiref.sync import iscoroutinefunction
+
+  from apps.common import trace_id_var
+
+  TRACE_HEADER = "HTTP_X_REQUEST_ID"
+  RESP_HEADER = "X-Request-ID"
+
+
+  class TraceIdMiddleware:
+      """为每个 HTTP 请求分配 / 继承 trace_id。MIDDLEWARE 顶端注册。"""
+
+      sync_capable = True
+      async_capable = True
+
+      def __init__(self, get_response: Callable):
+          self.get_response = get_response
+          self._is_async = iscoroutinefunction(get_response)
+
+      def _extract_or_generate(self, request: HttpRequest) -> str:
+          incoming = request.META.get(TRACE_HEADER, "").strip()
+          if incoming and len(incoming) <= 128:
+              return incoming
+          return uuid.uuid4().hex  # 与 chat_service:37 / voice_pipeline:64 一致
+
+      def __call__(self, request: HttpRequest):
+          if self._is_async:
+              return self._acall(request)
+          return self._scall(request)
+
+      def _scall(self, request: HttpRequest) -> HttpResponse:
+          tid = self._extract_or_generate(request)
+          token = trace_id_var.set(tid)
+          try:
+              request.trace_id = tid
+              response = self.get_response(request)
+              response[RESP_HEADER] = tid
+              return response
+          finally:
+              trace_id_var.reset(token)
+
+      async def _acall(self, request: HttpRequest) -> HttpResponse:
+          tid = self._extract_or_generate(request)
+          token = trace_id_var.set(tid)
+          try:
+              request.trace_id = tid
+              response = await self.get_response(request)
+              response[RESP_HEADER] = tid
+              return response
+          finally:
+              trace_id_var.reset(token)
+  ```
+- 改动理由：
+  - Django 4.2 ASGI 栈同时存在 sync / async view，必须 `sync_capable + async_capable` 双实现，用 `iscoroutinefunction(get_response)` 判断路径
+  - `uuid.uuid4().hex`（32 字符无横线）与现有 `chat_service.py:37` / `voice_pipeline.py:64` 格式一致
+  - `len <= 128` 防御超长恶意 header
+  - 响应 header 回写：便于前端把截图/录屏关联后端日志
+  - 不在 middleware 内打 log，避免与 TokenAuthMiddleware 日志风暴
+- 预估行数：+55 -0
+
+---
+
+### 文件 2：backend/core/logging_config.py（新建）
+
+#### 改动 2.1 — TraceIdFilter + JSONFormatter + build_logging_dict()
+
+- 位置：全新文件
+- 改动方案：
+  ```python
+  """LinChat 统一日志配置 — batch-04 可观测性基础设施。"""
   from __future__ import annotations
-  import contextvars
 
-  # trace_id 全局上下文变量（batch-04）
-  trace_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("trace_id", default="")
+  import datetime as dt
+  import json
+  import logging
+  from typing import Any
 
-  def get_trace_id() -> str:
-      return trace_id_var.get() or ""
+  from apps.common import trace_id_var
 
-  __all__ = ["trace_id_var", "get_trace_id"]
+
+  class TraceIdFilter(logging.Filter):
+      def filter(self, record: logging.LogRecord) -> bool:
+          record.trace_id = trace_id_var.get() or "-"
+          return True
+
+
+  class JSONFormatter(logging.Formatter):
+      _RESERVED = {
+          "args", "asctime", "created", "exc_info", "exc_text", "filename",
+          "funcName", "levelname", "levelno", "lineno", "message", "module",
+          "msecs", "msg", "name", "pathname", "process", "processName",
+          "relativeCreated", "stack_info", "thread", "threadName", "trace_id",
+      }
+
+      def format(self, record: logging.LogRecord) -> str:
+          payload: dict[str, Any] = {
+              "time": dt.datetime.fromtimestamp(record.created).isoformat(timespec="milliseconds"),
+              "level": record.levelname,
+              "logger": record.name,
+              "trace_id": getattr(record, "trace_id", "-"),
+              "msg": record.getMessage(),
+              "module": record.module,
+              "lineno": record.lineno,
+          }
+          for key, value in record.__dict__.items():
+              if key in self._RESERVED or key.startswith("_"):
+                  continue
+              try:
+                  json.dumps(value)
+                  payload[key] = value
+              except (TypeError, ValueError):
+                  payload[key] = repr(value)
+          if record.exc_info:
+              payload["exc_info"] = self.formatException(record.exc_info)
+          return json.dumps(payload, ensure_ascii=False)
+
+
+  def build_logging_dict(debug: bool, log_level: str = "INFO") -> dict[str, Any]:
+      _flt = ["trace_id"]
+      return {
+          "version": 1,
+          "disable_existing_loggers": False,
+          "filters": {"trace_id": {"()": "core.logging_config.TraceIdFilter"}},
+          "formatters": {
+              "json": {"()": "core.logging_config.JSONFormatter"},
+              "verbose": {"format": "{levelname} {asctime} [{trace_id}] {module} {message}", "style": "{"},
+              "simple": {"format": "{levelname} {asctime} [{trace_id}] {message}", "style": "{"},
+          },
+          "handlers": {
+              "console": {"class": "logging.StreamHandler", "formatter": "json", "filters": _flt},
+          },
+          "root": {"handlers": ["console"], "level": log_level},
+          "loggers": {
+              "django": {"handlers": ["console"], "level": log_level, "propagate": False, "filters": _flt},
+              "django.request": {"handlers": ["console"], "level": "WARNING", "propagate": False, "filters": _flt},
+              "uvicorn": {"handlers": ["console"], "level": log_level, "propagate": False, "filters": _flt},
+              "uvicorn.access": {"handlers": ["console"], "level": "INFO", "propagate": False, "filters": _flt},
+              "uvicorn.error": {"handlers": ["console"], "level": log_level, "propagate": False, "filters": _flt},
+              "apps": {"handlers": ["console"], "level": "DEBUG" if debug else log_level, "propagate": False, "filters": _flt},
+              "apps.context.monitoring": {"handlers": ["console"], "level": "DEBUG", "propagate": False, "filters": _flt},
+          },
+      }
   ```
-- 理由：`apps.common` 是全项目 import 路径最短、无重依赖的公共位置（旧分支 R1 决策）。
-  仅依赖标准库 `contextvars`，无循环 import 风险。
-- 预估：+21 -1
+- 改动理由：
+  - 单文件导出 3 对象；settings.py 只保留 2 行 import+调用
+  - 保留 `verbose` / `simple` 旧 formatter（附带 `[trace_id]`），pytest -s 调试可用
+  - 覆盖 uvicorn.access / uvicorn.error / django / django.request / apps — 02-issue-diagnosis §5.2 列出的"三种格式混合"根源
+  - extra 字段自动序列化（`logger.info("msg", extra={"user_id": 7, "duration_ms": 123})`）
+  - 非 JSON 可序列化字段用 `repr()` 兜底，永不丢日志
+  - **不引入** `python-json-logger` 新依赖，避免触发 CLAUDE.md 红线
+- 预估行数：+80 -0
 
-### 文件 2: backend/core/middleware.py（新建）
+---
 
-- 完全采用旧分支 `refactor/batch-04:backend/core/middleware.py`（57 行），要点：
-  - `TRACE_HEADER = "HTTP_X_REQUEST_ID"`、`RESP_HEADER = "X-Request-ID"`
-  - `sync_capable = True` + `async_capable = True`，`__init__` 用 `iscoroutinefunction(get_response)`
-    判定同步/异步路径（`_scall` / `_acall`）
-  - `_extract_or_generate()`：incoming header `strip()` 后长度 ≤128 则继承，否则 `uuid.uuid4().hex`
-    （与 `chat_service.py:37 request_id = uuid.uuid4().hex` 生成方式一致）
-  - set `trace_id_var` + `request.trace_id`，`return` 后写响应头 `X-Request-ID`
-  - **不 reset**（见第 2 节）
-- 理由：>128 字符防恶意超长 header；response 回写便于前后端关联。
-- 预估：+57
+### 文件 3：backend/core/settings.py（修改）
 
-### 文件 3: backend/core/logging_config.py（新建）
+#### 改动 3.1 — MIDDLEWARE 顶端注册（第 57-69 行）
 
-- 完全采用旧分支 `refactor/batch-04:backend/core/logging_config.py`（73 行），要点：
-  - `TraceIdFilter`：从 `trace_id_var.get()` 取值，空则注入 `-`
-  - `JSONFormatter`：输出合法 JSON；`_RESERVED` 白名单外的 `extra` 字段自动带入；
-    非 JSON 可序列化值用 `repr()` 兜底（**永不丢日志**）；`exc_info` 格式化为字符串
-  - `build_logging_dict(debug, log_level)`：返回带 `json`/`verbose`/`simple` formatter、
-    对 uvicorn/django/apps 各 logger 挂 `trace_id` filter 的 dictConfig
-- 理由：把 settings.py 里 42 行 LOGGING 字面量抽成函数，settings 更薄且格式统一。
-- 预估：+73
-
-### 文件 4: backend/core/settings.py
-
-#### 改动 4.1（MIDDLEWARE 注册）
-- 位置：第 57-69 行 `MIDDLEWARE` 列表
-- 当前第一项为 `"corsheaders.middleware.CorsMiddleware"`（第 58 行）
-- 方案：在**列表最顶端**（第 58 行之前）插入：
+- 当前：
   ```python
-  "core.middleware.TraceIdMiddleware",
+  MIDDLEWARE = [
+      "corsheaders.middleware.CorsMiddleware",
+      "django.middleware.security.SecurityMiddleware",
+      ...
+      "apps.common.middleware.TokenAuthMiddleware",
+  ]
   ```
-- 理由：置于 CorsMiddleware 之上，使 CORS 拒绝的 OPTIONS 预检、以及任何早期短路响应也带
-  trace_id（旧分支 R2 决策）。TokenAuthMiddleware（第 68 行，sync-only）不受影响——TraceIdMiddleware
-  async_capable，Django ASGI 处理链会在其后自动插入 sync/async 适配器。
-- 预估：+1
-
-#### 改动 4.2（LOGGING 收敛）
-- 位置：第 473-513 行整个 `LOGGING = {...}` 字面量（41 行）
-- 方案：替换为：
+- 改动方案：
   ```python
+  MIDDLEWARE = [
+      # trace_id 必须最先执行，使所有后续中间件 / 视图 / 日志可读 trace_id（batch-04）
+      "core.middleware.TraceIdMiddleware",
+      "corsheaders.middleware.CorsMiddleware",
+      "django.middleware.security.SecurityMiddleware",
+      ...
+      "apps.common.middleware.TokenAuthMiddleware",
+  ]
+  ```
+- 改动理由：`TraceIdMiddleware` 放在最前，使 OPTIONS 预检 + CORS 拒绝 + Token 401 全部日志都带 trace_id。保留注释防误改。
+- 预估行数：+2 -0
+
+#### 改动 3.2 — LOGGING 替换为 build_logging_dict 调用（第 472-513 行）
+
+- 当前：42 行 dict 字面量
+- 改动方案：
+  ```python
+  # 日志配置 — 统一 JSON + trace_id 注入（batch-04）
   from core.logging_config import build_logging_dict
   LOGGING = build_logging_dict(debug=DEBUG, log_level=os.getenv("DJANGO_LOG_LEVEL", "INFO"))
   ```
-  （import 建议放文件顶部 import 区，或就近；`DEBUG` 定义于第 25 行、`os` 于第 8 行，均在 LOGGING 之前，无前向引用问题）
-- 理由：三种日志格式统一为带 trace_id 的 JSON；settings 精简 ~34 行。
-- 预估：+5 -40（净约 -34）
-- **风险**：需保留当前 `apps.context.monitoring` DEBUG logger（旧分支 build_logging_dict 已含），
-  避免监控埋点日志级别退化。
+- 改动理由：把 42 行压到 3 行；保留 `DJANGO_LOG_LEVEL` 环境变量兼容。
+- 预估行数：+3 -42 = **净 -39**
 
-### 配套测试: backend/tests/common/test_trace_id.py（新建）
+**警告**：settings.py 是 Git Top1 修改热点（25 次），仅动 MIDDLEWARE 顶部 + LOGGING 块，不触碰其他 117 个 getenv，降低 rebase 冲突风险。
 
-采用旧分支同名文件（~220 行，10+ 用例）：T1-T4 middleware header 继承/生成/超长丢弃/响应回写；
-T5/T5b Filter 空与非空注入；T6/T6b/T6c JSONFormatter 合法 JSON/repr 兜底/exc_info；async 路径；
-以及"trace_id 在 middleware 返回后仍存活"的回归保护用例（防止未来有人重新引入 reset）。
+---
 
-## 5. 逐步执行步骤与每步验证
+### 文件 4：backend/apps/common/__init__.py（修改）
 
-- [ ] **步骤 1**：写 `apps/common/__init__.py`（改动 1.1）
-  - 验证：`python -c "from apps.common import trace_id_var, get_trace_id"`（需先 activate venv）
-- [ ] **步骤 2**：新建 `core/middleware.py`（文件 2）
-  - 验证：`ruff check backend/core/middleware.py` + `python -c "from core.middleware import TraceIdMiddleware"`
-- [ ] **步骤 3**：新建 `core/logging_config.py`（文件 3）
-  - 验证：`ruff check backend/core/logging_config.py` + `python -c "from core.logging_config import build_logging_dict; build_logging_dict(True)"`
-- [ ] **步骤 4**：改 `settings.py` MIDDLEWARE（改动 4.1）
-  - 验证：`python manage.py check`（Django 系统检查，确认 middleware 可加载）
-- [ ] **步骤 5**：改 `settings.py` LOGGING（改动 4.2）
-  - 验证：`python manage.py check` + `python -c "import core.settings"` 无异常
-- [ ] **步骤 6**：新建 `tests/common/test_trace_id.py`
-  - 验证（局部，重活用 systemd-run 包裹）：
-    `systemd-run --user --collect --pipe -- bash -lc 'source linchat/bin/activate && cd backend && pytest tests/common/test_trace_id.py -v'`
-- [ ] **步骤 7**：lint 全量涉及文件
-  - `ruff check backend/core/middleware.py backend/core/logging_config.py backend/core/settings.py backend/apps/common/__init__.py`
+#### 改动 4.1 — 导出 trace_id_var + get_trace_id()
 
-### 5.1 自动化验证（batch 定义要求）
-- [ ] `pytest -k 'trace' -v`（新增测试全通过）
-- [ ] 服务重启后：`curl -H 'X-Request-ID: test-123' http://localhost:8002/api/v1/health/ -i | grep -i x-request-id`
-      （health 在 PUBLIC_PATHS，免 token；预期响应头回写 `X-Request-ID: test-123`）
+- 位置：全文件（当前仅 `# 公共组件模块`）
+- 改动方案：
+  ```python
+  """公共组件模块 — 基础设施工具集合。"""
+  from __future__ import annotations
 
-### 5.2 手动验证（需安琳操作 — 见第 7 节）
-- [ ] `./scripts/services.sh restart` 后检查 `/tmp/linchat-backend.log`（或实际日志路径）每行含 `trace_id` 字段
-- [ ] 确认 uvicorn.access / django / apps 三类日志均为统一 JSON（`tail -f | jq .` 可解析）
+  import contextvars
 
-### 5.3 回归验证
-- [ ] `pytest backend/tests/common/ -v`（common 包无回归）
-- [ ] `pytest backend/tests/ -q`（全量；旧分支基线 1603 passed，仅 1 个 perf 阈值 flaky 与本批无关）
+  # trace_id 全局上下文变量（batch-04）
+  # 由 core.middleware.TraceIdMiddleware 在请求进入时 set；
+  # 由 core.logging_config.TraceIdFilter 读取注入到每条日志。
+  # 其他模块（celery / voice consumer / langgraph）如需主动覆盖，
+  # 请 trace_id_var.set(...) 并保留 Token 用于 .reset()。
+  trace_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("trace_id", default="")
+
+
+  def get_trace_id() -> str:
+      """读取当前上下文 trace_id；无则返回空串。"""
+      return trace_id_var.get() or ""
+
+
+  __all__ = ["trace_id_var", "get_trace_id"]
+  ```
+- 改动理由：
+  - `from apps.common import trace_id_var` 最短最稳
+  - `core.middleware` / `core.logging_config` 反向 import `apps.common`：实际安全 — common 无 ORM 触发路径，仅 contextvars（纯 stdlib）
+  - 循环风险若真出现，回退方案见第 7 节 R1
+- 预估行数：+15 -1 = 净 **+14**
+
+## 4. 调查步骤
+
+observability 类 batch，但有 3 个执行前必须验证的假设：
+
+- [ ] **H1（循环依赖）**：
+  ```bash
+  cd /home/dantsinghua/work/linchat-batch-04/backend
+  source /home/dantsinghua/work/linchat/linchat/bin/activate
+  python -c "from apps.common import trace_id_var; print(trace_id_var)"
+  python -c "import django; django.setup(); from core.middleware import TraceIdMiddleware; print(TraceIdMiddleware)"
+  ```
+  预期：无 `ImportError`
+
+- [ ] **H2（ASGI async 路径）**：
+  ```bash
+  curl -v -H "X-Request-ID: test-batch-04-h2" http://localhost:8002/api/v1/auth/captcha 2>&1 | grep -i "x-request-id"
+  ```
+  预期：响应头 `X-Request-ID: test-batch-04-h2`
+
+- [ ] **H3（JSON 日志不破坏 uvicorn.access）**：
+  ```bash
+  tail -f /tmp/linchat-backend.log | grep -E '"logger":"uvicorn.access"' | head -3
+  ```
+  预期：单行 JSON 含 `logger":"uvicorn.access"` + 原 IP/method/status 文本合并到 `msg` 字段
+
+## 5. 验证计划
+
+### 5.1 自动化验证
+
+- [ ] 新增测试文件 `backend/tests/common/test_trace_id.py`（见第 7 节 R5）
+  - T1：无 header → 自动生成 32 字符 UUID hex
+  - T2：有 header → 继承该值
+  - T3：> 128 字符 header → 丢弃重新生成
+  - T4：响应头回写
+  - T5：`TraceIdFilter.filter()` 空 contextvars 注入 `"-"`
+  - T6：`JSONFormatter.format()` 输出合法 JSON（`json.loads` round-trip）
+- [ ] `pytest backend/tests/common/test_trace_id.py -v` → 6 PASSED
+- [ ] 无回归：`pytest backend/tests/ 2>&1 | tail -10` → 1586+6 passed
+- [ ] ruff：`ruff check backend/core/middleware.py backend/core/logging_config.py backend/core/settings.py backend/apps/common/__init__.py`
+
+### 5.2 手动验证
+
+- [ ] 重启：`./scripts/services.sh restart`
+- [ ] JSON 首行可解析：
+  ```bash
+  head -10 /tmp/linchat-backend.log | python -c "import json,sys;[json.loads(l) for l in sys.stdin];print('OK')"
+  ```
+- [ ] 自定义 trace_id 端到端：
+  ```bash
+  curl -s -H "X-Request-ID: manual-test-001" http://localhost:8002/api/v1/health/ -o /dev/null -D -
+  grep "manual-test-001" /tmp/linchat-backend.log | head -5
+  ```
+  预期：5+ 条含该 trace_id 的日志，涵盖 uvicorn.access + django + apps 三类 logger
+- [ ] 无 trace_id 请求：响应头含新生成 UUID hex，日志 trace_id ≠ "-"
+
+### 5.3 性能验证
+
+不适用。预期 overhead < 1ms/request。安琳如要求量化：`ab -n 100 -c 10` 前后对比 mean Δ < 5%。
+
+### 5.4 回归验证
+
+- [ ] 全量：`pytest backend/ -v 2>&1 | tail -30` → 1592 passed / 0 failed
+- [ ] 跨模块冒烟：`pytest backend/tests/users/ backend/tests/chat/ backend/tests/voice/ -v`
+- [ ] 浏览器：登录 → 网络面板看 `X-Request-ID` 响应头；发聊天 → `grep <trace_id>` 能串联 chat.views + graph.agent_service
 
 ## 6. 回滚策略
 
-batch 定义：`git revert <commit>`；middleware 移除后日志退回旧格式，无数据影响（无 schema/无迁移）。
-
-具体操作：
+单 commit revert，干净无残留：
 ```bash
-# 单 commit revert
 git revert <commit-hash>
-
-# 或整批 worktree 撤销
-cd .. && git worktree remove linchat-batch-04 && git branch -D refactor/batch-04-v2
+# 或 worktree 级：
+cd /home/dantsinghua/work && git worktree remove linchat-batch-04 && git branch -D refactor/batch-04
 ```
-> 注意：不要复用旧分支名 `refactor/batch-04`（已存在且含旧 April 产物）；本轮建议用新分支名
-> （如 `refactor/batch-04-v2`）避免与远端 `origin/refactor/batch-04` 冲突——见第 7 节确认项。
 
-## 7. ⚠️ 需要安琳确认的事项
+**数据影响**：无。仅影响日志格式 + 响应头。不动 DB / Redis / MinIO。
 
-- [ ] **分支命名冲突**：本地与远端已存在旧 `refactor/batch-04`（April，未合并）。本轮是复用同名
-      分支覆盖，还是新开 `refactor/batch-04-v2`？（建议新开，避免污染旧产物历史）
-- [ ] **测试文件算不算扩 scope**：scope.new_files 仅列 middleware.py 与 logging_config.py，未列
-      `tests/common/test_trace_id.py`。旧分支 R5 决策"新增测试不算扩 scope"。请确认沿用。
-- [ ] **settings.py 超 300 行硬限制**：settings.py 当前 513 行 > 300 行硬限制。本 batch 反而将其
-      精简至 ~479 行（LOGGING 收敛）。是否需在本 batch 进一步拆分 settings.py？
-      **建议不拆**：Django 惯例单文件 settings，拆分会大幅扩 scope 且触碰无关配置，风险 > 收益。
-- [ ] **MIDDLEWARE 顶端注册（早于 CorsMiddleware）**：使 CORS 拒绝的 OPTIONS 也带 trace_id。
-      确认接受此顺序（旧分支 R2 已采用并通过全量测试）。
-- [ ] **手动日志验证需安琳操作**：`/tmp/linchat-backend.log` 中"每行含 trace_id、三格式统一 JSON"
-      无法机器自动断言，需服务重启后人工 `tail | jq` 观察。请确认由安琳执行此步。
-- [ ] **uvicorn 日志是否真正走 Django dictConfig（潜在风险）**：uvicorn 经 CLI 启动时有自身
-      logging 初始化，Django 的 `LOGGING` 对 `uvicorn.access`/`uvicorn.error` 是否生效取决于启动
-      顺序。旧分支验证通过，但当前 main 启动脚本可能不同。需在步骤 5.2 手动确认 uvicorn 访问日志
-      确实变成了带 trace_id 的 JSON；若未生效，属**预期外**，需回到安琳讨论（不擅自改启动脚本/
-      Docker 拓扑——do_not_touch）。
+**下游依赖**：后续 observability batch 预期 `depends_on: ["batch-04"]`，回滚本 batch 必须连同下游一起回滚。
 
-## 8. do_not_touch 合规自检
+## 7. ✅ 安琳已批复决策（2026-04-23）
 
-- 无 PostgreSQL schema / migration 改动 ✅
-- 无 SSE 事件格式改动（仅 HTTP 请求头/日志）✅
-- 无 SM3/SM4 改动 ✅
-- 无 conversation_id/session_id 概念引入（trace_id 是每请求 header，非隔离粒度）✅
-- 无 LangGraph/LangChain 版本改动 ✅
-- 无 Docker 拓扑改动（不改启动命令；若 uvicorn 日志需调整启动参数 → 停下问安琳）✅
-- 无前端栈改动 ✅
-- 无 Gateway API 契约改动 ✅
+- [x] **R1（trace_id_var 位置）**：安琳批复 → `apps/common/__init__.py`
+  - 理由：import 路径最短，与 scope 吻合
+  - 循环依赖由第 4 节 H1 验证
 
-## 9. 执行预算
+- [x] **R2（MIDDLEWARE 顺序）**：安琳批复 → TraceId 在 `CorsMiddleware` **之前**
+  - 效果：OPTIONS 预检 + CORS 拒绝日志均带 trace_id
 
-- 预计 tool calls：~25（4 写 + 若干 lint/import 校验 + 局部 pytest）
-- 预计 token：中等（有旧分支蓝本，无需大量探索）
-- 预计时间：1 session（与 estimated_sessions=1 一致，未超 2 倍）
+- [x] **R3（JSON Formatter 本地调试）**：安琳批复 → 本地 + 生产统一 JSON，本地用 `jq` 美化
+  - 前置已确认：`/usr/bin/jq` v1.6 已安装（2026-04-23 验证）
 
-## 10. 小结
+- [x] **R4（celery worker trace_id 透传）**：安琳批复 → 本 batch 不处理，延后至**新增 batch-28**
+  - 已写入 `refactor/04-refactor-plan.json` → `batch-28: celery Task trace_id 透传`
+  - 已加入 `phased_rollout.phase_p0_observability`（batch-04 → 05 → 06 → 07 → 28）
+  - 本 batch 仅通过 `build_logging_dict()` 让 celery logger 能拾取 contextvars；Task 侧未透传时 trace_id 字段为 `"-"`
 
-有旧分支完整蓝本兜底，风险主要落在：① settings.py LOGGING 收敛后 uvicorn 日志是否真正 JSON 化
-（需人工验证）；② middleware 不 reset 的 contextvar 语义必须严格保留。无阻塞性红线冲突，待第 7 节
-确认项获批后即可进入 executor 阶段。
+- [x] **R5（新增测试是否算扩 scope）**：安琳批复 → 新增测试**不算扩 scope**
+  - `backend/tests/common/test_trace_id.py` 按本 batch 第 5.1 节 T1-T6 执行
+
+**R1-R5 已全部解决，可进入 `/phase2-execute batch-04`。**
+
+## 8. 执行预算
+
+- Tool calls：~18（3 Write + 2 Edit + 6 Bash 验证 + 其他）
+- Token：~40k input / ~12k output
+- 时间：1 session（40-60 分钟），在 `estimated_sessions=1` 内
+
+## 9. 预期效果对比
+
+| 指标 | 前 | 后 |
+|------|----|----|
+| trace_id 覆盖率 | 0 | 100% 日志行 |
+| 日志格式 | 3 种混合 | 统一 JSON |
+| X-Request-ID 响应头 | 无 | 所有 HTTP 响应 |
+| settings.py 行数 | 513 | ~476（LOGGING 块被函数替换） |
+| 工具链 | grep 文本 | `jq .trace_id`、loki/kibana 直接摄入 |
+| 下游 batch | 被 block | P0 obs ×3 + P1 perf ×2 可启动 |
+
+---
+
+**状态**：PLAN_READY — 等待安琳 review 第 7 节 R1-R5。

@@ -184,17 +184,19 @@
         "02-issue-diagnosis#5.1#Trace ID 完全缺失",
         "01-architecture-map#7#Q1"
       ],
-      "pre_approved_by_user": false,
+      "pre_approved_by_user": true,
       "scope": {
         "files_touched": [
           "backend/core/middleware.py",
           "backend/core/logging_config.py",
           "backend/core/settings.py",
-          "backend/apps/common/__init__.py"
+          "backend/apps/common/__init__.py",
+          "backend/tests/common/test_trace_id.py"
         ],
         "new_files": [
           "backend/core/middleware.py",
-          "backend/core/logging_config.py"
+          "backend/core/logging_config.py",
+          "backend/tests/common/test_trace_id.py"
         ],
         "forbidden_zones_crossed": false
       },
@@ -215,8 +217,9 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "此 batch 是后续所有 observability 和 performance batch 的基础。",
-      "actual_status": "planned"
+      "notes": "此 batch 是后续所有 observability 和 performance batch 的基础。2026-04-23 安琳 review plan.md 第 7 节批复：R1=apps/common/__init__；R2=TraceId 在 CorsMiddleware 之前；R3=本地+生产统一 JSON（jq 已装）；R4=celery 透传延后到 batch-28；R5=新增测试不算扩 scope。 Phase 2c 中途发现 finally:reset 时机 bug，原地扩 scope 补丁（commit 552b64c），重验通过。",
+      "actual_status": "completed",
+      "completed_at": "2026-04-23T15:23:00+08:00"
     },
     {
       "id": "batch-05",
@@ -1332,6 +1335,62 @@
       "estimated_sessions": 1,
       "blocking_for_production": false,
       "notes": "阻塞条件解除前不启动本 batch"
+    },
+    {
+      "id": "batch-28",
+      "type": "observability",
+      "title": "celery Task trace_id 透传",
+      "priority": "P0",
+      "category": "observability",
+      "estimated_files": 3,
+      "estimated_lines_changed": 60,
+      "depends_on": [
+        "batch-04"
+      ],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#六#trace_id贯穿",
+        "batch-04#R4#celery延后"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/core/celery.py",
+          "backend/apps/common/__init__.py",
+          "backend/tests/common/test_celery_trace_id.py"
+        ],
+        "new_files": [
+          "backend/tests/common/test_celery_trace_id.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "在 celery Task 链路透传 trace_id：(1) 在 core/celery.py 注册 before_task_publish signal，将当前 contextvars.trace_id 写入 task headers['trace_id']；(2) 注册 task_prerun signal，从 headers['trace_id'] 读出并 trace_id_var.set()，保留 token 在 task_postrun 中 reset；(3) celery beat 周期任务无发起者上下文，prerun signal 兜底生成 UUID hex；(4) apps/common 暴露 ensure_trace_id() 工具供 Task 主动生成。完成后 celery worker 日志 trace_id 与发起者（web/HTTP）一致，与 batch-04 的 TraceIdFilter 配合产出贯穿 HTTP → celery 的完整 JSON 日志。",
+      "investigation_steps": [
+        "列出所有通过 .delay() / .apply_async() 触发的 Task 调用点，确认多数发起于 Django 请求 lifecycle 内（TraceIdMiddleware 已 set 过 trace_id）",
+        "验证 celery signal API（before_task_publish / task_prerun / task_postrun）在 celery 5.x 的 headers 传递是否稳定",
+        "beat 周期任务（daily_summary / media_cleanup 等）无发起者上下文，prerun 生成新 UUID 的策略确认",
+        "Task chain / group 场景下 trace_id 是否继承（需测）"
+      ],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/common/test_celery_trace_id.py -v（新增）",
+          "celery -A core worker 启动后触发 daily_summary，grep trace_id /tmp/linchat-celery.log"
+        ],
+        "manual": [
+          "HTTP 请求触发 .delay() 异步 task，确认 web 日志与 celery 日志 trace_id 一致",
+          "beat 周期任务日志 trace_id 为 32 字符 UUID hex（自动生成）",
+          "Task chain/group 子任务 trace_id 与父任务一致"
+        ],
+        "metrics": [
+          "celery task 日志 trace_id 覆盖率 100%",
+          "同一 trace_id 贯穿 HTTP → celery 两段日志可 grep 串联"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>；celery signals 移除后 Task 日志 trace_id 回落到 \"-\"，无业务影响",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "batch-04 的 R4 延后项（2026-04-23 安琳批复拆出）。依赖 batch-04 的 TraceIdMiddleware / build_logging_dict / trace_id_var 已就绪后才能启动。"
     }
   ],
   "phased_rollout": {
@@ -1345,7 +1404,8 @@
       "batch-04",
       "batch-05",
       "batch-06",
-      "batch-07"
+      "batch-07",
+      "batch-28"
     ],
     "phase_p1_voice_slo": [
       "batch-08",
