@@ -265,7 +265,9 @@
       "risk": "low",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": ""
+      "notes": "",
+      "actual_status": "completed",
+      "completed_at": "2026-04-24"
     },
     {
       "id": "batch-06",

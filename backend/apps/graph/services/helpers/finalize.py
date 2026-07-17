@@ -1,6 +1,9 @@
+import logging
 import uuid
 
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 def finalize_message(msg, content, status, duration_ms, pt, ct):
@@ -26,6 +29,9 @@ def finalize_execution(
     if total_completion_tokens:
         ex.total_completion_tokens = total_completion_tokens
     if langfuse_handler and hasattr(langfuse_handler, "last_trace_id"):
+        # langfuse_handler.last_trace_id 是 Langfuse 内部生成的 hex，
+        # 与 HTTP X-Request-ID（batch-04 的 trace_id）是两个独立 id；
+        # 此字段仅供从 Langfuse UI 反查 LinChat 执行记录使用。
         ex.langfuse_trace_id = langfuse_handler.last_trace_id
     if error_type:
         ex.error_type = error_type
@@ -39,6 +45,10 @@ async def handle_execution_failure(
 ):
     end_time = timezone.now()
     duration_ms = int((end_time - start_time).total_seconds() * 1000)
+    logger.warning("execution failed", extra={
+        "request_id": execution.request_id, "error_type": error_type,
+        "error_message": str(error_message)[:200], "duration_ms": duration_ms,
+    })
     finalize_execution(
         execution, "failed", end_time, duration_ms,
         error_type=error_type, error_message=error_message,

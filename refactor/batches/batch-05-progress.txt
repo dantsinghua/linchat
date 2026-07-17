@@ -1,0 +1,81 @@
+# Batch batch-05 Progress
+# Type: observability | Priority: P0 | Risk: low
+# Title: trace_id 接入 chat/graph 链路
+# Depends on: batch-04 (COMPLETED, 552b64c)
+
+## Phase 2a: Initializer
+- Started: 2026-04-23
+- Completed: 2026-04-23
+- Plan: refactor/batches/batch-05-plan.md
+- Scope verified: 6 files, all <=246 lines (≤300 hard limit), all within scope.files_touched
+- Dependencies verified:
+  - batch-04 marked STATUS: COMPLETED (refactor/batches/batch-04-progress.txt)
+  - apps.common.trace_id_var / get_trace_id exported (apps/common/__init__.py:11,14)
+  - JSON logging + TraceIdMiddleware production-verified (batch-04-validation.md §5)
+- Open Questions: 全部由安琳 2026-04-23 拍板
+  * Q1 = A (保留 request_id 字段名，语义等于 trace_id)
+  * Q2 = A (SSE heartbeat wire 不变，仅后端日志加 trace_id)
+  * Q3 = 统一 hex (llm-gateway 无 UUID 格式校验)
+  * Q4 = 接受 (agent_service execute 幂等 set contextvar)
+- Status: REVIEWED
+
+## Phase 2b: Executor
+- Started: 2026-04-23
+- Completed: 2026-04-23
+- Starting commit: d71525a (tag before-batch-05)
+- Executor path: initial subagent paused by plan mode after File 1 done + File 2 import; resumed subagent blocked by Bash permission; 最终由主线程接手完成 Files 2-6 + 验证 + commit
+- Files changed: 6 (business) + 1 (progress bookkeeping)
+  * backend/apps/chat/services/chat_service.py       (+7 -2)   — request_id 从 uuid4().hex 改为 get_trace_id() 优先 + log extra
+  * backend/apps/graph/services/agent_service.py     (+16 -6)  — trace_id_var.set 幂等覆盖 + 6 处 logger extra
+  * backend/apps/graph/services/helpers/prompt.py    (+1 -1)   — memory recall 失败日志改 extra
+  * backend/apps/graph/services/helpers/finalize.py  (+10 -0)  — logger 模块 + handle_execution_failure warning + langfuse 注释
+  * backend/apps/common/sse.py                       (+5 -2)   — heartbeat debug 日志 + cancelled/error 改 extra
+  * backend/apps/common/gateway_utils.py             (+6 -1)   — build_gateway_headers 继承 trace_id + record_gateway_span metadata 加 trace_id
+- Total diff: +47 -14（vs plan 预估 +39 -13；+8 delta 来自注释块和 finalize logger 模块导入）
+- Ruff: 12 个 E701/E702 全部 pre-existing (batch-03 精简残留)，无新增
+- Target tests (Gate 1):
+  * pytest tests/chat/            -> 369 passed / 9 skipped
+  * pytest tests/apps/graph/      -> 89 passed
+  * pytest tests/common/test_trace_id.py -> 12 passed (batch-04 回归 clean)
+  * pytest tests/integration/test_sse_async.py -> 8 passed
+- Regression (Gate 2):
+  * pytest (full)                 -> 1606 passed / 9 skipped / 0 failed (47.26s)  ≥ baseline 1603
+  * pytest tests/voice/           -> 688 passed (Q4 voice 路径幂等 set contextvar 无回归)
+- Assumptions verified:
+  * H1: apps.common.trace_id_var / get_trace_id 导入无错（ruff + 测试均通过）
+  * H2: voice_pipeline 不经 middleware，execute 内 trace_id_var.set 在并发 / cancel 路径正确 reset（voice 测试 688 绿）
+  * H3: langfuse_trace_id 字段保留（finalize.py 改动 4.2 仅加注释）
+  * H4: StreamChunk.request_id 契约未破坏（chat 369 + integration 8 绿）
+  * H5: gateway_utils 12 E701 全 batch-03 残留（vs batch-05 预估 13，少 1 条是因为 batch-05 新增非 E701 格式代码）
+  * H6: monitor.py 未动（plan 预测的 Langfuse trace_id 自动等于 HTTP trace_id）
+- Plan vs actual divergence:
+  * agent_service.py 净 +16 vs plan +15（reset 注释多 1 行）
+  * sse.py 净 +5 vs plan +3（heartbeat 注释多 2 行）
+  * gateway_utils.py 净 +6 vs plan +5（get_trace_id 注释多 1 行）
+  * 所有偏离均为注释 / 说明性内容，无业务逻辑偏离
+
+## Phase 2c: Validator
+- Started: 2026-04-24
+- Completed: 2026-04-24
+- Validation report: refactor/batches/batch-05-validation.md
+- Runtime E2E report: refactor/batches/batch-05-runtime-e2e.md
+- E2E script: scripts/validate-batch-05.sh
+- Automated checks:
+  * Gate 1 target tests  -> 478 passed / 9 skipped / 0 failed
+  * Gate 2 full suite    -> 1606 passed / 9 skipped / 0 failed (72.10s, ≥ baseline 1603)
+  * Voice regression     -> 688 passed (contextvar 幂等 set 无回归)
+  * Ruff 6 文件          -> 12 errors (baseline 13 → 当前 12, 净减 1, 零新增)
+  * Diff                 -> +45 -12 业务代码（progress.txt 自身再 +2）
+  * Rollback tag         -> before-batch-05 = d71525a ✅
+- Manual E2E (安琳 2026-04-24, 8/8 PASS):
+  * [1] 后端日志合法 JSON ✅
+  * [2a] TID 日志条数 = 23 (≥10) ✅
+  * [2b] logger 覆盖业务 + 框架层（chat_service/sse/monitoring/langfuse/uvicorn.access）✅
+  * [3a] 响应头 X-Request-ID 回写 ✅
+  * [3b] DB Message.request_id == TID ✅
+  * [4] Langfuse trace 包含 TID ✅
+  * [5] Gateway record_gateway_span — SOFT PASS（plain text chat 走 ChatOpenAI，不触发；改动 6.1/6.2 留下次多模态/文档/语音场景补证）
+  * [6] 并发 2 TID (A=24 / B=25 / 0 crosstalk) ✅
+- Final status: COMPLETED
+
+STATUS: COMPLETED

@@ -9,6 +9,7 @@ from apps.chat.models import Message
 from apps.chat.repositories import message_repo
 from apps.chat.services.generation import get_stop_event, signal_stop
 from apps.chat.services.types import MessageVO, StreamChunk
+from apps.common import get_trace_id
 from apps.common.exceptions import EmptyMessageException, MessageTooLongException
 from apps.graph.agent import get_thread_id
 
@@ -34,7 +35,10 @@ class ChatService:
         if not content: raise EmptyMessageException("消息内容不能为空")
         if len(content) > settings.MAX_MESSAGE_LENGTH:
             raise MessageTooLongException(f"消息长度不能超过{settings.MAX_MESSAGE_LENGTH}字符")
-        request_id = uuid.uuid4().hex
+        # batch-05：HTTP 路径复用 TraceIdMiddleware 设置的 trace_id；
+        # 非 HTTP 路径（voice WS / pytest 直调）回退 uuid4().hex，保留历史语义
+        request_id = get_trace_id() or uuid.uuid4().hex
+        logger.info("chat send start", extra={"user_id": user_id, "request_id": request_id})
         thread_id = get_thread_id(user_id)
         async for chunk in AgentService.execute(
             user_id=user_id, thread_id=thread_id, request_id=request_id,
@@ -44,7 +48,8 @@ class ChatService:
     @staticmethod
     async def stop_generation(user_id: int, request_id: str) -> bool:
         success = signal_stop(request_id)
-        if success: logger.info(f"Stop signal sent for request {request_id}")
+        if success:
+            logger.info("stop signal sent", extra={"user_id": user_id, "request_id": request_id})
         return success
 
     @staticmethod
