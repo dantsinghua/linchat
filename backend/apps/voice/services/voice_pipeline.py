@@ -6,6 +6,7 @@ from typing import Any, ClassVar, Optional
 
 from django.conf import settings
 
+from apps.common import trace_id_var
 from apps.graph.services.agent_service import AgentService
 from apps.graph.services.inference_service import InferenceService
 from apps.voice.services.tts_pipeline_manager import TTSPipelineManager
@@ -30,7 +31,8 @@ class VoicePipeline:
     async def cancel(cls, user_id: int) -> bool:
         success, request_id = await InferenceService.cancel_task(user_id)
         if success:
-            logger.info("Pipeline cancelled: user=%s, request_id=%s", user_id, request_id)
+            logger.info("voice", extra={"stage": "pipeline.cancel",
+                        "user_id": user_id, "request_id": request_id})
         mgr = cls._active_managers.pop(user_id, None)
         if mgr:
             await mgr.cancel()
@@ -46,7 +48,8 @@ class VoicePipeline:
             await voice_session_service.set_active_conversation(user_id)
         lock = _get_lock(conn_uid)
         if lock.locked():
-            logger.info("Barge-in: user=%s, seg=%s", user_id, segment_id)
+            logger.info("voice", extra={"stage": "pipeline.barge_in",
+                        "user_id": user_id, "seg": segment_id})
             await VoicePipeline.cancel(conn_uid)
             try:
                 await asyncio.wait_for(lock.acquire(), timeout=2.0)
@@ -64,6 +67,12 @@ class VoicePipeline:
         request_id = uuid.uuid4().hex
         response_id = f"voice_{request_id[:16]}"
         start_time = time.monotonic()
+
+        trace_id = getattr(consumer, "_trace_id", None) or request_id
+        trace_id_var.set(trace_id)
+        logger.info("voice", extra={"stage": "pipeline.start",
+                    "user_id": user_id, "seg": segment_id,
+                    "request_id": request_id, "mode": mode, "text_len": len(text)})
 
         if not await voice_session_service.check_llm_rate_limit(user_id):
             await consumer._send_json(error_msg("RATE_LIMIT", "语音推理频率超限，请稍后再试"))
@@ -83,11 +92,19 @@ class VoicePipeline:
         )
 
         error_occurred, full_response = False, ""
+        agent_start = time.monotonic()
+        first_token_ts: Optional[float] = None
         try:
             async for chunk in AgentService.execute(
                 user_id=user_id, thread_id=f"user_{user_id}",
                 request_id=request_id, user_message=voice_text):
                 if chunk.type == "content":
+                    if first_token_ts is None and chunk.content:
+                        first_token_ts = time.monotonic()
+                        logger.info("voice", extra={"stage": "pipeline.agent_first_token",
+                                    "user_id": user_id, "seg": segment_id,
+                                    "request_id": request_id,
+                                    "duration_ms": int((first_token_ts - agent_start) * 1000)})
                     await consumer._send_json(delta_msg(chunk.content, response_id))
                     full_response += chunk.content
                 elif chunk.type == "interrupted":
@@ -99,13 +116,20 @@ class VoicePipeline:
                         tts_manager.stop_comfort_timer()
                         tts_manager.enqueue(settings.VOICE_TTS_ERROR_TEXT, "error")
                     break
+            logger.info("voice", extra={"stage": "pipeline.agent_total",
+                        "user_id": user_id, "seg": segment_id,
+                        "request_id": request_id,
+                        "duration_ms": int((time.monotonic() - agent_start) * 1000),
+                        "resp_len": len(full_response), "error": error_occurred})
             if not error_occurred and tts_manager:
                 tts_manager.stop_comfort_timer()
                 if full_response.strip():
                     tts_manager.enqueue(full_response, "response")
         except Exception as e:
             error_occurred = True
-            logger.error("Pipeline error: user=%s, err=%s", user_id, e, exc_info=True)
+            logger.error("voice", extra={"stage": "pipeline.error",
+                         "user_id": user_id, "seg": segment_id,
+                         "request_id": request_id, "err": str(e)}, exc_info=True)
             await consumer._send_json(error_msg("PIPELINE_ERROR", "语音推理管道异常"))
             if tts_manager:
                 tts_manager.stop_comfort_timer()
@@ -132,6 +156,10 @@ class VoicePipeline:
 
         conn_uid = connection_user_id or user_id
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        logger.info("voice", extra={"stage": "pipeline.end",
+                    "user_id": user_id, "seg": segment_id,
+                    "request_id": request_id, "duration_ms": elapsed_ms,
+                    "error": error_occurred, "resp_len": len(full_response)})
         await consumer._send_json(response_event("response.end", response_id, segment_id, duration_ms=elapsed_ms))
         # ambient 模式：更新用户消息为 ASR 原文（去掉 [语音对话] prompt 前缀）
         if not error_occurred and mode == "ambient":
@@ -171,6 +199,7 @@ class VoicePipeline:
     @staticmethod
     async def _try_ha_speaker_tts(user_id: int, text: str) -> None:
         """016: 尝试通过 HA 音箱播报 TTS，失败则降级到浏览器（已由 TTSRouter 处理）。"""
+        t0 = time.monotonic()
         try:
             from apps.voice.repositories import voice_settings_repo
             vs, _ = await voice_settings_repo.get_or_create(user_id)
@@ -181,6 +210,11 @@ class VoicePipeline:
             tts_router = TTSRouter()
             try:
                 await tts_router.send_to_ha_speaker(vs.ha_speaker_entity_id, text)
+                logger.info("voice", extra={"stage": "tts.ha_speaker",
+                            "user_id": user_id,
+                            "duration_ms": int((time.monotonic() - t0) * 1000),
+                            "entity_id": vs.ha_speaker_entity_id,
+                            "text_len": len(text)})
             except HASpeakerError as e:
                 logger.warning("HA 音箱不可达，降级到浏览器: user=%s, err=%s", user_id, e)
                 await tts_router.send_warning(

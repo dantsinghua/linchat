@@ -4,6 +4,8 @@ import time
 
 from django.conf import settings
 
+from apps.common import trace_id_var
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,13 +15,17 @@ class InferenceMixin:
         self, segment_id: str, text: str, speaker_id: str | None = None,
         pipeline_user_id: int | None = None,
     ) -> None:
-        from apps.voice.services.voice_pipeline import VoicePipeline  # noqa: F811
+        from apps.voice.services.voice_pipeline import VoicePipeline  # noqa: F401,F811
         mode = getattr(self, "_mode", "ambient")
         target_uid = pipeline_user_id or self.user_id
-        logger.info("Pipeline launch: user=%s, target=%s, seg=%s, mode=%s, text=%s",
-            self.user_id, target_uid, segment_id, mode, text[:30])
+        logger.info("voice", extra={"stage": "pipeline.launch",
+                    "user_id": self.user_id, "target_user_id": target_uid,
+                    "seg": segment_id, "mode": mode, "text_len": len(text)})
+        tid = getattr(self, "_trace_id", None)
 
         async def _wrapped():
+            if tid:
+                trace_id_var.set(tid)
             try:
                 await self._run_pipeline_task(segment_id, text, mode, speaker_id,
                                               pipeline_user_id=target_uid)
@@ -68,11 +74,13 @@ class InferenceMixin:
         if is_speaking or (aggregator and aggregator.state == "COLLECTING"):
             if aggregator:
                 await aggregator.add(pending)
-                logger.info("Pipeline done, fed pending to aggregator: user=%s, speaker=%s, speaking=%s",
-                    self.user_id, pending_speaker, is_speaking)
+                logger.info("voice", extra={"stage": "pipeline.pending_fed",
+                            "user_id": self.user_id, "pending_speaker": pending_speaker,
+                            "is_speaking": is_speaking, "pending_len": len(pending)})
         else:
-            logger.info("Pipeline done, processing pending: user=%s, speaker=%s, text='%s'",
-                self.user_id, pending_speaker, pending[:80])
+            logger.info("voice", extra={"stage": "pipeline.pending_flush",
+                        "user_id": self.user_id, "pending_speaker": pending_speaker,
+                        "pending_len": len(pending)})
             await self._start_voice_pipeline(
                 getattr(self, "_current_segment_id", None) or "pending",
                 pending, pipeline_user_id=pending_speaker)

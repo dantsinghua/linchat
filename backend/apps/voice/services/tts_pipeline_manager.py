@@ -86,6 +86,10 @@ class TTSPipelineManager:
         try:
             while True:
                 item = await self._queue.get()
+                logger.info("voice", extra={"stage": "tts.dequeue",
+                            "item_type": item.item_type,
+                            "queue_len": self._queue.qsize(),
+                            "text_len": len(item.text)})
                 if self._cancelled or item.item_type == "sentinel":
                     self._queue.task_done()
                     break
@@ -103,11 +107,15 @@ class TTSPipelineManager:
     async def _play_text(self, text: str) -> None:
         tts = TTSStreamClient(on_audio=self._on_audio)
         self._current_tts = tts
+        t0 = time.monotonic()
         try:
             await tts.connect()
             await tts.configure(voice=self._voice)
             await tts.send_text_delta(text)
             await tts.send_text_done()
+            logger.info("voice", extra={"stage": "tts.wait_done_start",
+                        "text_len": len(text),
+                        "timeout_s": settings.VOICE_TTS_TIMEOUT})
             await tts.wait_for_done(timeout=settings.VOICE_TTS_TIMEOUT)
         except Exception:
             logger.warning("TTS play failed: text=%s", text[:30])
@@ -117,6 +125,9 @@ class TTSPipelineManager:
                 await tts.disconnect()
             except Exception:
                 pass
+            logger.info("voice", extra={"stage": "tts.play",
+                        "duration_ms": int((time.monotonic() - t0) * 1000),
+                        "text_len": len(text)})
 
     async def _ensure_gap(self) -> None:
         if self._last_end <= 0:
