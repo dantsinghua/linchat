@@ -12,8 +12,7 @@ Agent 执行服务包，封装 LangGraph Agent 的完整执行生命周期。
 |------|------|
 | `__init__.py` | 统一导出 AgentService, ContextService, GPULockTimeout, InferenceService, acquire_gpu_lock, inference_service |
 | `agent_service.py` | Agent 执行入口 (`execute`/`resume`)，流式 SSE 输出 |
-| `agent_helpers.py` | 向后兼容 re-export 层；逻辑已迁移到 `helpers/`，保留 `finalize_interrupted`/`push_monitor_update`/`check_context_compression`/`compress_context` 等遗留适配函数 |
-| `helpers/` | Agent 辅助函数包（从 agent_helpers.py 拆分为 4 个子模块，见下表） |
+| `helpers/` | Agent 辅助函数包（4 个子模块，见下表） |
 | `cancel_monitor.py` | 推理取消信号监听：Redis Pub/Sub 优先，降级为轮询 |
 | `context_service.py` | 上下文窗口管理：token 限额检查、三级压缩、LLM 摘要、完整上下文构建 |
 | `gpu_lock.py` | GPU 互斥锁：Redis 分布式锁 + 心跳续期，避免多模态推理显存冲突 |

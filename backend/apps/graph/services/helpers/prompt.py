@@ -3,7 +3,7 @@ import logging
 
 from django.conf import settings
 
-from apps.graph.prompts import PromptBuilder, PromptConfig, RetrievedMemory
+from apps.context import PromptBuilder, PromptConfig, RetrievedMemory
 
 logger = logging.getLogger(__name__)
 

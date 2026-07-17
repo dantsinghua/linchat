@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from apps.graph.prompts import (
+from apps.context import (
     BASE_SYSTEM_PROMPT,
     BEHAVIOR_GUIDELINES,
     COMPACTION_PROMPT_TEMPLATE,

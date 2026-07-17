@@ -64,7 +64,7 @@ class TestCleanExpiredMedia(TestCase):
         a1 = self._create_attachment("001")
         a2 = self._create_attachment("002")
 
-        from apps.chat.tasks import clean_expired_media
+        from apps.media.tasks import clean_expired_media
 
         stats = clean_expired_media()
 
@@ -84,7 +84,7 @@ class TestCleanExpiredMedia(TestCase):
     @patch("apps.common.storage.minio_service.minio_service")
     def test_empty_result_set(self, mock_minio: MagicMock) -> None:
         """无过期附件时正常返回空统计"""
-        from apps.chat.tasks import clean_expired_media
+        from apps.media.tasks import clean_expired_media
 
         stats = clean_expired_media()
 
@@ -101,7 +101,7 @@ class TestCleanExpiredMedia(TestCase):
         self._create_attachment("active", expired=False)
         expired = self._create_attachment("expired", expired=True)
 
-        from apps.chat.tasks import clean_expired_media
+        from apps.media.tasks import clean_expired_media
 
         stats = clean_expired_media()
 
@@ -118,7 +118,7 @@ class TestCleanExpiredMedia(TestCase):
 
         self._create_attachment("already-done", expired=True, is_expired=True)
 
-        from apps.chat.tasks import clean_expired_media
+        from apps.media.tasks import clean_expired_media
 
         stats = clean_expired_media()
 
@@ -135,7 +135,7 @@ class TestCleanExpiredMedia(TestCase):
         a1 = self._create_attachment("fail")
         a2 = self._create_attachment("success")
 
-        from apps.chat.tasks import clean_expired_media
+        from apps.media.tasks import clean_expired_media
 
         stats = clean_expired_media()
 
@@ -161,7 +161,7 @@ class TestCleanExpiredMedia(TestCase):
         for i in range(12):
             attachments.append(self._create_attachment(f"fail-{i:03d}"))
 
-        from apps.chat.tasks import clean_expired_media
+        from apps.media.tasks import clean_expired_media
 
         with self.assertLogs("apps.media.tasks", level="CRITICAL") as cm:
             stats = clean_expired_media()
@@ -189,7 +189,7 @@ class TestCleanExpiredMedia(TestCase):
         for i in range(10):
             self._create_attachment(f"mixed-{i:03d}")
 
-        from apps.chat.tasks import clean_expired_media
+        from apps.media.tasks import clean_expired_media
 
         stats = clean_expired_media()
 
@@ -206,7 +206,7 @@ class TestCleanExpiredMedia(TestCase):
 
         att = self._create_attachment("params-check")
 
-        from apps.chat.tasks import clean_expired_media
+        from apps.media.tasks import clean_expired_media
 
         clean_expired_media()
 
@@ -224,7 +224,7 @@ class TestCleanExpiredMedia(TestCase):
         for i in range(3):
             self._create_attachment(f"batch-{i:03d}")
 
-        from apps.chat.tasks import clean_expired_media
+        from apps.media.tasks import clean_expired_media
 
         stats = clean_expired_media()
 
