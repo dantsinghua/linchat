@@ -29,7 +29,23 @@
 - 既存债务（非本改动引入）：ws_client_base.py 第32/69行 mypy(websockets16移除WebSocketClientProtocol)；
   该文件旧日志行超black88行宽（plan未涉及，不越界改）
 
-## Phase 2c: Validator
-- (尚未开始)
+### Commit B — 4.2 预连接提前（目标①，flag 默认 off）
+- [x] settings.py：新增 VOICE_TTS_PRECONNECT_ENABLED（默认 false，决策①）+3
+- [x] tts_pipeline_manager.py：_current_tts 延迟认领——从 connect 处下移到首帧 delta；
+      finally 加「仅清本流认领」防御，隔离预连接×comfort 时间窗竞争 +8 -2
+- [x] voice_pipeline.py：pipeline 起点并行预连接分支 + comfort_stopped 解耦（首句真正出声才撤）+11 -2
+- [x] test_voice_pipeline.py：mock_tts fixture 补齐流式动词 + 新增 TestTTSPreconnect 5 测试
+- 验证：ruff OK；预连接 5 passed；voice_pipeline 41 passed；incremental 15 passed；
+  全量 tests/voice/ 729 passed
+- mypy：改动逻辑行零新增 error（既有：websockets16 类型 / django import / latency_record int|None 类型债）
+- 精简：无未用import/注释代码/裸except；voice_pipeline 309行、pipeline_manager 266行、
+  test 文件超限 → 均既有尺寸，登记 simplify-candidates.md（P2 拆分，含决策⑤）
+- 延后 backlog（决策③④）：1006 运行时佐证（线下触发3次语音看日志）+ 收益压测 P50 佐证
 
-STATUS: EXECUTING
+### 环境红线遵守
+- 全程只读改代码/跑lint/跑pytest(systemd-run包裹)/git；未碰 docker/services.sh/构建产物
+
+## Phase 2c: Validator
+- (尚未开始，可运行 /phase2-validate batch-10)
+
+STATUS: EXECUTED
