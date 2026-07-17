@@ -13,7 +13,7 @@ from django.conf import settings
 from apps.common.responses import ApiResponse
 from apps.common.sse import first_validation_error
 from apps.media.serializers import DocumentParseRequestSerializer, MediaAttachmentSerializer
-from apps.media.services import DocumentParseError, DocumentParseService, MediaService, MediaUploadError
+from apps.media.services import DocumentParseError, DocumentParseService, MediaService, MediaUploadError, get_cached_result
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def parse_document(request: Request) -> Response:
 
             attachment = async_to_sync(media_attachment_repo.get_by_uuid)(attachment_uuid, user_id)
             if attachment:
-                cached = async_to_sync(DocumentParseService.get_cached_result)(attachment)
+                cached = async_to_sync(get_cached_result)(attachment)
                 if cached:
                     max_len = getattr(settings, "DOC_PARSE_MAX_RESULT_LENGTH", 6000)
                     return ApiResponse.success(data={"cached": True, "content": cached[:max_len], "format": "markdown"})

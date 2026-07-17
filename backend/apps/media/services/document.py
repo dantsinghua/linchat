@@ -186,31 +186,4 @@ class DocumentParseService:
                 data={"type": evt, "task_id": task_id, "status": "failed", "progress": {}, "error_message": f"轮询异常: {e}"})
 
 
-    # Backward-compat delegators — logic moved to document_cache.py / document_rag.py
-    @staticmethod
-    async def get_cached_result(attachment):
-        from apps.media.services.document_cache import get_cached_result
-        return await get_cached_result(attachment)
-
-    @staticmethod
-    async def save_parsed_result(attachment, content):
-        from apps.media.services.document_cache import save_parsed_result
-        return await save_parsed_result(attachment, content)
-
-    @staticmethod
-    async def clear_parsed_cache(attachment):
-        from apps.media.services.document_cache import clear_parsed_cache
-        return await clear_parsed_cache(attachment)
-
-    @staticmethod
-    def chunk_document(content, chunk_size=800, overlap=100):
-        from apps.media.services.document_rag import chunk_document
-        return chunk_document(content, chunk_size, overlap)
-
-    @staticmethod
-    async def search_documents_rag(user_id, query, mode="hybrid", limit=5):
-        from apps.media.services.document_rag import search_documents_rag
-        return await search_documents_rag(user_id, query, mode, limit)
-
-
 document_parse_service = DocumentParseService()

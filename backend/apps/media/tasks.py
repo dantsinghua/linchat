@@ -47,7 +47,7 @@ def generate_document_embeddings(attachment_id: int) -> None:
     """分块 + 生成 Embedding 向量 — Celery 异步任务"""
     from apps.media.models import MediaAttachment
     from apps.media.repositories import doc_chunk_repo, media_attachment_repo
-    from apps.media.services.document import DocumentParseService
+    from apps.media.services.document_rag import chunk_document
     from apps.memory.task_helpers import has_active_users
 
     try:
@@ -71,7 +71,7 @@ def generate_document_embeddings(attachment_id: int) -> None:
     try:
         chunk_size = getattr(settings, "DOC_CHUNK_SIZE", 800)
         chunk_overlap = getattr(settings, "DOC_CHUNK_OVERLAP", 100)
-        chunks = DocumentParseService.chunk_document(attachment.parsed_content, chunk_size, chunk_overlap)
+        chunks = chunk_document(attachment.parsed_content, chunk_size, chunk_overlap)
 
         if not chunks:
             logger.warning("Doc embedding: no chunks generated id=%d", attachment_id)
