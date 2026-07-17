@@ -118,3 +118,5 @@ STATUS: PLAN_READY
 - STATUS: PLAN_READY
 
 [batch-33] 2026-07-17 PLAN_READY — voice service ORM 收敛计划生成，8 直连点，6 文件，待安琳 review（scope+media_repo / PD-4 / is_voice.save 边界）。STATUS: PLAN_READY
+
+[batch-34 PLAN_READY 2026-07-17 21:31] chat/services 剩余 6 shim + context/tokenizer 删除计划就绪（batch-15 Part B）。12 文件(6删+6改repoint)/~30行编辑。差异：scope 漏 test_document_parse_views.py(实际12非11)；multimodal_agent 实际在 subagents/ 非 tools/；rg 残留检查命中 common/CLAUDE.md 文档行。目标模块符号全核实。等 review → /phase2-execute batch-34

@@ -1,0 +1,21 @@
+# Batch batch-34 Progress
+# Type: refactor | Priority: P2
+
+## Phase 2a: Initializer
+- Started: 2026-07-17 21:31
+- Base HEAD: 91929b8 (main)
+- Plan generated: refactor/batches/batch-34-plan.md (136 行)
+- 依赖核实：batch-15 = COMPLETED (loopctl 2026-07-17 15:12:07)
+- 核实：6 shim 全存在（doc_parse/inference/media/gpu_lock/minio + context/tokenizer）
+- 调用点 rg 实测：__init__ 中枢 4 处(L21-24) + context/__init__:30 + gpu_lock 生产 subagents/multimodal_agent.py:17 + 3 测试点(doc_parse_service:21 / doc_parse_views:21 / inference_cancel:24)
+- 目标模块导出：全部核对存在且符号一致
+- 差异记录：①scope 漏 test_document_parse_views.py（实际12文件非11）②multimodal_agent 实际在 subagents/ 非 tools/ ③rg 残留检查会命中 common/CLAUDE.md:29 文档
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor
+- (尚未开始)
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: PLAN_READY
