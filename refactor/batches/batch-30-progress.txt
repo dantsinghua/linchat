@@ -1,0 +1,41 @@
+# Batch-30 Progress
+# Type: refactor/performance | Priority: P1 | Risk: high
+# Title: 决策 LLM 意图分类移出关键路径（高置信规则短路）
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Dependency batch-29: COMPLETED (decision_llm 埋点已就位)
+- Plan generated: refactor/batches/batch-30-plan.md (183 lines)
+- Key findings:
+  * LLM 现处 decide() step5，先于 active_conv/question；下移到 question 后即达标
+  * 收益仅惠及 question/active_conv 输入；普通声明句仍走 LLM (BC4)
+  * SCOPE GAP: 行为回归测试在 test_response_decision_llm.py (1463行, scope外)，
+    3 个测试编码旧顺序，flag=true 必失败，需纳入 scope (§7 待确认)
+  * 主风险 BC2: 短路 question→RESPOND 增加人际问答误触发，与历史调参方向相反
+- Blocking items for 安琳: 4 项 (scope+1文件 / flag默认值 / BC2哲学冲突 / BC3 multi_speaker位置)
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- Branch: refactor/batch-30 (from main @ 2e3b13c)
+- 拍板决策（team-lead）：①scope+test_response_decision_llm.py 批准 ②flag 默认 false（dark-launch）
+  ③flag off 行为与现状 identical，须含守护用例 ④BC3 multi_speaker 按 plan 设计 A
+- 性能 baseline：Gateway 离线，跳过 measure（plan §8.4 注：代码合并不依赖压测）
+
+## Phase 2b: Executor (completed 2026-07-17)
+- 改动 4 文件：
+  * backend/core/settings/voice.py (+6)：新增 flag VOICE_DECISION_SHORTCIRCUIT_ENABLED（默认 false）
+  * backend/apps/voice/services/response_decision_service.py (+25 -3)：decide() flag 门控重排
+    - flag=true：active_conv/question 先短路 RESPOND，LLM 降为末位歧义声明句兜底
+    - flag=false（else 分支）：保持旧顺序（LLM 先于规则），逐字节等价现状
+  * backend/tests/voice/test_response_decision.py (+119)：TestShortCircuitMatrix 7 用例（M1/M2/M3/M4/M7/M8 + flag=false 守护）
+  * backend/tests/voice/test_response_decision_llm.py (+112)：TestShortCircuitFlagOn 3 用例（flag=true 双轨，真实 httpx mock）
+- lint：4 文件零新增错误（既有 ruff E701×2 + black/isort 未格式化 + 1 F401 均 HEAD 基线已存在，plan §2 注明不顺手改）
+- flag off 守护用例：既有 143 用例（flag=false 默认）全绿 → 行为与现状 identical ✅
+- 局部测试：新增 10 用例全绿；tests/voice/ 全量 787 passed / 0 failed (28s)
+- 性能 baseline：Gateway 离线跳过（plan §8.4：代码合并不依赖压测）
+- 精简：plan §2 判定潜力低，无未用 import/注释代码/裸 except，E701 既有不改
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED

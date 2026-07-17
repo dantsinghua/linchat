@@ -96,3 +96,11 @@ STATUS: PLAN_READY (batch-25)
 
 [2026-07-17 18:18:32] batch-29 initializer: PLAN_READY — 3 缺跳埋点计划已生成 refactor/batches/batch-29-plan.md，待安琳 review
 STATUS: PLAN_READY (batch-29)
+
+## batch-30 (决策LLM移出关键路径/高置信短路, P1, refactor) — 2026-07-17
+- batch-initializer 完成计划: refactor/batches/batch-30-plan.md (183行)
+- 依赖 batch-29 COMPLETED ✅
+- 方案: decide() 内 LLM 块从 step5 下移到 question 后，新 flag VOICE_DECISION_SHORTCIRCUIT_ENABLED 门控(默认建议false灰度)
+- 改动 4 文件(scope标3, 实需+test_response_decision_llm.py)，~120行
+- 4 项待安琳确认: scope+1测试文件 / flag默认值 / BC2人际问答误触发哲学冲突 / BC3 multi_speaker位置
+STATUS: PLAN_READY
