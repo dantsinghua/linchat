@@ -1783,7 +1783,7 @@
       "estimated_sessions": 1,
       "blocking_for_production": false,
       "notes": "小体量但完成 batch-16 遗留的 chat/services 迁移一致性。rediagnosis R3 新增（继承 backlog 延后项）。",
-      "actual_status": "planned"
+      "actual_status": "completed"
     },
     {
       "id": "batch-36",
