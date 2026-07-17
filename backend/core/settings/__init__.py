@@ -194,103 +194,6 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
-# Django REST Framework 配置
-# 参考: constitution.md#1.2 接口设计
-REST_FRAMEWORK = {
-    "DEFAULT_RENDERER_CLASSES": [
-        "rest_framework.renderers.JSONRenderer",
-    ],
-    "DEFAULT_PARSER_CLASSES": [
-        "rest_framework.parsers.JSONParser",
-    ],
-    "DEFAULT_AUTHENTICATION_CLASSES": [],  # 自定义Token认证
-    "DEFAULT_PERMISSION_CLASSES": [],  # 自定义权限控制
-    "EXCEPTION_HANDLER": "apps.common.exceptions.custom_exception_handler",
-    "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
-    ],
-    "DEFAULT_THROTTLE_RATES": {
-        "anon": "100/hour",  # 匿名用户100次/时
-        "user": "1000/hour",  # 认证用户1000次/时
-    },
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.CursorPagination",
-    "PAGE_SIZE": 20,
-}
-
-
-# CORS 配置
-CORS_ALLOWED_ORIGINS = os.getenv(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
-).split(",")
-CORS_ALLOW_CREDENTIALS = True  # 允许携带Cookie
-
-
-# 安全配置
-# 参考: constitution.md#4.1 认证授权
-SECURE_BROWSER_XSS_FILTER = True
-SECURE_CONTENT_TYPE_NOSNIFF = True
-X_FRAME_OPTIONS = "DENY"
-
-# Cookie 安全配置 (Token 必须存储在 httpOnly Cookie)
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_HTTPONLY = True
-CSRF_COOKIE_SECURE = not DEBUG
-
-
-# 国密算法配置
-# 参考: constitution.md#4.2 数据保护
-SM4_SECRET_KEY = os.getenv("SM4_SECRET_KEY", "default-sm4-key-16")  # 必须16字节
-
-
-# LLM 服务配置
-# 注: LLM_API_BASE/LLM_API_KEY/LLM_MODEL_NAME 已迁移到数据库（model 表）
-# 通过 apps.models.services.model_service.get_active_model() 获取
-
-# LLM 超时和重试配置
-# 参考: rule-model.md#R_AGENT_001 和 R_LLM_RETRY_001
-LLM_CALL_TIMEOUT = int(os.getenv("LLM_CALL_TIMEOUT", "60"))  # 单次调用超时: 60秒
-AGENT_TOTAL_TIMEOUT = int(os.getenv("AGENT_TOTAL_TIMEOUT", "300"))  # Agent总超时: 300秒
-LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))  # 最大重试次数
-SUBAGENT_TIMEOUT = int(
-    os.getenv("SUBAGENT_TIMEOUT", "60")
-)  # SubAgent 单次执行超时: 60秒
-LLM_INITIAL_RETRY_DELAY = float(
-    os.getenv("LLM_INITIAL_RETRY_DELAY", "1.0")
-)  # 初始重试延迟(秒)
-LLM_MAX_RETRY_DELAY = float(os.getenv("LLM_MAX_RETRY_DELAY", "8.0"))  # 最大重试延迟(秒)
-LLM_RETRY_BACKOFF = float(os.getenv("LLM_RETRY_BACKOFF", "2.0"))  # 退避倍数
-
-# 消息配置
-# 参考: rule-model.md#R_MSG_001
-MAX_MESSAGE_LENGTH = int(os.getenv("MAX_MESSAGE_LENGTH", "4000"))  # 最大消息长度
-
-
-# Langfuse 配置
-LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
-LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
-LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://localhost:3001")
-
-
-# LangGraph Checkpoint 配置
-# 参考: data-model.md#五、LangGraph RedisSaver 配置
-# TTL 单位为分钟（已通过 LangGraph 官方文档确认）
-# 参考: https://github.com/redis-developer/langgraph-redis
-LANGGRAPH_CHECKPOINT_TTL = 60 * 24  # 24小时 = 1440分钟
-LANGGRAPH_CHECKPOINT_REFRESH_ON_READ = True  # 读取时刷新TTL
-
-
-# 认证相关配置
-# 参考: data-model.md#3.1 认证相关
-AUTH_TOKEN_IDLE_TTL = 3600  # Token无操作过期: 1小时
-AUTH_TOKEN_ABSOLUTE_TTL = 86400  # Token绝对过期: 24小时
-AUTH_CAPTCHA_TTL = 120  # 验证码: 2分钟
-AUTH_FAIL_COUNT_TTL = 900  # 失败计数: 15分钟
-AUTH_MAX_FAIL_COUNT = 5  # 最大失败次数
-AUTH_LOCK_DURATION = 900  # 锁定时间: 15分钟
-
-
 # ============ Memory 业务配置 ============
 # 参考: specs/004-context-memory/tasks.md T005
 MEMORY_EMBEDDING_PENDING_TIMEOUT = int(
@@ -310,126 +213,18 @@ COMPRESS_LOCK_TIMEOUT = int(os.getenv("COMPRESS_LOCK_TIMEOUT", "60"))
 MAX_TOOL_RESULT_TOKENS = int(os.getenv("MAX_TOOL_RESULT_TOKENS", "1500"))
 MONITOR_PUSH_INTERVAL = float(os.getenv("MONITOR_PUSH_INTERVAL", "0.5"))
 
-# ============ Brave Search 配置 ============
-BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "")
-BRAVE_SEARCH_QPS = int(os.getenv("BRAVE_SEARCH_QPS", "1"))
-BRAVE_SEARCH_MONTHLY_QUOTA = int(os.getenv("BRAVE_SEARCH_MONTHLY_QUOTA", "2000"))
 
-# ============ Home Assistant 配置 ============
-# 参考: specs/007-home-assistant-tools/
-HA_URL = os.getenv("HA_URL", "")  # HA 实例地址，如 http://192.168.1.100:8123
-HA_TOKEN = os.getenv("HA_TOKEN", "")  # Long-Lived Access Token
-HA_REQUEST_TIMEOUT = int(os.getenv("HA_REQUEST_TIMEOUT", "10"))  # HTTP 请求超时（秒）
-HA_BLOCKED_ENTITIES = [
-    e.strip() for e in os.getenv("HA_BLOCKED_ENTITIES", "").split(",") if e.strip()
-]  # 黑名单设备列表
-HA_ENABLED = bool(HA_URL and HA_TOKEN)  # 有配置才启用
-HA_LAN_HOST = os.getenv(
-    "HA_LAN_HOST", "192.100.2.100"
-)  # 局域网可达地址（HA 音箱 play_media 降级路径）
-
-# ============ 多模态推理配置 ============
-# 参考: specs/008-multimodal-minicpm/spec.md, FR-032, T003
-LLM_GATEWAY_URL = os.getenv("LLM_GATEWAY_URL", "http://127.0.0.1:8100")
-LLM_GATEWAY_API_KEY = os.getenv("LLM_GATEWAY_API_KEY", "")
-LLM_GATEWAY_TIMEOUT = int(
-    os.getenv("LLM_GATEWAY_TIMEOUT", "180")
-)  # 通用网关超时: 180秒
-
-# 命名超时常量 (FR-032: 6 种超时配置)
-LLM_GATEWAY_INFERENCE_TIMEOUT = int(
-    os.getenv("LLM_GATEWAY_INFERENCE_TIMEOUT", "180")
-)  # 推理请求: 180秒
-LLM_GATEWAY_CANCEL_TIMEOUT = int(
-    os.getenv("LLM_GATEWAY_CANCEL_TIMEOUT", "5")
-)  # 取消请求: 5秒
-LLM_GATEWAY_POLL_TIMEOUT = int(
-    os.getenv("LLM_GATEWAY_POLL_TIMEOUT", "30")
-)  # 轮询查询: 30秒
-LLM_GATEWAY_DOC_PARSE_CREATE_TIMEOUT = int(
-    os.getenv("LLM_GATEWAY_DOC_PARSE_CREATE_TIMEOUT", "480")
-)  # 文档解析创建: 480秒（模型切换可能耗时6分钟）
-LLM_GATEWAY_DOC_PARSE_RESULT_TIMEOUT = int(
-    os.getenv("LLM_GATEWAY_DOC_PARSE_RESULT_TIMEOUT", "30")
-)  # 文档解析结果: 30秒
-LLM_GATEWAY_GUARDRAILS_LEVEL = os.getenv(
-    "LLM_GATEWAY_GUARDRAILS_LEVEL", "fast"
-)  # 护栏级别: fast (< 10ms)
-
-# 文档解析配置
-DOC_PARSE_MAX_FILE_SIZE = int(
-    os.getenv("DOC_PARSE_MAX_FILE_SIZE", str(10 * 1024 * 1024))
-)  # 10MB
-DOC_PARSE_MAX_PAGES = int(os.getenv("DOC_PARSE_MAX_PAGES", "200"))
-DOC_PARSE_POLL_INTERVAL = int(
-    os.getenv("DOC_PARSE_POLL_INTERVAL", "3")
-)  # 轮询间隔（秒）
-DOC_PARSE_POLL_MAX_WAIT = int(
-    os.getenv("DOC_PARSE_POLL_MAX_WAIT", "900")
-)  # 最大等待（秒）
-DOC_PARSE_DEFAULT_MODEL = os.getenv("DOC_PARSE_DEFAULT_MODEL", "qwen3.5-9b")
-DOC_PARSE_MAX_RESULT_LENGTH = int(
-    os.getenv("DOC_PARSE_MAX_RESULT_LENGTH", "6000")
-)  # 011-document-subagent-rag: document_parse 工具返回结果最大字符数
-
-# 视频预处理配置 (MiniCPM-o 限制: 高分辨率+多帧会导致 vLLM 500 错误)
-VIDEO_PREPROCESS_WIDTH = int(
-    os.getenv("VIDEO_PREPROCESS_WIDTH", "320")
-)  # 视频最大宽度(px)
-
-# 多模态运行参数（模型配置已迁移到 DB model 表 type="multimodal"）
-MULTIMODAL_MAX_TOKENS = int(
-    os.getenv("MULTIMODAL_MAX_TOKENS", "1024")
-)  # 多模态推理最大输出 token（图片占用大量上下文，需控制）
-MULTIMODAL_RATE_LIMIT_SECONDS = int(
-    os.getenv("MULTIMODAL_RATE_LIMIT_SECONDS", "60")
-)  # 多模态推理限流间隔（秒），MiniCPM-o 不支持并发
-
-# 对话历史裁剪配置
-CONTEXT_HISTORY_ROUNDS = int(
-    os.getenv("CONTEXT_HISTORY_ROUNDS", "10")
-)  # 默认保留最近 10 轮对话
-
-# 推理任务配置
-INFERENCE_TASK_TTL = int(os.getenv("INFERENCE_TASK_TTL", "300"))  # 推理任务TTL: 300秒
-
-# ============ 文档 SubAgent + RAG 配置 (011-document-subagent-rag) ============
-DOCUMENT_SUBAGENT_TIMEOUT = int(
-    os.getenv("DOCUMENT_SUBAGENT_TIMEOUT", "1200")
-)  # 文档 SubAgent 超时: 20分钟
-DOC_CHUNK_SIZE = int(os.getenv("DOC_CHUNK_SIZE", "800"))  # 分块大小（字符）
-DOC_CHUNK_OVERLAP = int(os.getenv("DOC_CHUNK_OVERLAP", "100"))  # 分块重叠（字符）
-DOC_VECTOR_WEIGHT = float(os.getenv("DOC_VECTOR_WEIGHT", "0.7"))  # 混合搜索向量权重
-DOC_KEYWORD_WEIGHT = float(os.getenv("DOC_KEYWORD_WEIGHT", "0.3"))  # 混合搜索关键词权重
-DOC_SEARCH_TOP_K = int(os.getenv("DOC_SEARCH_TOP_K", "5"))  # 搜索结果上限
-
-# 多模态/文档解析超时配置（GPU 模型切换耗时 35-341 秒）
-MULTIMODAL_SUBAGENT_TIMEOUT = int(
-    os.getenv("MULTIMODAL_SUBAGENT_TIMEOUT", "1200")
-)  # 多模态 SubAgent 超时: 20分钟
-GPU_LOCK_MAX_WAIT = int(
-    os.getenv("GPU_LOCK_MAX_WAIT", "600")
-)  # 等待 GPU 锁上限: 10分钟
-AGENT_MULTIMODAL_TIMEOUT = int(
-    os.getenv("AGENT_MULTIMODAL_TIMEOUT", "2400")
-)  # 含文档附件时 Agent 总超时: 40分钟
-
-# SSE 心跳配置（防止代理层空闲超时断连）
-SSE_HEARTBEAT_INTERVAL = int(
-    os.getenv("SSE_HEARTBEAT_INTERVAL", "15")
-)  # 心跳间隔: 15秒
-
-
-# 日志配置 — 统一 JSON + trace_id 注入（batch-04）
-from core.logging_config import build_logging_dict  # noqa: E402
-
-LOGGING = build_logging_dict(
-    debug=DEBUG, log_level=os.getenv("DJANGO_LOG_LEVEL", "INFO")
-)
-
-
-# ============ 域配置聚合（batch-17：settings 包拆分）============
-# 各域文件用 os.getenv 独立取值，不依赖 base 内变量，import 顺序无关。
+# ============ 域配置聚合（batch-17 三域 + batch-18 四域）============
+# 各域文件用 os.getenv 独立取值，不依赖 base 内变量，import 顺序在功能上无关。
+# logging_conf 为消费型配置（构建 LOGGING dict），刻意置于最后表达"最终态"，
+# 故用 isort: off/on 关闭字母序排序以保留该语义顺序。
+# isort: off
 from .celery_conf import *  # noqa: E402,F401,F403
 from .media import *  # noqa: E402,F401,F403
 from .voice import *  # noqa: E402,F401,F403
+from .security import *  # noqa: E402,F401,F403
+from .llm import *  # noqa: E402,F401,F403
+from .third_party import *  # noqa: E402,F401,F403
+from .logging_conf import *  # noqa: E402,F401,F403
+
+# isort: on

@@ -1,0 +1,32 @@
+# Batch batch-18 Progress
+# Type: refactor | Priority: P2 | Risk: medium
+# Title: settings.py 域拆分（第二批：llm/security/logging_conf/third_party 提取）
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Dependency check: batch-17 STATUS: COMPLETED ✅ (HEAD=91dc219)
+- Plan generated: refactor/batches/batch-18-plan.md (196 行)
+- 拆分映射: llm.py(~135) / security.py(~55) / logging_conf.py(~25) / third_party.py(~35)
+- 核心设计: 域间 DEBUG 依赖用模块内私有 _DEBUG 重算避循环; import * 聚合追加4行, logging_conf 置末尾
+- 已核实: logging_config 无 settings import 无循环; 全仓无 from core.settings import; conftest 覆盖不受影响
+- 待安琳确认: ~100行目标 scope 内不可达(现实~200) / Memory+Context 留 base / REST_FRAMEWORK 归 security / 禁重启仅静态验证
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- Branch: refactor/batch-18 (from 91dc219)
+- diffsettings baseline: /tmp/ds_before.txt (288 lines)
+
+- 拆分: llm.py(129) / security.py(69) / third_party.py(32) / logging_conf.py(16) 新建
+- __init__.py: 435 → 226 行（-209）; 保留 Memory/Context; 聚合 import 7 域, logging_conf 置末尾(isort:off/on)
+- 域间 DEBUG 用私有 _DEBUG 重算，import * 未泄漏 _DEBUG（已验证 hasattr=False）
+- Lint: ruff/black/isort 全绿
+- manage.py check: no issues
+- diffsettings --all 拆分前后 IDENTICAL ✅（黄金校验）
+- 属性 smoke: LLM_GATEWAY_URL/SM4/LANGFUSE_HOST/HA_ENABLED/LOGGING/THROTTLE_RATES 全部解析正常
+- 局部 pytest（systemd-run 包裹）: users+common+ha_subagent 111 passed; doc_parse_service 19 passed = 130 passed / 0 failed
+- 运行时启动验证留主循环合并后重启（本批仅静态验证，禁重启）
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
