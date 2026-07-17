@@ -103,6 +103,16 @@ VOICE_AMBIENT_AGGREGATE_TIMEOUT = float(
 VOICE_AMBIENT_MAX_BUFFER_SIZE = int(
     os.getenv("VOICE_AMBIENT_MAX_BUFFER_SIZE", "10")
 )  # 聚合缓冲区最大话语数
+# batch-32：聚合窗口自适应即时 flush——本条 ASR 话语以句末标点/疑问结束符收尾时立即聚合，
+# 不等满 VOICE_AMBIENT_AGGREGATE_TIMEOUT（超时降为上限兜底）。省 0.5-1.5s。
+# 关=保持旧固定 1.5s sleep 行为逐字节不变，首选灰度回滚手段（dark-launch，默认 false）。
+VOICE_AMBIENT_ADAPTIVE_FLUSH_ENABLED = (
+    os.getenv("VOICE_AMBIENT_ADAPTIVE_FLUSH_ENABLED", "false").lower() == "true"
+)
+# 句末标点/疑问结束符集合（仅标点，不含语气助词/句中停顿符，，、；:）。
+VOICE_AMBIENT_SENTENCE_END_CHARS = os.getenv(
+    "VOICE_AMBIENT_SENTENCE_END_CHARS", "。！？!?…"
+)
 VOICE_AMBIENT_SESSION_TTL = int(
     os.getenv("VOICE_AMBIENT_SESSION_TTL", "3600")
 )  # ambient 会话 TTL: 3600s (1h)

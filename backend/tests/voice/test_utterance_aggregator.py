@@ -19,7 +19,6 @@ Mock 策略:
 """
 
 import asyncio
-import time
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -42,11 +41,18 @@ _SETTINGS = "apps.voice.services.utterance_aggregator.settings"
 def _mock_settings(
     timeout: float = 0.1,
     max_buffer_size: int = 3,
+    adaptive_flush: bool = False,
+    sentence_end_chars: str = "。！？!?…",
 ) -> MagicMock:
-    """创建 mock settings 对象。"""
+    """创建 mock settings 对象。
+
+    batch-32：默认 adaptive_flush=False → 守护 flag off 行为与旧版逐字节一致。
+    """
     mock = MagicMock()
     mock.VOICE_AMBIENT_AGGREGATE_TIMEOUT = timeout
     mock.VOICE_AMBIENT_MAX_BUFFER_SIZE = max_buffer_size
+    mock.VOICE_AMBIENT_ADAPTIVE_FLUSH_ENABLED = adaptive_flush
+    mock.VOICE_AMBIENT_SENTENCE_END_CHARS = sentence_end_chars
     return mock
 
 
@@ -54,6 +60,7 @@ def _make_aggregator(
     callback: AsyncMock | None = None,
     timeout: float | None = None,
     max_buffer_size: int | None = None,
+    adaptive_flush: bool | None = None,
 ) -> tuple[UtteranceAggregator, list[AggregatedMessage]]:
     """创建聚合器 + 收集回调结果的列表。
 
@@ -72,6 +79,7 @@ def _make_aggregator(
             on_aggregated=_on_aggregated,
             timeout=timeout,
             max_buffer_size=max_buffer_size,
+            adaptive_flush=adaptive_flush,
         )
     return agg, collected
 
@@ -586,3 +594,143 @@ class TestDefaultSettings:
 
         assert agg._timeout == 0.1
         assert agg._max_buffer_size == 3
+
+
+# ========================================================================
+# batch-32：聚合窗口自适应即时 flush（句末标点即时聚合，超时降为兜底上限）
+# ========================================================================
+
+
+@pytest.mark.asyncio(loop_scope="function")
+class TestAdaptiveFlush:
+    """句末标点即时 flush + flag off 守护 + 过早 flush 拆句矩阵。"""
+
+    async def test_m1_sentence_end_immediate_flush(self):
+        """M1：句末标点结尾 → 不等 timeout 立即聚合，flush_reason=sentence_end。"""
+        agg, collected = _make_aggregator(
+            timeout=1.0, max_buffer_size=10, adaptive_flush=True
+        )
+
+        await agg.add("今天天气怎么样？")
+
+        # 无需 sleep：即时 flush 走 await _do_aggregate 同步完成
+        assert len(collected) == 1
+        assert collected[0].text == "今天天气怎么样？"
+        assert agg._last_flush_reason == "sentence_end"
+        assert agg.buffer_count == 0
+        assert agg.state == AggregatorState.IDLE
+        assert agg._timer_task is None
+
+    async def test_m2_question_particle_no_immediate_flush(self):
+        """M2：语气助词（吗/无标点）不触发即时 flush，仅按标点判定，防误判。"""
+        agg, collected = _make_aggregator(
+            timeout=1.0, max_buffer_size=10, adaptive_flush=True
+        )
+
+        await agg.add("你在吗")
+
+        assert len(collected) == 0, "无句末标点不应即时 flush"
+        assert agg.buffer_count == 1
+        assert agg._timer_task is not None
+
+    async def test_m3_no_punctuation_falls_back_to_timeout(self):
+        """M3：无标点走超时兜底，flush_reason=timeout。"""
+        agg, collected = _make_aggregator(
+            timeout=0.05, max_buffer_size=10, adaptive_flush=True
+        )
+
+        await agg.add("我想想")
+        assert len(collected) == 0, "无标点不即时 flush"
+        assert agg._timer_task is not None
+
+        await asyncio.sleep(0.1)
+        assert len(collected) == 1
+        assert agg._last_flush_reason == "timeout"
+        assert collected[0].text == "我想想"
+
+    async def test_m4_mid_sentence_comma_not_split(self):
+        """M4：句中逗号非句末，不即时 flush；等后续句末标点合并成一条（不拆句）。"""
+        agg, collected = _make_aggregator(
+            timeout=1.0, max_buffer_size=10, adaptive_flush=True
+        )
+
+        await agg.add("我今天，")  # 逗号结尾 → 句中停顿
+        assert len(collected) == 0, "逗号非句末不应即时 flush"
+        assert agg.buffer_count == 1
+
+        await agg.add("然后去公园。")  # 句末 → 即时 flush，合并
+        assert len(collected) == 1, "两段合并为 1 次回调，不拆句"
+        assert collected[0].text == "我今天， 然后去公园。"
+        assert collected[0].utterance_count == 2
+        assert agg._last_flush_reason == "sentence_end"
+
+    async def test_m5_multi_segment_last_with_punctuation(self):
+        """M5：多段，末段带句末标点触发即时 flush，合并全部段。"""
+        agg, collected = _make_aggregator(
+            timeout=1.0, max_buffer_size=10, adaptive_flush=True
+        )
+
+        await agg.add("嗯")  # 无标点 → 起 timer
+        assert len(collected) == 0
+
+        await agg.add("好的。")  # 句末 → 即时 flush
+        assert len(collected) == 1
+        assert collected[0].text == "嗯 好的。"
+        assert collected[0].utterance_count == 2
+        assert agg._last_flush_reason == "sentence_end"
+
+    async def test_m6_flag_off_byte_identical_old_behavior(self):
+        """M6：flag off → 句末标点也不即时 flush，仍走 1.5s 超时（回归旧行为，守护）。"""
+        agg, collected = _make_aggregator(
+            timeout=0.1, max_buffer_size=10, adaptive_flush=False
+        )
+
+        await agg.add("你好？")
+        assert len(collected) == 0, "flag off 时句末标点不应即时 flush"
+        assert agg._timer_task is not None
+
+        await asyncio.sleep(0.15)
+        assert len(collected) == 1
+        assert agg._last_flush_reason == "timeout"
+
+    async def test_m7_max_buffer_priority_over_immediate_flush(self):
+        """M7：达 max_buffer_size 时 max_buffer 分支优先于句末即时 flush。"""
+        agg, collected = _make_aggregator(
+            timeout=1.0, max_buffer_size=2, adaptive_flush=True
+        )
+
+        await agg.add("A")
+        await agg.add("B。")  # 达上限 2 → max_buffer 分支先触发
+
+        assert len(collected) == 1
+        assert collected[0].utterance_count == 2
+        assert agg._last_flush_reason == "max_buffer"
+
+    async def test_m8_immediate_flush_then_new_round(self):
+        """M8：句末 flush 后状态回 IDLE，可继续独立的新一轮即时 flush。"""
+        agg, collected = _make_aggregator(
+            timeout=1.0, max_buffer_size=10, adaptive_flush=True
+        )
+
+        await agg.add("第一句。")
+        assert len(collected) == 1
+        assert agg.state == AggregatorState.IDLE
+
+        await agg.add("再来一句。")
+        assert len(collected) == 2
+        assert collected[1].text == "再来一句。"
+        assert collected[1].utterance_count == 1
+
+    async def test_m9_immediate_flush_cancels_old_timer_no_double(self):
+        """M9：无标点起 timer 后句末即时 flush，旧 timer 被 cancel，无二次回调。"""
+        agg, collected = _make_aggregator(
+            timeout=0.05, max_buffer_size=10, adaptive_flush=True
+        )
+
+        await agg.add("无标点")  # 起 timer
+        await agg.add("补一句。")  # 即时 flush + cancel 旧 timer
+        assert len(collected) == 1
+
+        # 等超过原 timeout，确认旧 timer 未二次触发
+        await asyncio.sleep(0.15)
+        assert len(collected) == 1, "旧 timer 应被 cancel，无双触发"

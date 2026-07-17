@@ -111,3 +111,8 @@ STATUS: PLAN_READY
 - 方案: full_response 就绪即并行 spawn HA 任务，与 finally.wait_idle 重叠；flag VOICE_HA_PARALLEL_TTS_ENABLED 运行时回滚；barge-in cancel 取消 HA 任务
 - 待确认 5 项: settings/voice.py scope 外 / tts_router.py 无需动 / 开关默认值 / voice_pipeline 300 行不拆(05-addendum §二) / C1 barge-in POST 后残留(PD-6)
 - STATUS: PLAN_READY
+
+## batch-32 (聚合窗口自适应即时 flush) — 2026-07-17
+- Plan generated: refactor/batches/batch-32-plan.md
+- Dep batch-29 COMPLETED；方案=句末标点即时 flush + dark-launch flag + 保留超时兜底
+- STATUS: PLAN_READY
