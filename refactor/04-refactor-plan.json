@@ -1626,7 +1626,7 @@
       "estimated_sessions": 1,
       "blocking_for_production": false,
       "notes": "voice 高风险区。需回归多段合并语义避免过早 flush 截断长句。对齐 03-hotpath-delta Open Question Q3。rediagnosis R3 新增。",
-      "actual_status": "planned"
+      "actual_status": "completed"
     },
     {
       "id": "batch-33",

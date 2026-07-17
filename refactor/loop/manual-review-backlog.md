@@ -72,3 +72,7 @@
 
 ## batch-31（2026-07-17，dark-launch）
 - **需安琳决策**：VOICE_HA_PARALLEL_TTS_ENABLED（默认 false）是否开启——HA 下发与浏览器 wait_idle 并行可省 1-2s；C1 残留：barge-in 无法截停已发出的小爱 POST（现状限制，长期解为 PD-6 HA 流式接口）。
+
+## batch-32（2026-07-17，dark-launch）
+- **需安琳决策**：VOICE_AMBIENT_ADAPTIVE_FLUSH_ENABLED（默认 false）是否开启——句末标点即时 flush 可省最多 1.5s 聚合等待；风险为 ASR 中途给出标点导致拆句（矩阵已覆盖已知模式）。
+- 三个 dark-launch 开关（batch-30 短路 / 31 HA 并行 / 32 自适应 flush）+ batch-10 预连接开关，建议 Gateway 恢复后用 trigger_voice_e2e.py 分别开关对比 latency.summary 数据再定。
