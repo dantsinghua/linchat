@@ -14,7 +14,7 @@ from apps.chat.services.generation import (
     signal_stop,
     unregister_generation,
 )
-from apps.chat.services.types import InferenceTask, MessageVO, StreamChunk, _get_tool_model_name
+from apps.graph.services.types import InferenceTask, MessageVO, StreamChunk, _get_tool_model_name
 
 # 兼容层导出（已迁移到其他模块）
 from apps.graph.services.context_service import ContextService  # noqa: F401

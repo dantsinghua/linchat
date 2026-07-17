@@ -4,7 +4,7 @@ from typing import Optional
 from django.conf import settings
 from django.utils import timezone
 
-from apps.chat.services.types import InferenceTask
+from apps.graph.services.types import InferenceTask
 from apps.common.event_service import EventService, EventType
 from core.redis import get_redis
 

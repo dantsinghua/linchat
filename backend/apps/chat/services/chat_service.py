@@ -8,7 +8,7 @@ from django.conf import settings
 from apps.chat.models import Message
 from apps.chat.repositories import message_repo
 from apps.chat.services.generation import get_stop_event, signal_stop
-from apps.chat.services.types import MessageVO, StreamChunk
+from apps.graph.services.types import MessageVO, StreamChunk
 from apps.common import get_trace_id
 from apps.common.exceptions import EmptyMessageException, MessageTooLongException
 from apps.graph.agent import get_thread_id

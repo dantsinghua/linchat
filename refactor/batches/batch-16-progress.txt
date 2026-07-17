@@ -1,0 +1,42 @@
+# Batch batch-16 Progress
+# Type: refactor | Priority: P2 | Risk: medium
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Base: main HEAD=766c292
+- Plan generated: refactor/batches/batch-16-plan.md (157 行)
+- 依赖: batch-14 COMPLETED (generation.py 非 shim 结论沿用)
+- 核实结论:
+  - types.py 直接调用方 12 (7 prod + 5 test), 间接经 __init__ 3
+  - 本批更新 9 处 import (对齐 JSON 11 文件 scope); 3 个 NEW voice 调用方靠 shim 兼容不动
+  - types.py 是安全叶子 (仅 import chat.models/models.services), 可迁 graph
+  - generation.py 延后: 2chat+2graph 生产调用方 + 4 处 mock.patch 字符串目标, 迁移破坏大且反向坐实耦合
+  - 循环依赖风险 medium: graph.services.__init__ eager import, 靠步骤3/4 import 冒烟实证
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- Branch: refactor/batch-16 (from main HEAD=766c292)
+- 非 P1，无性能 baseline
+
+### 执行结果
+- types.py 迁移: git mv chat/services/types.py → graph/services/types.py（内容零改动）
+- chat/services/types.py 重建为 re-export shim（11 行，noqa F401）
+- import 更新 9 处（9 文件，+9/-9）:
+  - graph/services/agent_service.py:14, inference_service.py:7, helpers/finalize.py:98
+  - common/sse.py:9, chat/services/chat_service.py:11, chat/services/__init__.py:17
+  - tests/chat/test_inference_service.py:23, test_inference_cancel.py:25, tests/voice/test_voice_pipeline.py:25
+- 循环依赖风险（medium）实证解除: 步骤3 graph 冒烟 OK + 步骤2 shim 冒烟 OK（types.py 为安全叶子）
+- 3 个 NEW voice 调用方靠 shim 兼容不动（ambient_light_service / test_ambient_light_service / test_tts_incremental）
+- generation.py 本批延后（沿用 plan §7 决定）
+
+### 验证
+- 局部: pytest test_inference_service + test_inference_cancel + test_voice_pipeline → 71 passed
+- 集成: pytest chat/ apps/graph/ voice/ integration/test_sse_async → 1201 passed, 9 skipped
+- 全量: pytest tests/ → 1672 passed, 9 skipped, 0 failures
+- 残留扫描 §5.4: 仅剩 shim 自身 docstring + 3 个 NEW voice 调用方（符合预期）
+- ruff: 新 shim / graph 消费者 / touched 文件全绿；graph/services/types.py 的 MediaAttachment F401 为迁移前既存，plan §1 明确保留 → 记入 simplify-candidates 下轮清理
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
