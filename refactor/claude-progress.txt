@@ -104,3 +104,10 @@ STATUS: PLAN_READY (batch-29)
 - 改动 4 文件(scope标3, 实需+test_response_decision_llm.py)，~120行
 - 4 项待安琳确认: scope+1测试文件 / flag默认值 / BC2人际问答误触发哲学冲突 / BC3 multi_speaker位置
 STATUS: PLAN_READY
+
+## batch-31 (2026-07-17 20:32) — 小爱 HA 下发与浏览器 TTS wait_idle 解耦
+- Phase 2a initializer 完成，plan: refactor/batches/batch-31-plan.md (194 行)
+- 依赖 batch-29 COMPLETED (verified)
+- 方案: full_response 就绪即并行 spawn HA 任务，与 finally.wait_idle 重叠；flag VOICE_HA_PARALLEL_TTS_ENABLED 运行时回滚；barge-in cancel 取消 HA 任务
+- 待确认 5 项: settings/voice.py scope 外 / tts_router.py 无需动 / 开关默认值 / voice_pipeline 300 行不拆(05-addendum §二) / C1 barge-in POST 后残留(PD-6)
+- STATUS: PLAN_READY

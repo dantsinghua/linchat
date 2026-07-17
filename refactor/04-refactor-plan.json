@@ -1574,7 +1574,7 @@
       "estimated_sessions": 1,
       "blocking_for_production": false,
       "notes": "voice 最高风险区。本 batch 仅做顺序解耦（不触 Gateway 契约）。小爱增量流式对接见 PD-6。对齐 03-hotpath-delta Open Question Q2。rediagnosis R3 新增。",
-      "actual_status": "planned"
+      "actual_status": "completed"
     },
     {
       "id": "batch-32",

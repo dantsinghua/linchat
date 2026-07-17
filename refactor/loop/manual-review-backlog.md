@@ -69,3 +69,6 @@
 
 ## batch-30（2026-07-17，dark-launch）
 - **需安琳产品决策**：VOICE_DECISION_SHORTCIRCUIT_ENABLED（默认 false）是否开启——短路疑问句可省 decision_llm 一跳（约数百 ms~1s），但与历史"防人际问答误触发"调参方向相反（BC2 争议，见 batch-30-plan.md §7）。建议先看 batch-29 埋点数据中 decision_llm 实际耗时再定。
+
+## batch-31（2026-07-17，dark-launch）
+- **需安琳决策**：VOICE_HA_PARALLEL_TTS_ENABLED（默认 false）是否开启——HA 下发与浏览器 wait_idle 并行可省 1-2s；C1 残留：barge-in 无法截停已发出的小爱 POST（现状限制，长期解为 PD-6 HA 流式接口）。
