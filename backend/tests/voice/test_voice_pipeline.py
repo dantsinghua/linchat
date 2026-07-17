@@ -1224,3 +1224,76 @@ class TestTTSPreconnect:
         mgr.enqueue.assert_any_call(dj_settings.VOICE_TTS_ERROR_TEXT, "error")
         types = [c.args[0]["type"] for c in consumer._send_json.call_args_list]
         assert "error" in types
+
+
+# ──────────────────────────────────────────────
+# batch-29: _on_utterance_aggregated 补 t0 之前两跳（aggregation_wait + decision_llm）
+# ──────────────────────────────────────────────
+
+@pytest.mark.asyncio(loop_scope="function")
+class TestAmbientRespondLatencyHops:
+    """RESPOND 分支把聚合静默等待 + decide 耗时补进 latency tracker（用 target_uid 对齐 pipeline）。"""
+
+    @staticmethod
+    def _agg_consumer(seg="segR"):
+        c = MagicMock()
+        c.user_id = 1
+        c._current_segment_id = seg
+        c._send_json = AsyncMock()
+        c._is_pipeline_busy = MagicMock(return_value=False)
+        c._start_voice_pipeline = AsyncMock()
+        return c
+
+    @staticmethod
+    def _agg_msg(text="帮我开灯"):
+        import time as _t
+        m = MagicMock()
+        m.text = text
+        m.utterance_count = 1
+        m.first_ts = _t.monotonic() - 2.0
+        m.last_ts = _t.monotonic() - 1.5
+        return m
+
+    async def test_respond_branch_records_agg_wait_and_decision_hops(self):
+        """已识别说话人 + RESPOND + pipeline 空闲 → 记录 aggregation_wait/decision_llm，
+        user_id=target_uid（说话人 uid），seg 与 pipeline 启动一致。"""
+        from apps.voice.consumer_session import SessionMixin
+
+        c = self._agg_consumer("segR")
+        decision = MagicMock()
+        decision.value = "RESPOND"
+        with (
+            patch("apps.voice.services.response_decision_service.response_decision_service") as rds,
+            patch("apps.voice.services.voice_persist_service.voice_persist_service"),
+            patch("apps.voice.services.voice_latency.latency_record") as rec,
+        ):
+            rds.decide = AsyncMock(return_value=(decision, "wakeword"))
+            await SessionMixin._on_utterance_aggregated(c, self._agg_msg(), speaker_user_id=7)
+
+        hops = {call.args[2] for call in rec.call_args_list}
+        assert "aggregation_wait" in hops
+        assert "decision_llm" in hops
+        for call in rec.call_args_list:
+            assert call.args[0] == 7        # target_uid 与 run_pipeline latency_start 对齐
+            assert call.args[1] == "segR"   # 同一 seg 才能被同次 flush 汇总
+        c._start_voice_pipeline.assert_awaited_once()
+        assert c._start_voice_pipeline.await_args.args[0] == "segR"
+
+    async def test_record_only_unidentified_skips_latency_hops(self):
+        """未识别说话人 → RECORD_ONLY 直接 return，不记录两跳（避免不会 flush 的孤儿 entry）。"""
+        from apps.voice.consumer_session import SessionMixin
+
+        c = self._agg_consumer("segX")
+        c._last_unknown_label = "unknown_01"
+        with (
+            patch("apps.voice.services.response_decision_service.response_decision_service"),
+            patch("apps.voice.services.voice_persist_service.voice_persist_service") as vps,
+            patch("apps.voice.services.voice_latency.latency_record") as rec,
+        ):
+            vps.record_only_ambient = AsyncMock()
+            await SessionMixin._on_utterance_aggregated(c, self._agg_msg("路人说话"), speaker_user_id=0)
+
+        hops = {call.args[2] for call in rec.call_args_list}
+        assert "aggregation_wait" not in hops
+        assert "decision_llm" not in hops
+        c._start_voice_pipeline.assert_not_awaited()

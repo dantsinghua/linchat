@@ -208,8 +208,15 @@ class SessionMixin(_SessionBase):
                             "user_id": self.user_id, "target_user_id": target_uid,
                             "pending_len": len(self._pending_text)})
             else:
+                # batch-29: 补 t0 之前两跳（聚合静默等待 + 决策 decide 耗时）到 pipeline seg。
+                # target_uid 与下游 run_pipeline latency_start 的 user_id 对齐；仅 RESPOND 分支记录，避免孤儿 entry。
+                _seg = self._current_segment_id or "agg"
+                from apps.voice.services.voice_latency import latency_record
+                latency_record(target_uid, _seg, "aggregation_wait",
+                               int((time.monotonic() - aggregated_msg.last_ts) * 1000))
+                latency_record(target_uid, _seg, "decision_llm", decide_dur_ms)
                 await self._start_voice_pipeline(
-                    self._current_segment_id or "agg", aggregated_msg.text,
+                    _seg, aggregated_msg.text,
                     speaker_id=None, pipeline_user_id=target_uid)
         elif decision.value == "RECORD_ONLY":
             sid = str(target_uid)

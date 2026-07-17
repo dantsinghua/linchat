@@ -124,9 +124,11 @@ class EventMixin(_EventBase):
         try:
             pcm_chunks = await voice_session_service.get_audio_chunks(self.user_id, segment_id)
             if not pcm_chunks:
+                dur = int((time.monotonic() - t0) * 1000)
+                latency_record(self.user_id, segment_id, "speaker_identify", dur)
                 logger.info("voice", extra={"stage": "speaker.identify",
                             "user_id": self.user_id, "seg": segment_id,
-                            "duration_ms": int((time.monotonic() - t0) * 1000),
+                            "duration_ms": dur,
                             "matched": False, "result": "no_audio"})
                 return None
             pcm_data = b"".join(pcm_chunks)
@@ -140,9 +142,11 @@ class EventMixin(_EventBase):
                         "segment_id": segment_id, "speaker_user_id": profile_info["user_id"],
                         "speaker_label": profile_info["speaker_name"],
                         "confidence": result.get("confidence", 0.0), "is_identified": True}})
+                    dur = int((time.monotonic() - t0) * 1000)
+                    latency_record(self.user_id, segment_id, "speaker_identify", dur)
                     logger.info("voice", extra={"stage": "speaker.identify",
                                 "user_id": self.user_id, "seg": segment_id,
-                                "duration_ms": int((time.monotonic() - t0) * 1000),
+                                "duration_ms": dur,
                                 "matched": True, "speaker_user_id": profile_info["user_id"],
                                 "confidence": result.get("confidence", 0.0)})
                     return {"speaker_user_id": profile_info["user_id"], "speaker_label": profile_info["speaker_name"]}
@@ -154,9 +158,11 @@ class EventMixin(_EventBase):
                 "segment_id": segment_id, "speaker_user_id": None,
                 "speaker_label": label, "confidence": result.get("confidence", 0.0),
                 "is_identified": False}})
+            dur = int((time.monotonic() - t0) * 1000)
+            latency_record(self.user_id, segment_id, "speaker_identify", dur)
             logger.info("voice", extra={"stage": "speaker.identify",
                         "user_id": self.user_id, "seg": segment_id,
-                        "duration_ms": int((time.monotonic() - t0) * 1000),
+                        "duration_ms": dur,
                         "matched": False, "gw_speaker_id": gw_speaker_id,
                         "confidence": result.get("confidence", 0.0), "label": label})
             return {"speaker_user_id": None, "speaker_label": label}

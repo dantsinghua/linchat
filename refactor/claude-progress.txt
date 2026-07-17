@@ -93,3 +93,6 @@ STATUS: PLAN_READY
 STATUS: PLAN_READY (batch-25)
 
 [2026-07-17] batch-26 initializer: PLAN_READY — users/views 50%(15例) + voice_persist 66%(9例) 测试补全计划已生成，纯新增测试零业务改动，待 review
+
+[2026-07-17 18:18:32] batch-29 initializer: PLAN_READY — 3 缺跳埋点计划已生成 refactor/batches/batch-29-plan.md，待安琳 review
+STATUS: PLAN_READY (batch-29)

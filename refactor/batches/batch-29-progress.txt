@@ -1,0 +1,44 @@
+# Batch 29 Progress
+# Type: observability | Priority: P1 | Risk: high (voice, 纯埋点)
+# Title: 补齐语音延迟埋点三缺跳（聚合等待 / speaker identify / 决策 LLM）
+
+## Phase 2a: Initializer
+- Started: 2026-07-17 18:17
+- Plan generated: refactor/batches/batch-29-plan.md (178 行)
+- Dependency batch-07: COMPLETED (verified)
+- 缺跳: 3 (speaker_identify / aggregation_wait / decision_llm)
+- 改动文件: 5 (consumer_events.py, consumer_session.py, voice_latency.py, +2 测试)
+- scope 调整待确认: consumer_session.py 入 / utterance_aggregator.py+response_decision_service.py 出
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- 分支: refactor/batch-29 (from main 8cc2977)
+- 先验核实 user_id key 对齐: latency_start(run_pipeline) 用 user_id=target_uid(说话人uid)
+  → aggregation_wait/decision_llm 打点用 target_uid ✓ 与 flush key 对齐
+  → speaker_identify 用 self.user_id, 与既有 asr_approx(consumer_events:70) 同惯例 ✓
+- 性能 baseline: 跳过自动采集(measure-voice-latency 需起服务, 违反环境红线),
+  改用 plan §7.2 假日志冒烟 + §7.3 安琳真实链路手动验证
+
+- 逐文件执行（每文件 AST + ruff + 局部 pytest 通过）:
+  1. consumer_events.py       +9 -3   speaker_identify 三 return 路径打点(no_audio/identified/unknown)
+  2. consumer_session.py      +8 -1   RESPOND 分支补 aggregation_wait + decision_llm(target_uid 对齐)
+  3. voice_latency.py         +8 -0   新增 delta_vad_pct(向后兼容, delta_pct/hops 结构不变)
+  4. test_consumer_events.py  +44 -1  speaker_identify 三分支断言(16 passed)
+  5. test_voice_latency.py    +41 -0  delta_vad_pct 覆盖+None 两用例(8 passed)
+  6. test_voice_pipeline.py   +73 -0  _on_utterance_aggregated RESPOND/RECORD_ONLY 两跳断言(43 passed)
+- 精简(code-simplifier 规则1-9): 3 源文件均 0 无用import/0 注释码/0 裸except；
+  consumer_events 224 行 / consumer_session 310 行 均 >200 软限，但 voice 高 churn 区
+  按 04-addendum §二不按行数硬拆(plan §9 已认可)；纯 additive 埋点无可精简项，未改动。
+- lint: 改动的 3 源文件 ruff 全绿；`ruff check apps/voice/` 余 14 处告警全部在未触碰的
+  既有文件(admin/response_decision_service/speaker_service/tts_stream_client/voice_persist_service/views)，
+  属既有 legacy 债务、超本批 scope，不处理。
+- 集成回归: pytest tests/voice/ 全量 777 passed (27.7s)。
+- §7.2 假日志冒烟: 提取 measure-voice-latency.sh python 解析段跑独立假日志(不覆盖运行中的
+  /tmp/linchat-backend.log)，含新增 delta_vad_pct + 三跳 key → 输出合法 JSON, samples=1,
+  slo_met=true(依 total_from_pipeline_ms 判定)，未崩溃，向后兼容确认 ✓。
+- 手动验证(§7.3, 需真实 ambient 链路)留待安琳执行。
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
