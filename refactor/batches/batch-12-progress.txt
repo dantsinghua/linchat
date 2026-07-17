@@ -22,3 +22,19 @@ STATUS: EXECUTING
 
 STATUS: EXECUTING_INTERRUPTED  # 2026-07-17 13:10 账号月度消费上限（monthly spend limit），非代码失败。
 # 工作区半成品已 commit 为 WIP 保留在 refactor/batch-12 分支，限额恢复后可续作（未经完整测试，勿直接合并）。
+
+## Phase 2b: Executor (resumed & completed 2026-07-17)
+- 续作接手 WIP commit 2baaab9；审查 git diff main...HEAD 后确认 4 改动 + 3 测试文件均已就位，与 plan 第 3 节一致：
+  - models/services.py：60s TTL 缓存 + update_model 失效钩子 + 返回副本（改动 1.1~1.3）✅
+  - graph/helpers/prompt.py：asyncio.gather(return_exceptions=True) 三步 IO 并行，保留 model/history 传播 + memory 降级语义（改动 2.1）✅
+  - voice/response_decision_service.py：wake_words 60s TTL 缓存（改动 3.1~3.2）✅
+  - conftest.py：autouse 清进程内缓存 fixture（防跨测试污染）✅
+  - 新测试 tests/apps/graph/test_prompt_builder.py（5 用例）+ test_services.py 缓存用例 + test_response_decision.py 缓存命中用例 ✅
+- WIP 差距：仅缺 1 处回归修复——tests/models/test_chat_integration.py::test_get_llm_config_change_takes_effect_immediately
+  用直接 .save()（绕过 update_model）断言配置即时生效，与新 TTL 缓存冲突。已补显式 _invalidate_model_cache 模拟生产 update_model 失效路径（plan Q2/Q4 已预判此类测试）。
+- Lint：ruff 我改动行零新增错误（7 处均 main 上先存，位于未触碰区域）；black 全库未启用（main 基线 7 文件均未 black 化）；mypy 两源文件仅剩 django.conf stub 既有 note。
+- 局部测试：目标 3 套 141 passed；修复后 test_chat_integration 9 passed。
+- 回归全量：pytest -q → 1672 passed, 9 skipped, 0 failed（远高于 1278 基线）。
+- 性能 baseline：无 before.json 且禁启停服务 → 跳过 before/after 采集（并行化为纯 IO 并发优化，无行为契约变更）。
+
+STATUS: EXECUTED  # 2026-07-17 续作验证全绿
