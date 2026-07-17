@@ -311,9 +311,7 @@ class TestReceiveLoopBranches:
 
         client = ConcreteClient()
         # Should complete without error
-        asyncio.get_event_loop().run_until_complete(
-            client._on_connection_lost(Exception("test"))
-        )
+        asyncio.run(client._on_connection_lost(Exception("test")))
 
     def test_on_error_default_noop(self):
         """默认 _on_error 不抛异常 (line 85)。"""
@@ -325,9 +323,7 @@ class TestReceiveLoopBranches:
                 pass
 
         client = ConcreteClient()
-        asyncio.get_event_loop().run_until_complete(
-            client._on_error(RuntimeError("test"))
-        )
+        asyncio.run(client._on_error(RuntimeError("test")))
 
 
 # ===========================================================================
