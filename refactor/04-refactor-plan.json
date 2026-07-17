@@ -2,15 +2,20 @@
   "metadata": {
     "generated_at": "2026-04-16T17:30:00+08:00",
     "generated_by": "refactor-planner-v2",
+    "last_updated_at": "2026-07-17T18:30:00+08:00",
+    "last_updated_by": "refactor-planner (rediagnosis R3, append batch-29~36)",
     "project": "linchat",
     "scope": "backend-only (+ 2 frontend dead file deletions)",
-    "total_batches": 28,
-    "total_estimated_sessions": 29,
+    "total_batches": 37,
+    "total_estimated_sessions": 37,
     "source_inputs": [
       "docs/legacy-and-debts.md",
       "refactor/01-architecture-map.md",
       "refactor/02-issue-diagnosis.md",
-      "refactor/03-call-chain-analysis.md"
+      "refactor/03-call-chain-analysis.md",
+      "refactor/diag-20260717/01-architecture-delta.md",
+      "refactor/diag-20260717/02-issue-diagnosis.md",
+      "refactor/diag-20260717/03-hotpath-delta.md"
     ]
   },
   "slo_targets": {
@@ -561,7 +566,7 @@
       "risk": "low",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "如果 P50 仍 > 5s，需进一步分析：考虑聚合超时缩短（1.5s→0.8s）、LLM 意图分类并行化等 P2 优化。",
+      "notes": "如果 P50 仍 > 5s，需进一步分析：考虑聚合超时缩短（1.5s→0.8s）、LLM 意图分类并行化等 P2 优化。rediagnosis R3 静态复核确认下限仍 5.5-7s，已据此规划 batch-29~32（埋点补齐 + 决策LLM短路 + 小爱解耦 + 聚合自适应）。",
       "actual_status": "blocked_gate"
     },
     {
@@ -790,7 +795,7 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "graph/prompts.py → apps.context 迁移需确认不引入新循环依赖（Open Question Q4 from 01-architecture-map）。memory/services.py 的 CRONMEM_PROMPT_TEMPLATE 导入改为 from apps.context.xxx。",
+      "notes": "graph/prompts.py → apps.context 迁移需确认不引入新循环依赖（Open Question Q4 from 01-architecture-map）。memory/services.py 的 CRONMEM_PROMPT_TEMPLATE 导入改为 from apps.context.xxx。实际执行拆为 Part A（本批，4 shim/12 文件）+ Part B（延后至 batch-34，剩余 6 shim + tokenizer）。",
       "actual_status": "completed"
     },
     {
@@ -841,7 +846,7 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "此迁移缓解 chat<->graph 循环依赖（01-architecture-map#2 最严重循环依赖）。",
+      "notes": "此迁移缓解 chat<->graph 循环依赖（01-architecture-map#2 最严重循环依赖）。generation.py 迁移延后至 batch-35（batch-16 决策：本批仅迁 types.py）。",
       "actual_status": "completed"
     },
     {
@@ -1344,7 +1349,7 @@
         "new_files": [],
         "forbidden_zones_crossed": false
       },
-      "description": "batch-01 完成了全链路代码修复（VO/Serializer/前端/决策逻辑），但 Gateway 声纹模型无法识别已注册用户（conf 全低于阈值）。本 batch 在 Gateway 模型修复后执行 E2E 验证。",
+      "description": "batch-01 完成了全链路代码修复（VO/Serializer/前端/决策逻辑），但 Gateway 声纹模型无法识别已注册用户（conf 全低于阈值）。本 batch 在 Gateway 声纹模型修复后执行 E2E 验证。",
       "validation": {
         "automated": [],
         "manual": [
@@ -1416,6 +1421,416 @@
       "blocking_for_production": false,
       "notes": "batch-04 的 R4 延后项（2026-04-23 安琳批复拆出）。依赖 batch-04 的 TraceIdMiddleware / build_logging_dict / trace_id_var 已就绪后才能启动。",
       "actual_status": "completed"
+    },
+    {
+      "id": "batch-29",
+      "type": "observability",
+      "title": "补齐语音延迟埋点三缺跳（聚合等待 / speaker identify / 决策 LLM）",
+      "priority": "P1",
+      "category": "observability",
+      "estimated_files": 5,
+      "estimated_lines_changed": 90,
+      "depends_on": [
+        "batch-07"
+      ],
+      "blocks_slo": "voice_end_to_end_5s",
+      "addresses": [
+        "diag-20260717/03-hotpath-delta#2.5#latency.summary.hops缺3跳",
+        "diag-20260717/03-hotpath-delta#执行摘要#hop_sum系统漏计3-4s"
+      ],
+      "pre_approved_by_user": false,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/utterance_aggregator.py",
+          "backend/apps/voice/consumer_events.py",
+          "backend/apps/voice/services/response_decision_service.py",
+          "backend/apps/voice/services/voice_latency.py",
+          "backend/tests/voice/test_voice_pipeline.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "batch-07 的 latency.summary.hops 缺 3 跳，均发生在 latency_start(t0) 之前：(1) 聚合静默等待 utterance_aggregator.py:77 sleep(1.5s)；(2) speaker identify consumer_events.py:120-133 Gateway RT；(3) 决策 LLM 分类 response_decision_service.py:100。三段目前仅 log 未 latency_record，导致 hop_sum / total_from_pipeline_ms 系统性漏计 ~3-4s，5s SLO 归因失真。本 batch 用统一 segment_id 把三段补入 latency_record，使 hop_sum 与 total_from_vad_ms 对齐。仅加埋点，不改业务逻辑。这是后续 batch-30/31/32 语音优化的测量前提（先埋点后优化）。",
+      "investigation_steps": [
+        "确认 voice_latency.py:18-20 segment_id 对齐机制，聚合模式下 speech_end anchor 与三段的 seg 关联",
+        "确认 latency_record 在 latency_start 之前调用时的 total_from_vad_ms 兜底路径"
+      ],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/test_voice_pipeline.py -v"
+        ],
+        "manual": [
+          "触发 3 次完整 ambient 链路，检查 latency.summary.hops 含 aggregation_wait / speaker_identify / decision_llm 三跳",
+          "确认 hop_sum 与 total_from_vad_ms 误差 < 10%（不再系统性漏计 3-4s）"
+        ],
+        "metrics": [
+          "语音延迟 hops 覆盖率：从缺 3 跳补至全链路，hop_sum 漏计 < 10%"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>；仅埋点，移除后退回原漏计状态，无业务影响",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "voice 高风险区，纯埋点。必须先于 batch-30/31/32 完成，否则优化收益无法量化归因。rediagnosis R3 新增。",
+      "actual_status": "planned"
+    },
+    {
+      "id": "batch-30",
+      "type": "refactor",
+      "title": "决策 LLM 意图分类移出关键路径（高置信规则短路）",
+      "priority": "P1",
+      "category": "performance",
+      "estimated_files": 3,
+      "estimated_lines_changed": 120,
+      "depends_on": [
+        "batch-29"
+      ],
+      "blocks_slo": "voice_end_to_end_5s",
+      "addresses": [
+        "diag-20260717/03-hotpath-delta#5#R1决策LLM串行阻塞",
+        "diag-20260717/03-hotpath-delta#3#必砍项1"
+      ],
+      "pre_approved_by_user": false,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/response_decision_service.py",
+          "backend/core/settings/voice.py",
+          "backend/tests/voice/test_response_decision.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "R1（5s SLO 首要障碍）：response_decision_service.py:63-70,100 在答案生成前插入一次完整 httpx 决策 LLM 往返（VOICE_DECISION_LLM_TIMEOUT=2.0s）+ 上下文召回 IO，纯串行阻塞 pipeline 启动，+0.8~2s。本 batch 调整决策顺序：对高置信规则（疑问句 question / active_conversation 等，当前 :63-70 规则已存在但排在 LLM 之后）先短路直接 RESPOND，仅在低置信/歧义时才调决策 LLM。保留 VOICE_DECISION_USE_LLM flag 与 LLM 兜底路径，短路策略由新 flag 控制可灰度回退。",
+      "investigation_steps": [
+        "阅读 response_decision_service.py:47-100 decide() 完整决策树，确认 question / active_conversation 规则的置信度与误判风险",
+        "确认短路后是否影响 _is_tts_echo / wake_words 既有前置过滤（不可绕过 echo 抑制）"
+      ],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/test_response_decision.py -v"
+        ],
+        "manual": [
+          "对疑问句/明确对话触发 ambient，确认跳过决策 LLM（日志无 decision.llm_classify）",
+          "对歧义输入确认仍回落决策 LLM 路径",
+          "用 batch-29 埋点对比优化前后 decision_llm 跳耗时"
+        ],
+        "metrics": [
+          "高置信场景 decision 阶段 P50 由 ~0.8-2s 降至 < 0.1s（跳过 LLM）"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>；或关闭短路 flag 回落全量 LLM 决策",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "voice 高风险区，改动决策逻辑需回归测试覆盖误判边界。收益依赖 batch-29 埋点量化。对齐 03-hotpath-delta Open Question Q1。rediagnosis R3 新增。",
+      "actual_status": "planned"
+    },
+    {
+      "id": "batch-31",
+      "type": "refactor",
+      "title": "小爱 HA 下发与浏览器 TTS wait_idle 解耦（消除串行浪费）",
+      "priority": "P1",
+      "category": "performance",
+      "estimated_files": 3,
+      "estimated_lines_changed": 100,
+      "depends_on": [
+        "batch-29"
+      ],
+      "blocks_slo": "voice_end_to_end_5s",
+      "addresses": [
+        "diag-20260717/03-hotpath-delta#5#R2小爱串行浪费",
+        "diag-20260717/03-hotpath-delta#3#必砍项2"
+      ],
+      "pre_approved_by_user": false,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/voice_pipeline.py",
+          "backend/apps/voice/services/tts_router.py",
+          "backend/tests/voice/test_voice_pipeline.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "R2：当 tts_output_device=='ha_speaker' 时，小爱走 _try_ha_speaker_tts(full_response)（voice_pipeline.py:229），却排在 finally.wait_idle()（:216，等浏览器 Gateway TTS 整段合成完）之后——浏览器 TTS 整段合成对小爱可听延迟是纯串行浪费（batch-09/10 对小爱零收益）。本 batch 将 HA 下发从 finally 之后移出：full_response 就绪即并行下发 HA，不再等浏览器 TTS 合成。不改 Gateway / HA xiaomi_miot 契约（仍整段 send_to_ha_speaker）。真正的小爱增量流式（feed_text 直连 HA 流式接口）依赖 HA 能力确认，登记为 PD-6 延后。省 ~1-3s（小爱路径）。",
+      "investigation_steps": [
+        "确认小爱路径 _comfort_enabled=False（voice_pipeline.py:276）下 wait_idle 对 HA 下发无功能依赖，仅顺序耦合",
+        "确认并行下发 HA 与 barge-in cancel 的交互（打断时不应残留 HA 播报）"
+      ],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/test_voice_pipeline.py -v"
+        ],
+        "manual": [
+          "tts_output_device=ha_speaker 触发 ambient，确认小爱开始播报不再等待浏览器 TTS 整段合成",
+          "barge-in 打断时确认 HA 播报同步取消",
+          "用 batch-29 埋点对比小爱路径端到端优化前后"
+        ],
+        "metrics": [
+          "小爱可听端到端 P50 减少 > 1s"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>；恢复 HA 下发在 finally 之后",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "voice 最高风险区。本 batch 仅做顺序解耦（不触 Gateway 契约）。小爱增量流式对接见 PD-6。对齐 03-hotpath-delta Open Question Q2。rediagnosis R3 新增。",
+      "actual_status": "planned"
+    },
+    {
+      "id": "batch-32",
+      "type": "refactor",
+      "title": "聚合窗口自适应即时 flush（句末标点，替代固定 1.5s sleep）",
+      "priority": "P1",
+      "category": "performance",
+      "estimated_files": 3,
+      "estimated_lines_changed": 90,
+      "depends_on": [
+        "batch-29"
+      ],
+      "blocks_slo": "voice_end_to_end_5s",
+      "addresses": [
+        "diag-20260717/03-hotpath-delta#3#必砍项3聚合窗口自适应",
+        "diag-20260717/03-hotpath-delta#1#固定等待1.5s"
+      ],
+      "pre_approved_by_user": false,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/utterance_aggregator.py",
+          "backend/core/settings/voice.py",
+          "backend/tests/voice/test_utterance_aggregator.py"
+        ],
+        "new_files": [
+          "backend/tests/voice/test_utterance_aggregator.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "utterance_aggregator.py:77 当前固定 _on_timeout sleep(VOICE_AMBIENT_AGGREGATE_TIMEOUT=1.5s) 才 flush，属固定阻塞。本 batch 改为自适应：当聚合缓冲已含句末标点/疑问句结束符时即时 flush，不等满超时；无明确句末信号时仍等超时兜底（超时作为上限保留）。省 ~0.5-1.5s。",
+      "investigation_steps": [
+        "阅读 utterance_aggregator.py add/_on_timeout 完整聚合状态机，确认即时 flush 不破坏多段 PCM 合并语义",
+        "确认自适应 flush 与 speaker identify / 决策链路的 seg 对齐（配合 batch-29 埋点）"
+      ],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/test_utterance_aggregator.py -v"
+        ],
+        "manual": [
+          "说完整疑问句触发 ambient，确认聚合在句末即时 flush（日志 aggregation.flush.wait_ms 显著 < 1500）",
+          "说不完整/无标点语音确认仍走超时兜底"
+        ],
+        "metrics": [
+          "聚合等待跳（batch-29 埋点）P50 由 ~1.5s 降至 < 0.5s（句末场景）"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>；或将自适应 flag 关闭回落固定 1.5s",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "voice 高风险区。需回归多段合并语义避免过早 flush 截断长句。对齐 03-hotpath-delta Open Question Q3。rediagnosis R3 新增。",
+      "actual_status": "planned"
+    },
+    {
+      "id": "batch-33",
+      "type": "refactor",
+      "title": "voice service 层直连 ORM 统一收敛到 message_repo",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 5,
+      "estimated_lines_changed": 120,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "diag-20260717/01-architecture-delta#2#voice service层ORM违规不一致",
+        "01-architecture-map#7#Q5",
+        "PD-4"
+      ],
+      "pre_approved_by_user": false,
+      "scope": {
+        "files_touched": [
+          "backend/apps/voice/services/voice_persist_service.py",
+          "backend/apps/voice/services/voice_pipeline.py",
+          "backend/apps/voice/services/speaker_service.py",
+          "backend/apps/chat/repositories.py",
+          "backend/tests/voice/test_voice_persist_service.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "红线 5 分层违规收敛：voice service 层 8 处直连 ORM（voice_persist_service.py:82/86/92/129/130/139、voice_pipeline.py:248、speaker_service.py:160）绕过 repositories，而同为 voice service 的 ambient_light_service.py:25 已正确用 message_repo。本 batch 统一收敛到 chat.repositories.message_repo（与 ambient_light 已建立的模式一致，即 PD-4 采纳'收敛 message_repo'方案）。message_repo 补充所需方法（如 update_status / create_media_attachment）。纯分层收敛，不改运行时行为、不改 schema。",
+      "investigation_steps": [
+        "逐处核对 8 个 ORM 调用的语义（filter+update / create），确认 message_repo 是否已有等价方法，缺则补充",
+        "确认 MediaAttachment.objects.create（voice_persist_service.py:130）归属 message_repo 还是 media 侧 repo"
+      ],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/voice/ -v",
+          "! rg -n 'Message\\.objects|MediaAttachment\\.objects' backend/apps/voice/services/ -g '!**/__pycache__/**'（应无命中）"
+        ],
+        "manual": [
+          "触发 ambient 语音持久化，确认 Message/MediaAttachment 写入与超限清理行为不变"
+        ],
+        "metrics": [
+          "voice/services 直连 ORM 命中数从 8 降至 0"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "high",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "voice 高风险区，纯分层重构必带回归测试。落地前需安琳对 PD-4 拍板（本 batch 默认采纳'收敛 message_repo'，与 ambient_light 一致）。rediagnosis R3 新增。",
+      "actual_status": "planned"
+    },
+    {
+      "id": "batch-34",
+      "type": "refactor",
+      "title": "chat/services 剩余 6 中枢 shim + tokenizer 清理（batch-15 Part B）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 11,
+      "estimated_lines_changed": 80,
+      "depends_on": [
+        "batch-15"
+      ],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#一#兼容层shim文件",
+        "refactor/batches/batch-15-plan.md#4#PartB"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/chat/services/document_parse_service.py",
+          "backend/apps/chat/services/inference_service.py",
+          "backend/apps/chat/services/media_service.py",
+          "backend/apps/chat/services/gpu_lock.py",
+          "backend/apps/chat/services/minio_service.py",
+          "backend/apps/context/tokenizer.py",
+          "backend/apps/chat/services/__init__.py",
+          "backend/apps/context/__init__.py",
+          "backend/apps/graph/tools/multimodal_agent.py",
+          "backend/tests/chat/test_document_parse_service.py",
+          "backend/tests/chat/test_inference_cancel.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "batch-15 已执行 Part A（4 shim / 12 文件），本 batch 执行 batch-15-plan.md §4 延后的 Part B：删除 chat/services 剩余 6 个中枢 shim（document_parse_service / inference_service / media_service / gpu_lock / minio_service）+ context/tokenizer.py，调用点 repoint 到真实模块（apps.media.services.document / apps.graph.services.inference_service / apps.media.services.upload / apps.graph.services.gpu_lock / apps.common.storage.minio_service / apps.common.tokenizer）。中枢 __init__ 对外 re-export 契约保留，仅 repoint 内部 import。纯 import 迁移，不改运行时行为。",
+      "investigation_steps": [
+        "rg 复核 6 shim 当前调用点仍与 batch-15-plan §2 表一致（multimodal_agent.py:17 gpu_lock 为唯一生产 lazy import 点）",
+        "确认 chat/services/__init__.py 的 compat 块行号（Part A 已改 L20，本批改 L21-24）"
+      ],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/ -v（全量回归）",
+          "python -c 'import apps.chat.services, apps.context, apps.graph.services'（无 ImportError）",
+          "! rg -n 'chat\\.services\\.(document_parse_service|inference_service|media_service|gpu_lock|minio_service)|context\\.tokenizer' backend/ -g '!**/__pycache__/**'（应无命中）"
+        ],
+        "manual": [],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>；纯 import 迁移，git checkout 恢复被删 shim",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "承接 batch-15 拆分决定（batch-15-plan §8）。与 Part A 无测试文件重叠，唯一共享文件 chat/services/__init__.py 为独立行编辑。rediagnosis R3 新增（继承 backlog 延后项）。",
+      "actual_status": "planned"
+    },
+    {
+      "id": "batch-35",
+      "type": "refactor",
+      "title": "chat/services/generation.py 迁移到 graph（batch-16 延后项）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 6,
+      "estimated_lines_changed": 90,
+      "depends_on": [
+        "batch-16"
+      ],
+      "blocks_slo": null,
+      "addresses": [
+        "legacy-and-debts#六#P2#types/generation迁移",
+        "batch-16#notes#generation延后"
+      ],
+      "pre_approved_by_user": true,
+      "scope": {
+        "files_touched": [
+          "backend/apps/chat/services/generation.py",
+          "backend/apps/graph/services/generation.py",
+          "backend/apps/chat/services/__init__.py",
+          "backend/apps/graph/services/agent_service.py",
+          "backend/apps/graph/services/inference_service.py",
+          "backend/tests/chat/test_inference_service.py"
+        ],
+        "new_files": [
+          "backend/apps/graph/services/generation.py"
+        ],
+        "forbidden_zones_crossed": false
+      },
+      "description": "batch-14/16 已判定 generation.py（29 行，含 StopGeneration 等真实逻辑，非 shim）为延后迁移项。本 batch 将其迁移到 graph/services/generation.py（graph 是主要消费者，与 batch-16 types 迁移方向一致，进一步缓解 chat<->graph 耦合），chat 侧留临时 re-export 兼容层。先 rg 定位全部调用点再迁移。",
+      "investigation_steps": [
+        "rg 'from apps.chat.services.generation import|chat.services.generation' 定位全部调用点",
+        "确认 StopGeneration 是否被 SSE / cancel 路径 isinstance 捕获，迁移后异常类型 identity 不变（re-export 而非重定义）"
+      ],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/ -v（全量回归）",
+          "python -c 'import apps.chat.services, apps.graph.services'（无 ImportError）"
+        ],
+        "manual": [],
+        "metrics": []
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "medium",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "小体量但完成 batch-16 遗留的 chat/services 迁移一致性。rediagnosis R3 新增（继承 backlog 延后项）。",
+      "actual_status": "planned"
+    },
+    {
+      "id": "batch-36",
+      "type": "fix",
+      "title": "消除孤儿 embedding 派发日志噪声（attachment_id=1 not found ×23）",
+      "priority": "P2",
+      "category": "tech-debt",
+      "estimated_files": 3,
+      "estimated_lines_changed": 40,
+      "depends_on": [],
+      "blocks_slo": null,
+      "addresses": [
+        "diag-20260717/02-issue-diagnosis#8#问题1孤儿id=1",
+        "diag-20260717/02-issue-diagnosis#9#Q1派发竞态"
+      ],
+      "pre_approved_by_user": false,
+      "scope": {
+        "files_touched": [
+          "backend/apps/media/services/document_cache.py",
+          "backend/apps/media/tasks.py",
+          "backend/tests/media/test_document_embedding.py"
+        ],
+        "new_files": [],
+        "forbidden_zones_crossed": false
+      },
+      "description": "generate_document_embeddings 反复收到孤儿 attachment_id=1（DB 无此行，2 小时窗口 ×23 WARNING 日志噪声，任务已 guard 早返回无副作用）。本 batch：(1) document_cache.py:69 派发前校验 attachment 存在性再 dispatch；(2) tasks.py:56 worker 侧 not-found 由 WARNING 降为 DEBUG（属预期早返回而非错误）；(3) 排查删除-派发竞态（上传后 attachment 被清理但 embedding 任务已入队）。仅降噪 + 前置校验，不改嵌入业务逻辑。",
+      "investigation_steps": [
+        "确认 id=1 来源：测试/探针反复解析未持久化 attachment，还是删除-派发竞态（02-issue-diagnosis#9#Q1 两假设）",
+        "确认 document_cache.py:69 dispatch 前是否已持有 attachment 对象（若已持有则竞态假设成立）"
+      ],
+      "validation": {
+        "automated": [
+          "pytest backend/tests/media/test_document_embedding.py -v"
+        ],
+        "manual": [
+          "运行 2 小时窗口，确认 'attachment not found id=1' WARNING 不再出现（或降为 DEBUG）"
+        ],
+        "metrics": [
+          "generate_document_embeddings not-found WARNING 频次从 ~23/2h 降至 0"
+        ]
+      },
+      "rollback_strategy": "git revert <commit>",
+      "risk": "low",
+      "estimated_sessions": 1,
+      "blocking_for_production": false,
+      "notes": "非阻塞日志噪声，零 bug 目标附带项。若确认为删除-派发竞态则重点在派发前校验存在性。rediagnosis R3 新增。",
+      "actual_status": "planned"
     }
   ],
   "phased_rollout": {
@@ -1438,6 +1853,12 @@
       "batch-10",
       "batch-27"
     ],
+    "phase_p1_voice_slo_round2": [
+      "batch-29",
+      "batch-30",
+      "batch-31",
+      "batch-32"
+    ],
     "phase_p1_other_perf": [
       "batch-11",
       "batch-12"
@@ -1446,7 +1867,9 @@
       "batch-13",
       "batch-14",
       "batch-15",
-      "batch-16"
+      "batch-16",
+      "batch-34",
+      "batch-35"
     ],
     "phase_p2_settings_split": [
       "batch-17",
@@ -1463,6 +1886,10 @@
     ],
     "phase_p2_doc_cleanup": [
       "batch-24"
+    ],
+    "phase_p2_layering_cleanup": [
+      "batch-33",
+      "batch-36"
     ],
     "phase_p3_test_coverage": [
       "batch-25",
@@ -1525,6 +1952,34 @@
     {
       "item": "6 个 SubAgent 工具注册统一化",
       "reason": "涉及 LangGraph 工具 API，未被批准"
+    },
+    {
+      "item": "settings/__init__.py:8-10 docstring 漂移修正（LLM/security 已迁至 llm.py/security.py）",
+      "reason": "rediagnosis R3：纯注释、3 行、无运行时影响，不成批。可在下次触及 settings 的 batch 顺手修正。见 05-addendum.md 不做清单"
+    },
+    {
+      "item": "voice_pipeline.py(309)/consumer_session.py(303) 按行数硬拆",
+      "reason": "rediagnosis R3：仅超 300 行 3-9 行，voice 最高风险 + 高 churn（pipeline 近 3 月 6 commits），纯行数拆分收益极低而回归风险高；voice_pipeline 的 ORM 债由 batch-33 处理、小爱串行由 batch-31 处理。暂不为行数单独成批"
+    },
+    {
+      "item": "BlockingConnectionPool 池耗尽静默阻塞 ≤10s（R3）",
+      "reason": "rediagnosis R3：家庭低并发概率极低，max_connections=50 覆盖 pubsub 峰值；无实测证据，不成批。留观测（若 batch-29 埋点后发现 redis 尾延迟再评估）"
+    },
+    {
+      "item": "model_config 缓存跨线程竞态 + SM4 明文 key 驻留 60s（R4）",
+      "reason": "rediagnosis R3：良性竞态（最坏重复查库一次）；明文 key 驻留属 batch-12 已知设计，触碰 SM4 加密面为禁区第 3 条，不轻易改。不成批"
+    },
+    {
+      "item": "ORM 直改 ModelConfig 绕过缓存失效 60s 陈旧（R5）",
+      "reason": "rediagnosis R3：仅换模型/换 key 运维场景短暂陈旧，家庭低频；加手动 flush 入口收益边际，暂列不做。若换模型频繁再评估加 management command"
+    },
+    {
+      "item": "refactor/loop/*.py 工装债务",
+      "reason": "rediagnosis R3：01-architecture-delta §5 确认工装独立于 backend、无架构侵入、无实质债务。归低优先级，不成批"
+    },
+    {
+      "item": "frontend next start 与 output:standalone 配置告警",
+      "reason": "rediagnosis R3：LOW 启动告警、服务仍 Ready；前端技术栈不动（第 6 条）。不成批"
     }
   ],
   "pending_decisions": [
@@ -1554,9 +2009,11 @@
     },
     {
       "id": "PD-4",
-      "question": "voice_persist_service 7 处直接 ORM 应该统一经由 chat.repositories.message_repo，还是 voice 建自己的 repository 封装？",
-      "blocks": [],
-      "source": "01-architecture-map#7#Q5"
+      "question": "voice service 8 处直接 ORM 应统一经由 chat.repositories.message_repo，还是 voice 建自己的 repository 封装？（rediagnosis R3 确认 ambient_light_service 已用 message_repo，batch-33 默认采纳收敛 message_repo，需安琳确认）",
+      "blocks": [
+        "batch-33"
+      ],
+      "source": "01-architecture-map#7#Q5 + diag-20260717/01-architecture-delta#2"
     },
     {
       "id": "PD-5",
@@ -1565,6 +2022,12 @@
         "batch-11"
       ],
       "source": "03-call-chain-analysis#7#Q6"
+    },
+    {
+      "id": "PD-6",
+      "question": "HA xiaomi_miot 是否有流式文本接口可对接 batch-09 的 feed_text，从而让小爱走增量 TTS（彻底删除 finally.wait_idle 对小爱串行阻塞）？若无，batch-31 仅做顺序解耦。",
+      "blocks": [],
+      "source": "diag-20260717/03-hotpath-delta#6#Q2"
     }
   ]
 }
