@@ -16,7 +16,9 @@ import pytest
 from django.utils import timezone
 
 from apps.chat.models import Message
+from apps.chat.repositories import message_repo
 from apps.media.models import MediaAttachment
+from apps.media.repositories import media_attachment_repo
 from apps.voice.services.voice_persist_service import VoicePersistService
 
 _VPS = "apps.voice.services.voice_persist_service"
@@ -196,7 +198,7 @@ class TestCountAndDeleteExcess:
         for i in range(5):
             self._make_voice_user_msg(uid, f"h1-req-{i}", i)
 
-        deleted = VoicePersistService._count_and_delete_excess.func(uid, 2)
+        deleted = message_repo.delete_excess_record_only.func(uid, 2)
 
         assert deleted == 3
         remaining = list(
@@ -211,7 +213,7 @@ class TestCountAndDeleteExcess:
         for i in range(3):
             self._make_voice_user_msg(uid, f"h2-req-{i}", i)
 
-        deleted = VoicePersistService._count_and_delete_excess.func(uid, 10)
+        deleted = message_repo.delete_excess_record_only.func(uid, 10)
 
         assert deleted == 0
         assert Message.objects.filter(user_id=uid, role="user").count() == 3
@@ -224,7 +226,74 @@ class TestCountAndDeleteExcess:
         self._make_voice_asst_msg(uid, "h3-req-0", 2)
 
         # 未回复的 record-only 只有 1 条 <= limit=1 → 返回 0
-        deleted = VoicePersistService._count_and_delete_excess.func(uid, 1)
+        deleted = message_repo.delete_excess_record_only.func(uid, 1)
 
         assert deleted == 0
         assert Message.objects.filter(user_id=uid, role="user").count() == 2
+
+
+# ────────────────────────────────
+# 分组 I — batch-33 收敛后新增 repo 方法直接单测（等价语义护栏）
+# ────────────────────────────────
+@pytest.mark.django_db
+class TestVoiceRepoMethods:
+    def _mk(self, user_id, role, request_id, is_voice=False, speaker_id=None, content="hi", seq=1):
+        return Message.objects.create(
+            message_uuid=str(uuid.uuid4()), user_id=user_id, role=role, content=content,
+            request_id=request_id, is_voice=is_voice, speaker_id=speaker_id,
+            sequence=seq, status=Message.STATUS_NORMAL, created_time=timezone.now(),
+        )
+
+    def test_get_by_request_id_sync_role_filter(self):
+        u = self._mk(1, "user", "gr-1", seq=1)
+        self._mk(1, "assistant", "gr-1", seq=2)
+        got_user = message_repo.get_by_request_id_sync("gr-1", 1, role="user")
+        got_asst = message_repo.get_by_request_id_sync("gr-1", 1, role="assistant")
+        assert got_user.message_id == u.message_id
+        assert got_asst.role == "assistant"
+        # 隔离粒度 user_id：跨用户不可见
+        assert message_repo.get_by_request_id_sync("gr-1", 999, role="user") is None
+        # role=None 不过滤 role
+        assert message_repo.get_by_request_id_sync("gr-1", 1, role=None) is not None
+
+    def test_set_voice_flag_sync(self):
+        m = self._mk(1, "user", "sv-1", is_voice=False, seq=1)
+        message_repo.set_voice_flag_sync(m)
+        m.refresh_from_db()
+        assert m.is_voice is True
+
+    def test_reassign_speaker_messages(self):
+        # 未知标签的语音消息改归属；非语音/别标签不受影响
+        self._mk(1, "user", "rs-1", is_voice=True, speaker_id="unknown-x", seq=1)
+        self._mk(1, "user", "rs-2", is_voice=True, speaker_id="unknown-x", seq=2)
+        self._mk(1, "user", "rs-3", is_voice=False, speaker_id="unknown-x", seq=3)
+        self._mk(1, "user", "rs-4", is_voice=True, speaker_id="other", seq=4)
+        count = message_repo.reassign_speaker_messages.func("unknown-x", 7)
+        assert count == 2
+        assert Message.objects.filter(speaker_id="7", user_id=7, is_voice=True).count() == 2
+        # 非语音的同标签不动
+        assert Message.objects.filter(request_id="rs-3", speaker_id="unknown-x").exists()
+
+    def test_update_content_by_request_id(self):
+        self._mk(1, "user", "uc-1", content="[语音对话] 原始", seq=1)
+        self._mk(1, "assistant", "uc-1", content="回复", seq=2)
+        n = message_repo.update_content_by_request_id.func("uc-1", 1, "纯ASR原文", role="user")
+        assert n == 1
+        assert message_repo.get_by_request_id_sync("uc-1", 1, role="user").content == "纯ASR原文"
+        # assistant 消息不受影响
+        assert message_repo.get_by_request_id_sync("uc-1", 1, role="assistant").content == "回复"
+
+    def test_create_audio_attachment_sync(self):
+        from datetime import timedelta
+        msg = self._mk(1, "user", "ca-1", is_voice=True, seq=1)
+        now = timezone.now()
+        att = media_attachment_repo.create_audio_attachment_sync(
+            attachment_uuid=str(uuid.uuid4()), message=msg, user_id=1,
+            mime_type="audio/wav", file_name="voice_x.wav", file_size=2048,
+            storage_path="media/1/x.wav", duration_seconds=1.5,
+            created_at=now, expires_at=now + timedelta(days=7),
+        )
+        assert att.media_type == MediaAttachment.TYPE_AUDIO
+        assert att.message_id == msg.message_id
+        assert att.file_size == 2048
+        assert att.duration_seconds == 1.5

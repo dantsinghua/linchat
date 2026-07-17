@@ -147,47 +147,35 @@ class TestRetrospectiveMatch:
 
     @pytest.mark.asyncio
     async def test_retrospective_match_updates_messages(self):
-        """注册声纹后，unknown_label 对应的历史消息被更新 speaker_id"""
+        """注册声纹后，unknown_label 对应的历史消息被更新 speaker_id（batch-33: 收敛 message_repo）"""
         redis = _make_redis_mock(
             hgetall_return={b"hash_aaa": b"unknown_01"},
         )
 
-        mock_qs = MagicMock()
-        mock_qs.update = MagicMock(return_value=3)  # 3 rows updated
-        mock_message_cls = MagicMock()
-        mock_message_cls.objects.filter.return_value = mock_qs
-
+        reassign = AsyncMock(return_value=3)  # 3 rows updated
         service = SpeakerService()
 
         with patch("core.redis.get_async_redis_client", AsyncMock(return_value=redis)), \
-             patch("apps.chat.models.Message", mock_message_cls), \
-             patch("asgiref.sync.sync_to_async",
-                   side_effect=lambda f: AsyncMock(return_value=f())):
+             patch("apps.chat.repositories.message_repo.reassign_speaker_messages", reassign):
             await service._retrospective_match(
                 user_id=42, gateway_speaker_id="gw-001", name="张三"
             )
 
-        # filter should have been called (with unknown label)
-        mock_message_cls.objects.filter.assert_called()
+        # 用 (unknown_label, user_id) 调用 repo 收敛方法
+        reassign.assert_awaited_once_with("unknown_01", 42)
 
     @pytest.mark.asyncio
     async def test_retrospective_match_cleans_redis(self):
-        """回溯匹配有更新 → HDEL 清理 Redis 对应条目"""
+        """回溯匹配有更新 → HDEL 清理 Redis 对应条目（batch-33: 收敛 message_repo）"""
         redis = _make_redis_mock(
             hgetall_return={"hash_aaa": "unknown_01"},
         )
 
-        mock_qs = MagicMock()
-        mock_qs.update = MagicMock(return_value=2)
-        mock_message_cls = MagicMock()
-        mock_message_cls.objects.filter.return_value = mock_qs
-
+        reassign = AsyncMock(return_value=2)
         service = SpeakerService()
 
         with patch("core.redis.get_async_redis_client", AsyncMock(return_value=redis)), \
-             patch("apps.chat.models.Message", mock_message_cls), \
-             patch("asgiref.sync.sync_to_async",
-                   side_effect=lambda f: AsyncMock(return_value=f())):
+             patch("apps.chat.repositories.message_repo.reassign_speaker_messages", reassign):
             await service._retrospective_match(
                 user_id=7, gateway_speaker_id="gw-002", name="李四"
             )

@@ -5,7 +5,6 @@ from typing import Optional
 from asgiref.sync import sync_to_async
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.db.models import Q
-from django.utils import timezone
 
 from apps.media.models import DocumentChunkEmbedding, MediaAttachment
 
@@ -48,6 +47,27 @@ class MediaAttachmentRepository:
     @sync_to_async
     def associate_message(attachment_ids: list[int], message_id: int, user_id: int) -> int:
         return MediaAttachment.objects.filter(attachment_id__in=attachment_ids, user_id=user_id).update(message_id=message_id)
+
+    @staticmethod
+    def create_audio_attachment_sync(
+        attachment_uuid: str,
+        message,  # apps.chat.models.Message 实例（不 import 以避免跨 app 循环依赖）
+        user_id: int,
+        mime_type: str,
+        file_name: str,
+        file_size: int,
+        storage_path: str,
+        duration_seconds: float,
+        created_at: datetime,
+        expires_at: datetime,
+    ) -> MediaAttachment:
+        """batch-33: 同步创建语音附件（media_type=TYPE_AUDIO 常量收敛于此）。
+        供 voice service 的 transaction.atomic() 同步块内调用，与调用方共享同一事务/线程。"""
+        return MediaAttachment.objects.create(
+            attachment_uuid=attachment_uuid, message=message, user_id=user_id,
+            media_type=MediaAttachment.TYPE_AUDIO, mime_type=mime_type,
+            file_name=file_name, file_size=file_size, storage_path=storage_path,
+            duration_seconds=duration_seconds, created_at=created_at, expires_at=expires_at)
 
     @staticmethod
     @sync_to_async

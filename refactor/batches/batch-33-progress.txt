@@ -1,0 +1,44 @@
+# Batch batch-33 Progress
+# Type: refactor | Priority: P2 | Risk: high
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Baseline HEAD: 42bf780
+- Plan generated: refactor/batches/batch-33-plan.md (161 lines)
+- Direct-ORM hits verified: 8 (persist x6, pipeline x1, speaker x1)
+- Files to touch: 6 (scope +media/repositories.py, pending 安琳确认)
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- Branch: refactor/batch-33 (from main @42bf780)
+- 已拍板: ① media/repositories.py 纳入 scope; ② is_voice.save 一并收敛; ③ PD-4 保守
+- 关键约束: 直连点 1/2/3 在 transaction.atomic 同步块 → sync repo 方法，不破坏事务原子性
+
+### 逐文件执行（每文件改后即验证）
+- [x] File4 chat/repositories.py: +5 repo 方法（get_by_request_id_sync/set_voice_flag_sync 同步；delete_excess_record_only/reassign_speaker_messages/update_content_by_request_id 异步）；sync/async 二分经 django.setup 校验通过
+- [x] File5 media/repositories.py: +create_audio_attachment_sync（同步，TYPE_AUDIO 常量收敛）
+- [x] File1 voice_persist_service.py: 直连点1/2/3+_atomic_mark_voice 走 sync repo（transaction.atomic 保留，事务原子性不变）；直连点4/5/6→_count_and_delete_excess 改 async 委派 repo；143→128 行（-15）
+- [x] File2 voice_pipeline.py: 直连点8→message_repo.update_content_by_request_id；329→326 行（-3，>300 硬限制按 plan §7 本 batch 不拆）
+- [x] File3 speaker_service.py: 直连点7→message_repo.reassign_speaker_messages；191→186 行（-5）
+- [x] File6 test_voice_persist_service.py: TestCountAndDeleteExcess 重指向 repo.func + 新增 TestVoiceRepoMethods（5 方法直接单测）
+- [x] test_unknown_speaker_labeling.py: TestRetrospectiveMatch 2 例 mock 目标改指 message_repo.reassign_speaker_messages（重构必需回归护栏）
+
+### 精简（4.4）
+- [x] 精简 media/repositories.py: 移除既有死 import django.utils.timezone（F401）；202→201 有效行
+- voice service 三文件净减 23 行（分层收敛副产品）
+
+### 验证结果
+- 直连 metric: Message.objects/MediaAttachment.objects in voice/services = 8→0 ✓
+- tests/voice/ : 807 passed
+- tests/chat/ tests/media/ tests/apps/graph/ : 494 passed / 9 skipped
+- lint: 改动文件无新增 ruff 错误，F401 全清
+- sync/async 二分正确（1/2/3 同步不破坏事务原子性；4~8 异步）
+
+## Phase 2b: Executor (completed 2026-07-17)
+- Commit: 395c334
+- Pushed to: origin/refactor/batch-33
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
