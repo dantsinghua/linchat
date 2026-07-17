@@ -97,9 +97,18 @@ class VoicePipeline:
         agent_start = time.monotonic()
         first_token_ts: Optional[float] = None
         try:
-            async for chunk in AgentService.execute(
-                user_id=user_id, thread_id=f"user_{user_id}",
-                request_id=request_id, user_message=voice_text):
+            # batch-08：ambient + 开关开启走轻量推理路径（跳过 LangGraph/工具/记忆召回，直调 Gateway）；
+            # voice_chat 或开关关闭仍走完整 AgentService.execute。循环体不变，batch-07 埋点零改动。
+            if mode == "ambient" and settings.VOICE_AMBIENT_LIGHT_ENABLED:
+                from apps.voice.services.ambient_light_service import (
+                    AmbientLightPipeline,
+                )
+                agent_gen = AmbientLightPipeline.stream(user_id, request_id, text)
+            else:
+                agent_gen = AgentService.execute(
+                    user_id=user_id, thread_id=f"user_{user_id}",
+                    request_id=request_id, user_message=voice_text)
+            async for chunk in agent_gen:
                 if chunk.type == "content":
                     if first_token_ts is None and chunk.content:
                         first_token_ts = time.monotonic()

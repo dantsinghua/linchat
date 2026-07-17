@@ -1,0 +1,51 @@
+# Batch batch-08 Progress
+# Type: refactor | Priority: P1 (performance) | Risk: high
+# Title: ambient 模式轻量 prompt 替代完整 Agent
+# blocks_slo: voice_end_to_end_5s
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Dependencies: batch-07 COMPLETED (batch-04/05/06/07/28 all merged to main)
+- Plan generated: refactor/batches/batch-08-plan.md (156 lines)
+- Open decisions for 安琳: D1(新建 ambient_light_service.py 而非塞入 agent_service.py),
+  D2(settings.py 477行豁免 300 硬限), D3(Q3 ambient 是否需记忆召回/历史轮数),
+  D4(测试文件超 scope), D5(手动性能验证)
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- Branch: refactor/batch-08 (from main HEAD=4096088)
+- D1 决策采纳 team-lead 指定路径: backend/apps/voice/services/ambient_light_service.py
+- D2/D3/D4/D5 按 team-lead 无人值守拍板执行
+
+### 逐文件执行
+- [x] core/settings.py (改动 3.1): +3 行 VOICE_AMBIENT_LIGHT_ENABLED/HISTORY_ROUNDS 开关
+- [x] apps/context/templates/ambient_light_prompt.j2 (新建): 精简 j2 prompt，渲染测试通过
+- [x] apps/voice/services/ambient_light_service.py (新建, 改动 1.1-1.5): AmbientLightPipeline
+      复用 model_service.get_active_model(SM4解密) + map_llm_exception + create_first_token_messages
+      + finalize_message；httpx 直调照抄 multimodal.py；跳过记忆召回；最近 3 轮=6 条历史；user_id 隔离
+- [x] apps/voice/services/voice_pipeline.py (改动 2.1): ambient+开关切换生成器，循环体/batch-07 埋点零改动
+- [x] tests/voice/test_ambient_light_service.py (新建): 6 用例（build_messages/stream/异常/无模型）
+- [x] tests/voice/test_voice_pipeline.py: 3 既有 ambient 用例加 override_settings(False) 保完整 Agent
+      + 4 新用例（enabled→light / disabled→agent / voice_chat→agent / error chunk）
+
+### 精简（code-simplifier）
+- ambient_light_service.py: 无未使用 import(F401 clean) / 无裸 except / 无注释代码 / 240 行(<300 硬限，
+  逻辑约 120 行，black 展开所致)；充分复用 helper 无跨文件重复 → 无需精简
+
+### 验证结果
+- ruff check: 全部改动/新建文件 PASS
+- black: 新建 service 文件 PASS；voice_pipeline.py/settings.py/测试文件的 black 差异均为 main 既有
+  文件级债务（新增行本身 black 合规）
+- isort: 本仓无 isort 配置(默认79 vs black88 冲突)，agent_service.py 等 6 个既有文件同样 FAIL，非有效门禁
+- pytest tests/voice/test_voice_pipeline.py: 36 passed
+- pytest tests/voice/test_ambient_light_service.py: 6 passed
+- pytest tests/voice/ 全量: 500 passed / 1 failed / 206 errors
+  → 1 failed + 206 errors 全部为 Postgres(5432)/Redis(6379) 未启动的环境问题(Connection refused)，
+    与本 batch 改动无关(不碰 DB/Redis 连接)；mock 型单元测试全绿
+- agent_service.py 零改动(git diff=0) → voice_chat 模式 + graph 零回归由构造保证
+- 回滚：VOICE_AMBIENT_LIGHT_ENABLED=false 即回退完整 Agent
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED

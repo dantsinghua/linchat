@@ -19,6 +19,9 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from django.conf import settings
+from django.test import override_settings
+
 from apps.chat.services.types import StreamChunk
 
 # 被测模块
@@ -704,7 +707,9 @@ class TestAmbientRespondPipeline:
         consumer = _make_consumer()
         _, tts = mock_tts
 
+        # batch-08：关闭轻量开关，保持本用例测试完整 Agent 的 ambient 路径（mock_agent 生效）
         with (
+            override_settings(VOICE_AMBIENT_LIGHT_ENABLED=False),
             patch(f"{_VP}.voice_session_service") as mock_sess,
             patch(f"{_VP}.voice_persist_service") as mock_persist,
             patch("apps.voice.services.tts_router.TTSRouter") as MockRouter,
@@ -746,6 +751,7 @@ class TestAmbientRespondPipeline:
         consumer = _make_consumer()
 
         with (
+            override_settings(VOICE_AMBIENT_LIGHT_ENABLED=False),
             patch(f"{_VP}.voice_session_service") as mock_sess,
             patch(f"{_VP}.voice_persist_service") as mock_persist,
             patch("apps.voice.services.tts_router.TTSRouter") as MockRouter,
@@ -776,6 +782,7 @@ class TestAmbientRespondPipeline:
         consumer = _make_consumer()
 
         with (
+            override_settings(VOICE_AMBIENT_LIGHT_ENABLED=False),
             patch(f"{_VP}.voice_session_service") as mock_sess,
             patch(f"{_VP}.voice_persist_service") as mock_persist,
             patch("apps.voice.services.tts_router.TTSRouter") as MockRouter,
@@ -800,6 +807,165 @@ class TestAmbientRespondPipeline:
         control_calls = router_inst.send_control.call_args_list
         control_types = [c.args[1] for c in control_calls]
         assert "tts.completed" in control_types
+
+
+# ──────────────────────────────────────────────
+# batch-08: ambient 轻量推理路径（VOICE_AMBIENT_LIGHT_ENABLED）
+# ──────────────────────────────────────────────
+
+_ALS = "apps.voice.services.ambient_light_service"
+
+
+async def _mock_light_stream_normal(*args, **kwargs):
+    """模拟 AmbientLightPipeline.stream：2 个 content chunk + done。"""
+    yield StreamChunk(type="content", content="好的", request_id="reqL")
+    yield StreamChunk(type="content", content="，帮你开灯。")
+    yield StreamChunk(type="done", content="", message_id=9)
+
+
+async def _mock_light_stream_error(*args, **kwargs):
+    """模拟 AmbientLightPipeline.stream 返回 error chunk。"""
+    yield StreamChunk(type="error", content="AI响应超时，请稍后重试")
+
+
+@pytest.mark.asyncio(loop_scope="function")
+class TestAmbientLightPipeline:
+
+    async def test_ambient_enabled_uses_light_path_not_agent(
+        self, mock_inference_svc, mock_rate_limit, mock_tts
+    ):
+        """mode=ambient + 开关开启 → 走 AmbientLightPipeline，不调用 AgentService.execute。"""
+        consumer = _make_consumer()
+
+        with (
+            override_settings(VOICE_AMBIENT_LIGHT_ENABLED=True),
+            patch(f"{_VP}.voice_session_service") as mock_sess,
+            patch(f"{_VP}.voice_persist_service") as mock_persist,
+            patch(f"{_VP}.AgentService") as MockAgent,
+            patch("apps.voice.services.tts_router.TTSRouter") as MockRouter,
+            patch(f"{_ALS}.AmbientLightPipeline") as MockLight,
+        ):
+            mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
+            mock_sess.set_active_conversation = AsyncMock()
+            mock_persist.persist_audio_attachment = AsyncMock()
+            router_inst = MagicMock()
+            router_inst.get_on_audio_callback.return_value = AsyncMock()
+            router_inst.send_control = AsyncMock()
+            MockRouter.return_value = router_inst
+            MockLight.stream = MagicMock(side_effect=_mock_light_stream_normal)
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline.run_pipeline(
+                user_id=1, text="帮我开灯", segment_id="seg",
+                consumer=consumer, mode="ambient"
+            )
+
+        # 走轻量路径：AmbientLightPipeline.stream 被调用，AgentService.execute 未被调用
+        MockLight.stream.assert_called_once()
+        light_args = MockLight.stream.call_args[0]
+        assert light_args[0] == 1  # user_id
+        assert light_args[2] == "帮我开灯"  # ASR 原文（非 voice_text 前缀）
+        MockAgent.execute.assert_not_called()
+        # content 正常流转为 delta 事件
+        calls = consumer._send_json.call_args_list
+        types = [c.args[0]["type"] for c in calls]
+        assert types[0] == "response.start"
+        assert "response.delta" in types
+        assert types[-1] == "response.end"
+        deltas = [c.args[0]["data"]["delta"]["content"]
+                  for c in calls if c.args[0]["type"] == "response.delta"]
+        assert deltas == ["好的", "，帮你开灯。"]
+
+    async def test_ambient_disabled_falls_back_to_agent(
+        self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
+    ):
+        """mode=ambient + 开关关闭 → 回退完整 AgentService.execute（回滚手段）。"""
+        consumer = _make_consumer()
+
+        with (
+            override_settings(VOICE_AMBIENT_LIGHT_ENABLED=False),
+            patch(f"{_VP}.voice_session_service") as mock_sess,
+            patch(f"{_VP}.voice_persist_service") as mock_persist,
+            patch("apps.voice.services.tts_router.TTSRouter") as MockRouter,
+            patch(f"{_ALS}.AmbientLightPipeline") as MockLight,
+        ):
+            mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
+            mock_sess.set_active_conversation = AsyncMock()
+            mock_persist.persist_audio_attachment = AsyncMock()
+            router_inst = MagicMock()
+            router_inst.get_on_audio_callback.return_value = AsyncMock()
+            router_inst.send_control = AsyncMock()
+            MockRouter.return_value = router_inst
+            MockLight.stream = MagicMock(side_effect=_mock_light_stream_normal)
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline.run_pipeline(
+                user_id=1, text="帮我开灯", segment_id="seg",
+                consumer=consumer, mode="ambient"
+            )
+
+        # 开关关闭：走完整 Agent，轻量路径未被调用
+        mock_agent.execute.assert_called_once()
+        MockLight.stream.assert_not_called()
+
+    async def test_voice_chat_never_uses_light_path(
+        self, mock_inference_svc, mock_rate_limit, mock_agent, mock_tts
+    ):
+        """mode=voice_chat（开关开启也）永远走完整 Agent，零回归。"""
+        consumer = _make_consumer()
+
+        with (
+            override_settings(VOICE_AMBIENT_LIGHT_ENABLED=True),
+            patch(f"{_ALS}.AmbientLightPipeline") as MockLight,
+        ):
+            MockLight.stream = MagicMock(side_effect=_mock_light_stream_normal)
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline.run_pipeline(
+                user_id=1, text="你好", segment_id="seg", consumer=consumer
+            )
+
+        mock_agent.execute.assert_called_once()
+        MockLight.stream.assert_not_called()
+
+    async def test_ambient_light_error_chunk_triggers_error_event(
+        self, mock_inference_svc, mock_rate_limit, mock_tts
+    ):
+        """轻量路径 error chunk → 发送 error 事件 + TTS 错误播报。"""
+        consumer = _make_consumer()
+        _, tts = mock_tts
+
+        with (
+            override_settings(VOICE_AMBIENT_LIGHT_ENABLED=True),
+            patch(f"{_VP}.voice_session_service") as mock_sess,
+            patch(f"{_VP}.voice_persist_service") as mock_persist,
+            patch("apps.voice.services.tts_router.TTSRouter") as MockRouter,
+            patch(f"{_ALS}.AmbientLightPipeline") as MockLight,
+        ):
+            mock_sess.check_llm_rate_limit = AsyncMock(return_value=True)
+            mock_sess.set_active_conversation = AsyncMock()
+            mock_persist.persist_audio_attachment = AsyncMock()
+            router_inst = MagicMock()
+            router_inst.get_on_audio_callback.return_value = AsyncMock()
+            router_inst.send_control = AsyncMock()
+            MockRouter.return_value = router_inst
+            MockLight.stream = MagicMock(side_effect=_mock_light_stream_error)
+
+            from apps.voice.services.voice_pipeline import VoicePipeline
+
+            await VoicePipeline.run_pipeline(
+                user_id=1, text="帮我开灯", segment_id="seg",
+                consumer=consumer, mode="ambient"
+            )
+
+        calls = consumer._send_json.call_args_list
+        types = [c.args[0]["type"] for c in calls]
+        assert "error" in types
+        # 错误播报入队
+        tts.enqueue.assert_any_call(settings.VOICE_TTS_ERROR_TEXT, "error")
 
 
 _VPS = "apps.voice.services.voice_persist_service"
