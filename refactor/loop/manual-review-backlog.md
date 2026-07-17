@@ -45,3 +45,8 @@
 - 无人值守拍板项待安琳 review：VOICE_TTS_PRECONNECT_ENABLED 默认 off（保守上线，建议观察 1006 消除效果后再开启预连接）；放弃会话级连接池的最小增量方案。
 - 待线下佐证：code=1006 根因（关闭顺序反转后 grep 后端日志确认 1000 占比）；预连接收益压测。
 - ASR 共用 ws_client_base 的关闭路径已有回归测试守护。
+
+## batch-11（2026-07-17 全新执行，P1）
+- 无人值守拍板项待安琳 review：BlockingConnectionPool（超限等待，timeout=10s）+ max_connections=50。
+- 运行时观测项：服务重启后 redis-cli info clients 观察 connected_clients 是否下降且稳定（plan §5.2 只读观测）。
+- 顺带修复：test_coverage_boost.py 两用例的 get_event_loop 废弃写法（顺序依赖，batch-11 新测试暴露）。
