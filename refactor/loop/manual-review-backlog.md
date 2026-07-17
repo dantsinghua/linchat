@@ -6,3 +6,6 @@
 ## batch-05（合并于 2026-07-17，复用 April 分支工作）
 - April Phase 2c 运行时 E2E 已执行：8/8 PASS（scripts/validate-batch-05.sh），trace_id 贯穿 chat/graph 链路。
 - 遗留人工确认项：生产流量下 SSE 对话日志的 trace_id 贯穿性抽查（本地 E2E 已验，生产未复核）。
+
+## batch-06（合并于 2026-07-17，复用 April 分支工作；April 未做 Phase 2c，全部 manual 项待人工）
+- 通过 reSpeaker 说话触发完整语音链路，检查日志中 trace_id 从 ASR 到 HA 播报全程一致
