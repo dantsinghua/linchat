@@ -3,6 +3,7 @@ import time
 import uuid
 from typing import Any, Optional
 
+from apps.voice.services.voice_latency import latency_anchor, latency_record
 from apps.voice.services.voice_session_service import voice_session_service
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class EventMixin:
         self._current_segment_id = str(uuid.uuid4())[:8]
         self._vad_start_ts = time.monotonic()
         self._last_activity = time.time()
+        latency_anchor(self.user_id, self._current_segment_id, "vad_start")  # batch-07 端到端起点锚点
         logger.info("voice", extra={"stage": "asr.vad_speech_start",
                     "user_id": self.user_id, "seg": self._current_segment_id})
         # ambient 模式下不在 VAD 阶段设置 active_conversation，
@@ -40,6 +42,7 @@ class EventMixin:
 
     async def _on_vad_speech_end(self, event: dict[str, Any]) -> None:
         self._is_speaking = False
+        latency_anchor(self.user_id, self._current_segment_id, "speech_end")  # batch-07 speech_end 口径锚点
         from apps.common.async_utils import cancel_task_sync
         cancel_task_sync(getattr(self, "_segment_timer_task", None))
         await self._send_json({"type": "vad.speech_end", "data": {
@@ -54,6 +57,10 @@ class EventMixin:
         logger.info("voice", extra={"stage": "asr.transcription",
                     "user_id": self.user_id, "seg": segment_id,
                     "duration_ms": asr_dur_ms, "text_len": len(text)})
+        # batch-07：ASR 跳入 tracker。ambient 聚合模式下 pipeline segment_id 可能与此段不一致，
+        # 归因为近似，字段名带 _approx 标注（team lead 决策 3）。
+        _asr_hop = "asr_approx" if getattr(self, "_mode", None) == "ambient" else "asr"
+        latency_record(self.user_id, segment_id, _asr_hop, asr_dur_ms)
         if not text:
             await self._send_json({"type": "transcription.failed", "data": {
                 "error": "未检测到有效语音内容", "segment_id": segment_id}})
