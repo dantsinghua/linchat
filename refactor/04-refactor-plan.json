@@ -1128,7 +1128,8 @@
       "risk": "medium",
       "estimated_sessions": 1,
       "blocking_for_production": false,
-      "notes": "每处改动需确认不破坏安全降级逻辑。对于 response_decision_service 的 6 处 except Exception，其安全降级是设计正确的（返回 None/默认值），但应收窄为具体异常类型。"
+      "notes": "每处改动需确认不破坏安全降级逻辑。对于 response_decision_service 的 6 处 except Exception，其安全降级是设计正确的（返回 None/默认值），但应收窄为具体异常类型。",
+      "actual_status": "completed"
     },
     {
       "id": "batch-23",
