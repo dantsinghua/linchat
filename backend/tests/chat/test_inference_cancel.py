@@ -39,7 +39,7 @@ def _make_task(request_id: str = "req-001") -> InferenceTask:
 class TestCancelInferenceAPI(TestCase):
     """推理取消 API 测试"""
 
-    @patch("apps.chat.services.generation.signal_stop")
+    @patch("apps.graph.services.generation.signal_stop")
     @patch("apps.graph.services.inference_service.EventService")
     @patch("apps.graph.services.inference_service.get_redis")
     def test_cancel_success(
@@ -74,7 +74,7 @@ class TestCancelInferenceAPI(TestCase):
         assert success is False
         assert cancelled_id is None
 
-    @patch("apps.chat.services.generation.signal_stop")
+    @patch("apps.graph.services.generation.signal_stop")
     @patch("apps.graph.services.inference_service.EventService")
     @patch("apps.graph.services.inference_service.get_redis")
     def test_cancel_with_request_id(
@@ -112,7 +112,7 @@ class TestCancelInferenceAPI(TestCase):
         assert success is False
         assert cancelled_id is None
 
-    @patch("apps.chat.services.generation.signal_stop")
+    @patch("apps.graph.services.generation.signal_stop")
     @patch("apps.graph.services.inference_service.EventService")
     @patch("apps.graph.services.inference_service.get_redis")
     def test_cancel_then_register_new_task(
@@ -141,7 +141,7 @@ class TestCancelInferenceAPI(TestCase):
         )
         assert registered is True
 
-    @patch("apps.chat.services.generation.signal_stop")
+    @patch("apps.graph.services.generation.signal_stop")
     @patch("apps.graph.services.inference_service.EventService")
     @patch("apps.graph.services.inference_service.get_redis")
     def test_gateway_cancel_timeout(

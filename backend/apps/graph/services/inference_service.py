@@ -73,7 +73,7 @@ class InferenceService:
             if request_id and task.request_id != request_id:
                 return False, None
             await client.delete(key)
-            from apps.chat.services.generation import signal_stop
+            from apps.graph.services.generation import signal_stop
             signal_stop(task.request_id)
             await EventService.publish_event(
                 user_id=user_id,

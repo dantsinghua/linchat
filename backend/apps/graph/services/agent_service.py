@@ -10,7 +10,7 @@ from langchain_core.messages import HumanMessage
 
 from apps.chat.models import LangGraphExecution, MediaAttachment, Message
 from apps.chat.repositories import execution_repo, media_attachment_repo, message_repo
-from apps.chat.services.generation import register_generation, unregister_generation
+from apps.graph.services.generation import register_generation, unregister_generation
 from apps.graph.services.types import StreamChunk
 from apps.common import trace_id_var
 from apps.common.exceptions import LLMException, LLMInvalidResponseError, LLMTimeoutError, map_llm_exception
