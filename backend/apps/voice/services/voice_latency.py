@@ -113,6 +113,9 @@ def latency_flush(user_id: int, segment_id: str) -> None:
         round((total_from_pipeline_ms - hop_sum) / total_from_pipeline_ms, 4)
         if total_from_pipeline_ms else None
     )
+    # batch-09 口径说明：VOICE_TTS_INCREMENTAL_ENABLED 开启时，hops.tts_synth 语义为
+    # 「首帧 text.delta 送出 → audio.done」窗口（含与 LLM 推理重叠段），非旧口径「全文送完 → audio.done」；
+    # 两口径不可直接同轴比较，收益以 total_from_speech_end_ms P50 衡量。字段名保持不变以兼容 batch-07 脚本。
     logger.info("voice", extra={
         "stage": "latency.summary",
         "user_id": user_id, "seg": segment_id,

@@ -12,6 +12,9 @@ from apps.voice.services.voice_latency import latency_record
 
 logger = logging.getLogger(__name__)
 
+# batch-09：流式会话结束哨兵，feed 队列收到即触发 send_text_done + wait_for_done。
+_STREAM_DONE = object()
+
 
 @dataclass
 class QueueItem:
@@ -36,6 +39,10 @@ class TTSPipelineManager:
         # batch-07：延迟归因上下文，由 VoicePipeline._setup_tts 构造后注入
         self._user_id: int | None = None
         self._segment_id: str | None = None
+        # batch-09：单条常驻流式会话（与 comfort/error 队列并存）
+        self._stream_tts: TTSStreamClient | None = None
+        self._stream_queue: asyncio.Queue[object] | None = None
+        self._stream_task: asyncio.Task | None = None
 
     def start(self) -> None:
         self._worker_task = asyncio.create_task(self._worker())
@@ -44,6 +51,81 @@ class TTSPipelineManager:
     def enqueue(self, text: str, item_type: str = "response") -> None:
         self._idle.clear()
         self._queue.put_nowait(QueueItem(text=text, item_type=item_type))  # type: ignore[arg-type]
+
+    # batch-09：单条常驻流式会话 —— voice_pipeline 只调 begin/feed/end/abort 四个动词，WS 细节隔离在此。
+    def begin_stream(self) -> None:
+        """开一条常驻 TTS 会话：connect 只付一次，音频在 LLM 仍在产 token 时即回流。"""
+        self._idle.clear()
+        self._stream_queue = asyncio.Queue()
+        self._stream_task = asyncio.create_task(self._run_stream())
+
+    def feed_text(self, text: str) -> None:
+        if self._stream_queue is not None:
+            self._stream_queue.put_nowait(text)
+
+    def end_stream(self) -> None:
+        if self._stream_queue is not None:
+            self._stream_queue.put_nowait(_STREAM_DONE)
+
+    async def abort_stream(self) -> None:
+        """丢弃半截流式会话（barge-in / error 中途用）。"""
+        if self._stream_tts is not None:
+            try:
+                await self._stream_tts.disconnect()
+            except Exception:
+                pass
+        await cancel_task(self._stream_task)
+        self._stream_tts = self._stream_queue = self._stream_task = None
+        self._idle.set()
+
+    async def _run_stream(self) -> None:
+        tts = TTSStreamClient(on_audio=self._on_audio)
+        self._stream_tts = tts
+        self._current_tts = tts   # 复用 cancel() 的 _current_tts.disconnect() 分支覆盖 barge-in
+        t0 = time.monotonic()
+        connect_ms = synth_ms = None
+        t_synth: float | None = None
+        try:
+            t_connect = time.monotonic()
+            await tts.connect()
+            await tts.configure(voice=self._voice)
+            connect_ms = int((time.monotonic() - t_connect) * 1000)  # batch-07 跳9：TTS 连接（仅一次）
+            assert self._stream_queue is not None
+            while True:
+                chunk = await self._stream_queue.get()
+                if chunk is _STREAM_DONE:
+                    self._stream_queue.task_done()
+                    break
+                if t_synth is None:
+                    t_synth = time.monotonic()   # 首帧 delta 送出时刻
+                await tts.send_text_delta(chunk)  # type: ignore[arg-type]
+                self._stream_queue.task_done()
+            await tts.send_text_done()
+            if t_synth is None:
+                t_synth = time.monotonic()
+            await tts.wait_for_done(timeout=settings.VOICE_TTS_TIMEOUT)
+            synth_ms = int((time.monotonic() - t_synth) * 1000)  # batch-07 跳10：TTS 合成
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("TTS stream play failed")
+        finally:
+            self._current_tts = None
+            self._stream_tts = None
+            try:
+                await tts.disconnect()
+            except Exception:
+                pass
+            self._last_end = time.monotonic()
+            logger.info("voice", extra={"stage": "tts.stream_play",
+                        "duration_ms": int((time.monotonic() - t0) * 1000),
+                        "connect_ms": connect_ms, "synth_ms": synth_ms})
+            # batch-07 打点复用。语义变化：增量模式 tts_synth 测「首帧 delta 送出 → audio.done」
+            # 窗口（含与 LLM 推理重叠段），非旧口径「全文送完 → audio.done」；见 voice_latency.latency_flush 注释。
+            if self._segment_id:
+                latency_record(self._user_id, self._segment_id, "tts_connect", connect_ms)
+                latency_record(self._user_id, self._segment_id, "tts_synth", synth_ms)
+            self._idle.set()
 
     def start_comfort_timer(self) -> None:
         cancel_task_sync(self._comfort_task)
@@ -74,10 +156,15 @@ class TTSPipelineManager:
                 await self._current_tts.disconnect()
             except Exception:
                 pass
+        await cancel_task(self._stream_task)   # batch-09：断开常驻流式会话（barge-in）
+        self._stream_tts = self._stream_queue = self._stream_task = None
         await cancel_task(self._worker_task)
         self._idle.set()
 
     async def shutdown(self) -> None:
+        # batch-09：wait_idle 已保证流式会话 _idle.set()（正常收尾）；此处兜底清理未完成的 stream_task
+        if self._stream_task and not self._stream_task.done():
+            await cancel_task(self._stream_task)
         self._queue.put_nowait(QueueItem(text="", item_type="sentinel"))
         if self._worker_task and not self._worker_task.done():
             try:

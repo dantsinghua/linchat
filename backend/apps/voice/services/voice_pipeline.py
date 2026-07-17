@@ -25,6 +25,33 @@ def _get_lock(user_id: int) -> asyncio.Lock:
     return _pipeline_locks[user_id]
 
 
+# batch-09：句子边界切分。中文。！？；+ 英文 .!?; + 换行；最小分片长度防碎片化。
+_SENTENCE_ENDS = "。！？；!?;\n"
+
+
+def _is_en_sentence_dot(buf: str, i: int) -> bool:
+    """英文句点保护：'.' 后为空白/结尾且前一字符非数字（避免 '3.14'、'v3.' 被误切）。"""
+    if i > 0 and buf[i - 1].isdigit():
+        return False
+    return i + 1 >= len(buf) or buf[i + 1].isspace()
+
+
+def _split_sentences(buf: str, min_chars: int = 8) -> tuple[list[str], str]:
+    """按句子边界切分累积缓冲。返回 (完整句子列表, 剩余未成句尾巴)。
+
+    每句 strip 后 >= min_chars 才切出，短碎片与后文合并，避免 TTS 送稿碎片化。
+    """
+    out: list[str] = []
+    start = 0
+    for i, ch in enumerate(buf):
+        if ch in _SENTENCE_ENDS or (ch == "." and _is_en_sentence_dot(buf, i)):
+            seg = buf[start:i + 1]
+            if len(seg.strip()) >= min_chars:
+                out.append(seg)
+                start = i + 1
+    return out, buf[start:]
+
+
 class VoicePipeline:
     _active_managers: ClassVar[dict[int, TTSPipelineManager]] = {}
 
@@ -96,6 +123,11 @@ class VoicePipeline:
         error_occurred, full_response = False, ""
         agent_start = time.monotonic()
         first_token_ts: Optional[float] = None
+        # batch-09：开关开启且有 tts_manager 时循环内按句边界切片经常驻 TTS 会话送稿（合成与推理重叠），否则整体 enqueue 旧路径
+        incremental = getattr(settings, "VOICE_TTS_INCREMENTAL_ENABLED", False) and tts_manager is not None
+        min_sentence_chars = getattr(settings, "VOICE_TTS_MIN_SENTENCE_CHARS", 8)
+        sent_buffer = ""          # 已收到、尚未成句送出的尾巴
+        stream_started = False
         try:
             # batch-08：ambient + 开关开启走轻量推理路径（跳过 LangGraph/工具/记忆召回，直调 Gateway）；
             # voice_chat 或开关关闭仍走完整 AgentService.execute。循环体不变，batch-07 埋点零改动。
@@ -120,12 +152,23 @@ class VoicePipeline:
                                        int((first_token_ts - agent_start) * 1000))
                     await consumer._send_json(delta_msg(chunk.content, response_id))
                     full_response += chunk.content
+                    if incremental and tts_manager is not None:
+                        sent_buffer += chunk.content
+                        sentences, sent_buffer = _split_sentences(sent_buffer, min_sentence_chars)
+                        for s in sentences:
+                            if not stream_started:
+                                tts_manager.stop_comfort_timer()   # 首句就绪即撤安慰语音
+                                tts_manager.begin_stream()          # 开一条常驻 TTS 会话
+                                stream_started = True
+                            tts_manager.feed_text(s)
                 elif chunk.type == "interrupted":
-                    break
+                    break   # 收尾由循环后统一处理（stream_started 时收播已产文本）
                 elif chunk.type == "error":
                     error_occurred = True
                     await consumer._send_json({"type": "error", "data": build_agent_error(chunk)})
                     if tts_manager:
+                        if incremental and stream_started:
+                            await tts_manager.abort_stream()   # 丢弃半截会话
                         tts_manager.stop_comfort_timer()
                         tts_manager.enqueue(settings.VOICE_TTS_ERROR_TEXT, "error")
                     break
@@ -137,9 +180,15 @@ class VoicePipeline:
                         "resp_len": len(full_response), "error": error_occurred})
             latency_record(user_id, segment_id, "llm_total", agent_total_ms)
             if not error_occurred and tts_manager:
-                tts_manager.stop_comfort_timer()
-                if full_response.strip():
-                    tts_manager.enqueue(full_response, "response")
+                if incremental and stream_started:
+                    if sent_buffer.strip():
+                        tts_manager.feed_text(sent_buffer)   # flush 无终止标点的残句尾巴
+                    tts_manager.end_stream()                 # → send_text_done + 等 audio.done
+                else:
+                    # 回退/未触发流式（含 interrupted 未成句）：保持原「整体 enqueue」行为
+                    tts_manager.stop_comfort_timer()
+                    if full_response.strip():
+                        tts_manager.enqueue(full_response, "response")
         except Exception as e:
             error_occurred = True
             logger.error("voice", extra={"stage": "pipeline.error",
@@ -147,6 +196,8 @@ class VoicePipeline:
                          "request_id": request_id, "err": str(e)}, exc_info=True)
             await consumer._send_json(error_msg("PIPELINE_ERROR", "语音推理管道异常"))
             if tts_manager:
+                if incremental and stream_started:
+                    await tts_manager.abort_stream()
                 tts_manager.stop_comfort_timer()
                 tts_manager.enqueue(settings.VOICE_TTS_ERROR_TEXT, "error")
         finally:

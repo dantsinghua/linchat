@@ -418,6 +418,9 @@ VOICE_TTS_COMFORT_DELAY = float(os.getenv("VOICE_TTS_COMFORT_DELAY", "3.0"))  # 
 VOICE_TTS_SEGMENT_GAP = float(os.getenv("VOICE_TTS_SEGMENT_GAP", "1.0"))  # 播报段间静默（秒）
 VOICE_TTS_COMFORT_TEXTS = json.loads(os.getenv("VOICE_TTS_COMFORT_TEXTS", '["正在思考，请稍后。", "这次可能会久点，我正在做一些复杂操作。", "实在抱歉，我目前的能力有限，还在努力尝试，稍安勿躁。"]'))
 VOICE_TTS_ERROR_TEXT = os.getenv("VOICE_TTS_ERROR_TEXT", "大模型调用失败了，请结合日志分析错误原因。")
+# batch-09：Agent token 流式增量送稿至 TTS（句子边界实时切片，与 LLM 推理重叠）。
+# false 回退整体 enqueue 旧路径（旧路径代码保留，随时可运行时回滚）。
+VOICE_TTS_INCREMENTAL_ENABLED = os.getenv("VOICE_TTS_INCREMENTAL_ENABLED", "true").lower() == "true"
 VOICE_ASR_SPEECH_PAD_MS = int(os.getenv("VOICE_ASR_SPEECH_PAD_MS", "2000"))
 VOICE_ASR_LANGUAGE = os.getenv("VOICE_ASR_LANGUAGE", "zh")
 VOICE_MAX_SEGMENT_DURATION = int(os.getenv("VOICE_MAX_SEGMENT_DURATION", "60"))  # 单段语音最大时长（秒）
