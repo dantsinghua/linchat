@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextvars
+import uuid
 
 # trace_id 全局上下文变量（batch-04）
 # 由 core.middleware.TraceIdMiddleware 在请求进入时 set；
@@ -16,4 +17,16 @@ def get_trace_id() -> str:
     return trace_id_var.get() or ""
 
 
-__all__ = ["trace_id_var", "get_trace_id"]
+def ensure_trace_id() -> str:
+    """读取当前 trace_id；为空则生成 32 字符 UUID hex 并 set，返回最终值。
+
+    生成规则与 middleware / chat_service / voice_pipeline 一致（uuid4().hex）。
+    """
+    tid = trace_id_var.get()
+    if not tid:
+        tid = uuid.uuid4().hex
+        trace_id_var.set(tid)
+    return tid
+
+
+__all__ = ["trace_id_var", "get_trace_id", "ensure_trace_id"]

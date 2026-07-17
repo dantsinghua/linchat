@@ -1,0 +1,33 @@
+# Batch batch-28 Progress
+# Type: observability | Priority: P0 | Risk: low
+# Title: celery Task trace_id 透传
+
+## Phase 2a: Initializer
+- Started: 2026-07-17 10:58
+- Plan generated: refactor/batches/batch-28-plan.md (203 lines)
+- Dependency batch-04: COMPLETED (verified)
+- Scope: 3 files (core/celery.py, apps/common/__init__.py, tests/common/test_celery_trace_id.py[new])
+- Blocking items: none
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor
+- Started: 2026-07-17 (batch-executor)
+- Branch: refactor/batch-28 (from main HEAD=1c30e2d)
+
+## Phase 2b: Executor (completed 2026-07-17)
+- Files changed: 2 (core/celery.py +49, apps/common/__init__.py +14 -1) + 1 new test
+- New test: tests/common/test_celery_trace_id.py (9 用例 T1-T7 + T2b/T5b)
+- 复用 batch-04 trace_id_var，未重复实现
+- Lint: ruff/isort 全绿；black 26.1.0 对 celery.py/新测试文件全绿；
+  apps/common/__init__.py 的 black 提示均落在 batch-04 既有行（docstring 空行 + trace_id_var 换行），
+  非本 batch 引入（仓库 pin black>=24 且无 [tool.black] 配置，既有代码早于 black 26 默认规则）。
+- 局部测试: tests/common/test_celery_trace_id.py 9 passed
+- 回归: tests/common/ + tests/memory/test_tasks.py 67 passed
+- celery app import 校验通过（signals 已注册）
+- 精简: 3 文件均 <150 行，ruff F401 无未使用 import，无需精简
+- 未触碰 do_not_touch；未重启 celery beat/worker 服务（运行时验证延后至 backlog）
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
