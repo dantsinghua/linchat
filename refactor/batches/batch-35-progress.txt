@@ -16,9 +16,23 @@
 - Status: WAITING_FOR_REVIEW
 
 ## Phase 2b: Executor
-- (尚未开始)
+- Started: 2026-07-17
+- 改动明细:
+  - [新增] apps/graph/services/generation.py（29 行，source of truth：_active_generations 单例 + 4 函数 + map_llm_exception re-export）
+  - [shim] apps/chat/services/generation.py（29→11 行，re-export graph 版本，保旧路径/patch 契约/单例 identity）
+  - [repoint] apps/graph/services/agent_service.py L13 → graph 版 register/unregister_generation
+  - [repoint] apps/graph/services/inference_service.py L76 局部 import → graph 版 signal_stop
+  - [test] tests/chat/test_inference_cancel.py L42/77/115/144 @patch 目标 chat→graph（R1 成对）
+  - [export] graph/services/__init__.py 补 generation 4 符号导出
+- 验证结果:
+  - ruff: All checks passed（5 文件）
+  - import 冒烟: OK；identity: signal_stop is 一致 + _active_generations 单例一致 OK
+  - pytest tests/chat/ apps/graph/: 369 passed, 9 skipped
+  - test_inference_cancel.py: 11 passed（R1 成对生效）
+  - rg 反向耦合: graph 内无 chat.services.generation 生产 import（已清除）
+- retry: 0（一次通过，Django settings 环境变量已修正）
 
 ## Phase 2c: Validator
 - (尚未开始)
 
-STATUS: PLAN_READY
+STATUS: EXECUTED
