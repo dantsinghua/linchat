@@ -1,0 +1,24 @@
+# Batch batch-14 Progress
+# Type: refactor | Priority: P2
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Plan generated: refactor/batches/batch-14-plan.md
+- 核实结论: 可删 1 (sse.py) / 移出 8 (含 1 个非 shim generation.py) / 已消失 0
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor
+- Started: 2026-07-17
+- Branch: refactor/batch-14 (from main HEAD d03081d)
+- 改动: git rm backend/apps/chat/sse.py (纯 re-export shim, -4 行, 全仓 0 调用者)
+- 其余 8 个 shim 不动 (有调用者, 转 batch-15); generation.py 不动 (非 shim)
+- 验证:
+  - 残留引用检索 (chat.sse / from apps.chat import sse / chat/sse): CLEAN 0 命中
+  - pytest tests/chat/: 369 passed, 9 skipped
+  - pytest -k sse (全仓): 42 passed, 1639 deselected
+  - ruff: 20 errors 均为 chat app 既有问题 (与 sse 删除无关, 纯删除不引入新问题)
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
