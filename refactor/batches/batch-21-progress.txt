@@ -1,0 +1,27 @@
+# Batch batch-21 Progress
+# Type: refactor | Priority: P2 | Title: voice Mixin 第三批 consumer_inference → InferenceMixin Protocol 适配
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Plan generated: refactor/batches/batch-21-plan.md (159 lines)
+- Dependency batch-19: COMPLETED ✅
+- Key finding: 差集为空，protocols.py 本批不改（batch-19 已建全 Protocol）；实测触碰 2 文件（非 JSON 的 3）
+- 待确认: (1) protocols.py 零改动 (2) 与 batch-25 测试范围重叠→本批只做最小接线测试
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (completed 2026-07-17)
+- 分支: refactor/batch-21（基于 main 490495d）
+- 改动 1: consumer_inference.py — 加 `from typing import TYPE_CHECKING` + TYPE_CHECKING 接线块
+  (_InferenceBase = VoiceConsumerProtocol / else object) + `class InferenceMixin(_InferenceBase)`（+9 -1）
+- 改动 2: protocols.py — 零改动（差集为空，batch-19 已建全 Protocol）
+- 改动 3: 新建 tests/voice/test_consumer_inference.py（+72，5 个接线冒烟测试）
+- 精简：consumer_inference.py 115 行 <200，ruff 全过，无 F401/裸 except/注释代码 → 无需精简
+- 验证：
+  * mypy consumer_inference.py attr-defined: 13 → 0（残留 1 条为 tts_router.py 既有错误，非本文件）
+  * ruff check consumer_inference.py + test 文件: All checks passed
+  * import 冒烟: VoiceConsumer __mro__ 含 object = True
+  * pytest test_consumer_inference.py: 5 passed
+  * pytest tests/voice/ 回归: 748 passed, 0 failed
+- 运行时零行为变化（else: object，MRO 不变）
+
+STATUS: EXECUTED

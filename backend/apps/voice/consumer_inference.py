@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 
@@ -8,8 +9,15 @@ from apps.common import trace_id_var
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from apps.voice.protocols import VoiceConsumerProtocol
 
-class InferenceMixin:
+    _InferenceBase = VoiceConsumerProtocol
+else:
+    _InferenceBase = object
+
+
+class InferenceMixin(_InferenceBase):
 
     async def _start_voice_pipeline(
         self, segment_id: str, text: str, speaker_id: str | None = None,
