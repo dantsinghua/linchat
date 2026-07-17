@@ -1,0 +1,20 @@
+# Batch batch-36 Progress
+# Type: fix | Priority: P2 | Risk: low
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Baseline HEAD: a61ca7a
+- Plan generated: refactor/batches/batch-36-plan.md (128 lines)
+- Depends_on: [] (无依赖)
+- 根因判定: 无 MediaAttachment 行删除路径 → 竞态假设(b)不成立；test_dual_write_success 未 mock delay + 无 CELERY_TASK_ALWAYS_EAGER → delay(1) 真发布共享 broker → 假设(a) 测试/未持久化派发成立 (id=1=MagicMock 默认, ~23/2h=loop 测试频次)
+- 方案三步: ①document_cache.py 派发 gate on updated>0 (复用 rowcount, 零新增查询) ②tasks.py:56 WARNING→DEBUG (guard 早返回不变) ③test_document_cache.py mock delay + 新增 gate 测试
+- plan JSON 差异: test_document_embedding.py 不存在 → 实为 test_document_cache.py
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor
+- (尚未开始)
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: PLAN_READY

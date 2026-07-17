@@ -128,3 +128,12 @@ STATUS: PLAN_READY
 - 风险 R1：inference_service repoint 与 patch 目标改写须成对；R2 map_llm_exception identity 不变；R3 _active_generations 单例一致。
 - 待安琳确认：chat shim 保留多久/本批是否删、chat_service 是否也 repoint、plan JSON 测试文件名修正。
 - 产出：refactor/batches/batch-35-plan.md（PLAN_READY，无阻塞）。
+
+## batch-36 PLAN_READY (2026-07-17, initializer)
+- 消除孤儿 embedding 派发日志噪声 (attachment not found id=1 ×23/2h)。无依赖，P2，risk=low。
+- 根因: 全后端无 MediaAttachment 行删除路径 → 删除-派发竞态(假设b)不成立；test_document_cache.py::test_dual_write_success 以 MagicMock(id=1) 调 save_parsed_result，未 mock delay 且 core/celery.py 无 CELERY_TASK_ALWAYS_EAGER → delay(1) 真发布共享 broker，worker 消费即报 not-found (假设a 测试/未持久化派发成立)。
+- 方案三步: ①document_cache.py:52-74 派发 gate on updated>0（复用 update_parsed_cache rowcount，零新增查询，updated==0 跳过派发）②tasks.py:56 not-found WARNING→DEBUG（早返回 guard 行为不变）③test_document_cache.py mock delay 断言+新增 updated==0 不派发测试。
+- plan JSON 差异: files_touched 列 test_document_embedding.py **不存在** → 实际改 test_document_cache.py。
+- 竞态判断: 无需修（无删除代码路径）；噪声=派发不存在行，gate+测试拦截即根治。
+- 待安琳确认: 测试文件名修正 / 是否加 worker DB 测试(django_db) / 仅降 L56 (L60/L77 保持) / 2h 窗口观察归 backlog。
+- 产出: refactor/batches/batch-36-plan.md (128 行, 无阻塞)。STATUS: PLAN_READY
