@@ -3,9 +3,9 @@ Redis 连接管理模块
 
 参考: data-model.md#三、Redis缓存设计
 """
+import asyncio
 import json
-from datetime import timedelta
-from typing import Any
+import weakref
 
 import redis
 import redis.asyncio as aioredis
@@ -54,24 +54,49 @@ def sync_redis_setex_json(key: str, seconds: int, value: dict | list) -> bool:
     return client.setex(key, seconds, json.dumps(value, ensure_ascii=False))
 
 
-class RedisClient:
-    """Redis 客户端封装
+# 按事件循环隔离的共享连接池：
+# - 生产 uvicorn 单 loop → 全进程 1 个池，连接受 max_connections 约束
+# - pytest 每个用例独立 loop → 各自建池，loop 回收时 WeakKeyDictionary 自动清理
+_PoolMap = weakref.WeakKeyDictionary[
+    "asyncio.AbstractEventLoop", "aioredis.BlockingConnectionPool"
+]
+_POOLS: _PoolMap = weakref.WeakKeyDictionary()
 
-    注意：在 WSGI 环境下（Django runserver）使用异步视图时，
-    每次请求可能使用不同的事件循环，因此每次调用创建新连接。
+
+def _get_pool() -> aioredis.BlockingConnectionPool:
+    """获取当前事件循环对应的共享连接池（懒创建）。
+
+    用 BlockingConnectionPool：连接数达 max_connections 时阻塞等待而非报错，
+    在 pubsub（SSE 订阅 / cancel_monitor）长占用连接下更安全。timeout=10s
+    为获取连接的最长等待，超时才抛 ConnectionError，避免请求无限期挂起。
+    """
+    loop = asyncio.get_running_loop()
+    pool = _POOLS.get(loop)
+    if pool is None:
+        pool = aioredis.BlockingConnectionPool.from_url(
+            settings.REDIS_URL,
+            encoding="utf-8",
+            decode_responses=True,
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
+            timeout=10,
+        )
+        _POOLS[loop] = pool
+    return pool
+
+
+class RedisClient:
+    """Redis 客户端封装（ASGI 安全的共享连接池）。
+
+    ASGI（uvicorn）单事件循环下，进程内复用同一 BlockingConnectionPool；
+    每次 get_client() 返回一个绑定共享池的轻量 Redis 包装对象。
+    因用显式 connection_pool 构造，Redis.auto_close_connection_pool=False，
+    故调用点的 .aclose() 只归还连接、不销毁共享池。
     """
 
     @staticmethod
     async def get_client() -> aioredis.Redis:
-        """获取 Redis 客户端连接
-
-        每次调用创建新连接，避免事件循环问题
-        """
-        return aioredis.from_url(
-            settings.REDIS_URL,
-            encoding="utf-8",
-            decode_responses=True,
-        )
+        """返回绑定共享连接池的 Redis 客户端。"""
+        return aioredis.Redis(connection_pool=_get_pool())
 
 
 # ============ 便捷方法 ============

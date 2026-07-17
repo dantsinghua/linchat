@@ -139,6 +139,10 @@ else:
 # 参考: data-model.md#三、Redis缓存设计
 REDIS_URL = os.getenv("REDIS_URL", "redis://:redis_linchat_123@localhost:6379/0")
 
+# aioredis 共享连接池上限（core/redis.py get_redis）。覆盖峰值并发：
+# 短命令 + 长命令 + 每个 SSE 订阅/cancel_monitor 各占 1 条 pubsub 连接。
+REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
+
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",

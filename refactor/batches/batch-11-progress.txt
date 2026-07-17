@@ -1,0 +1,38 @@
+# Batch batch-11 Progress
+# Type: refactor | Priority: P1 | Redis 连接池改造
+
+## Phase 2a: Initializer
+- Started: 2026-07-17
+- Base: main HEAD=a9d1305 (含 batch-04~10+28)
+- Plan generated: refactor/batches/batch-11-plan.md (223 行)
+- Depends_on: [] 无前置，直接就绪
+- Status: WAITING_FOR_REVIEW
+- 关键结论:
+  * 根因=每次 from_url 新建独立池且 auto_close=True，未 aclose 的调用点泄漏连接
+  * redis-py 7.1.0 显式池 -> auto_close_connection_pool=False，现有 .aclose() 变安全，调用点零改动
+  * Channels DB3(独立 channels_redis)/Celery 同步路径均不受影响
+  * 待决策: max_connections 默认值(拟50)、是否用 BlockingConnectionPool、settings.py>300行是否拆分、timedelta import 清理
+
+## Phase 2b: Executor
+- Started: 2026-07-17
+- Branch: refactor/batch-11 (from main HEAD=a9d1305)
+- 决策拍板(team-lead): ① BlockingConnectionPool + max_connections=50(REDIS_MAX_CONNECTIONS 可配) + timeout=10s
+  ② settings.py 仅追加不拆分  ③ 删除无用 timedelta import
+- [x] 改完 backend/core/settings.py (改动 2.1: 新增 REDIS_MAX_CONNECTIONS=env 默认50)
+- [x] 改完 backend/core/redis.py (改动 1.1 import; 1.2 _get_pool 共享 BlockingConnectionPool + RedisClient 重写)
+- [x] 新建 backend/tests/test_redis.py (6 用例, 全部 PASSED)
+- 精简: redis.py 删除无用 import timedelta + Any (F401, baseline 既存 2 处) → 200→217 行(新增池逻辑净增)
+- lint: ruff 全绿; my 代码行 black-clean(仅既存全仓库 docstring 后空行 diff, 非本改动引入); mypy redis.py 零新增错误(before/after 同为 5, 均在未触碰的 SyncRedisClient)
+- 无跨文件重复公共方法, 无需追加 simplify-candidates
+
+## Phase 2b: Executor (completed 2026-07-17)
+- 单文件验证: settings.py / redis.py / test_redis.py 逐个 ruff+black(my lines)+syntax 通过
+- test_redis.py: 6 passed in 0.16s
+- 跨域回归 (tests/common tests/chat tests/voice tests/media tests/apps/graph tests/test_redis.py):
+  1271 passed, 9 skipped, 0 failed, 14 warnings(既存 websockets/mock 弃用告警) in 33.43s
+- 性能: blocks_slo=null, 无 voice latency 基线要求; 主指标 connected_clients 需安琳只读观测(§5.2)
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
