@@ -40,3 +40,8 @@
 - 性能收益待真实语音流量验证（预期 TTS 与 LLM 重叠节省 1-2s）。
 - 回滚开关：VOICE_TTS_INCREMENTAL_ENABLED=false（回退整体 enqueue 旧路径）。
 - barge-in/comfort/shutdown 状态机与流式会话的交互建议真实设备抽查。
+
+## batch-10（2026-07-17 全新执行，P1 blocks_slo）
+- 无人值守拍板项待安琳 review：VOICE_TTS_PRECONNECT_ENABLED 默认 off（保守上线，建议观察 1006 消除效果后再开启预连接）；放弃会话级连接池的最小增量方案。
+- 待线下佐证：code=1006 根因（关闭顺序反转后 grep 后端日志确认 1000 占比）；预连接收益压测。
+- ASR 共用 ws_client_base 的关闭路径已有回归测试守护。
