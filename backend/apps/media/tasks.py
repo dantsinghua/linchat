@@ -53,7 +53,8 @@ def generate_document_embeddings(attachment_id: int) -> None:
     try:
         attachment = MediaAttachment.objects.get(attachment_id=attachment_id)
     except MediaAttachment.DoesNotExist:
-        logger.warning("Doc embedding: attachment not found id=%d", attachment_id)
+        # 派发侧已 gate on rowcount；此处属预期早返回（retry/旧队列残留），降 DEBUG 消噪
+        logger.debug("Doc embedding: attachment not found id=%d", attachment_id)
         return
 
     if not attachment.parsed_content:
