@@ -1,0 +1,39 @@
+# Batch batch-09 Progress
+# Type: refactor | Priority: P1 | Risk: high
+# Title: Agent token 流式转发至 TTS 增量合成
+# blocks_slo: voice_end_to_end_5s
+
+## Phase 2a: Initializer
+- Started: 2026-07-17 11:44
+- Dependency check: batch-07 = COMPLETED (batch-04~08+28 all COMPLETED)
+- Plan generated: refactor/batches/batch-09-plan.md (221 lines)
+- Open decisions for 安琳: 5 (see plan §7) — 打点语义Q4 / settings scope扩张 / 并发设计 / 测试文件超限 / 性能基线
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- Branch: refactor/batch-09 (from main HEAD=1bdac91)
+- 无人值守 5 项决策已由 team-lead 拍板：①打点加注释不改字段 ②settings 仅加 VOICE_TTS_INCREMENTAL_ENABLED 默认 true ③单条常驻会话流式 批准 ④新测试放 test_tts_incremental.py 旧用例全过 ⑤压测断言不做→backlog
+- baseline 采集：跳过（决策⑤，收益断言 backlog）
+
+### 改动文件（5 个）
+- [x] backend/core/settings.py：+VOICE_TTS_INCREMENTAL_ENABLED（默认 true，false 回退旧路径）
+- [x] backend/apps/voice/services/voice_pipeline.py：循环增量切片送稿 + 句子切分器 + error/interrupted 收尾（249→300 行，注释精简 1 行以守 300 硬限）
+- [x] backend/apps/voice/services/tts_pipeline_manager.py：begin/feed/end/abort_stream + _run_stream 常驻会话 + cancel/shutdown 兼容（174→261 行 <300）
+- [x] backend/apps/voice/services/voice_latency.py：latency.summary 增量口径注释（决策①，不改字段名）
+- [x] backend/tests/voice/test_tts_incremental.py：新建，15 用例（8 切分器单测 + 7 流式路径）
+- tts_stream_client.py：零改动（plan 明确可选，跳过降风险）
+
+### 验证结果
+- ruff：4 个改动 py 文件 All checks passed（settings.py 仅既有 E402:103，非本 batch 引入）
+- mypy：仅新增 2 行 latency_record(int|None) 复刻既有 _play_text:231-232 同款模式，无新错误类别
+- black/isort：本仓无配置、原始文件(HEAD)即不合规 → 非强制门禁；改动严格对齐 sibling 既有风格，不跑自动格式化避免重排 scope 外代码
+- pytest（systemd-run 包裹）：
+  - test_tts_incremental.py：15 passed
+  - test_voice_pipeline.py + test_tts_pipeline_manager.py：49 passed（旧用例零回归；默认 true 下短文本<min_chars 不触发流式，enqueue 断言仍成立）
+  - tests/voice/ 全量：722 passed（0 fail，警告均既有 deprecation/cancel）
+- 性能基线：跳过机器断言（决策⑤，收益 backlog；口径变化已注释）
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTED
