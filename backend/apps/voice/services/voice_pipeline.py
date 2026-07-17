@@ -6,6 +6,7 @@ from typing import Any, ClassVar, Optional
 
 from django.conf import settings
 
+from apps.chat.repositories import message_repo
 from apps.common import trace_id_var
 from apps.graph.services.agent_service import AgentService
 from apps.graph.services.inference_service import InferenceService
@@ -262,11 +263,7 @@ class VoicePipeline:
         # ambient 模式：更新用户消息为 ASR 原文（去掉 [语音对话] prompt 前缀）
         if not error_occurred and mode == "ambient":
             try:
-                from asgiref.sync import sync_to_async
-                from apps.chat.models import Message
-                await sync_to_async(
-                    Message.objects.filter(request_id=request_id, user_id=user_id, role="user").update
-                )(content=text)
+                await message_repo.update_content_by_request_id(request_id, user_id, text, role="user")
             except Exception:
                 logger.debug("Update ambient user msg content failed: req=%s", request_id)
         if not error_occurred:

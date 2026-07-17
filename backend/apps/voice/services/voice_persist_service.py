@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from apps.chat.models import Message
 from apps.chat.repositories import message_repo
+from apps.media.repositories import media_attachment_repo
 
 logger = logging.getLogger(__name__)
 
@@ -77,22 +78,19 @@ class VoicePersistService:
     @sync_to_async
     def _atomic_mark_voice(user_id: int, request_id: str, audio_uuid: str,
                            storage_path: str, wav_size: int, duration: float, now: Any) -> None:
-        from apps.media.models import MediaAttachment
+        # 事务边界保留在 service；repo 提供同线程 sync 方法，不破坏原子性（batch-33）
         with transaction.atomic():
-            user_msg = Message.objects.filter(request_id=request_id, user_id=user_id, role="user").first()
+            user_msg = message_repo.get_by_request_id_sync(request_id, user_id, role="user")
             if user_msg:
-                user_msg.is_voice = True
-                user_msg.save(update_fields=["is_voice"])
-                MediaAttachment.objects.create(
+                message_repo.set_voice_flag_sync(user_msg)
+                media_attachment_repo.create_audio_attachment_sync(
                     attachment_uuid=audio_uuid, message=user_msg, user_id=user_id,
-                    media_type=MediaAttachment.TYPE_AUDIO, mime_type="audio/wav",
-                    file_name=f"voice_{audio_uuid[:8]}.wav", file_size=wav_size,
-                    storage_path=storage_path, duration_seconds=duration,
+                    mime_type="audio/wav", file_name=f"voice_{audio_uuid[:8]}.wav",
+                    file_size=wav_size, storage_path=storage_path, duration_seconds=duration,
                     created_at=now, expires_at=now + timedelta(days=settings.MEDIA_EXPIRY_DAYS))
-            asst_msg = Message.objects.filter(request_id=request_id, user_id=user_id, role="assistant").first()
+            asst_msg = message_repo.get_by_request_id_sync(request_id, user_id, role="assistant")
             if asst_msg:
-                asst_msg.is_voice = True
-                asst_msg.save(update_fields=["is_voice"])
+                message_repo.set_voice_flag_sync(asst_msg)
 
     @staticmethod
     async def record_only_ambient(user_id: int, text: str, speaker_id: str | None = None) -> None:
@@ -123,21 +121,8 @@ class VoicePersistService:
             logger.exception("Record-only cleanup failed: user=%s", user_id)
 
     @staticmethod
-    @sync_to_async
-    def _count_and_delete_excess(user_id: int, limit: int) -> int:
-        from django.db.models import Subquery
-        replied_ids = Message.objects.filter(user_id=user_id, role="assistant", is_voice=True).values("request_id")
-        record_only_qs = Message.objects.filter(
-            user_id=user_id, role="user", is_voice=True
-        ).exclude(request_id__in=Subquery(replied_ids))
-        count = record_only_qs.count()
-        if count <= limit:
-            return 0
-        excess = count - limit
-        oldest_ids = list(record_only_qs.order_by("created_time").values_list("message_id", flat=True)[:excess])
-        if oldest_ids:
-            Message.objects.filter(message_id__in=oldest_ids).delete()
-        return excess
+    async def _count_and_delete_excess(user_id: int, limit: int) -> int:
+        return await message_repo.delete_excess_record_only(user_id, limit)
 
 
 voice_persist_service = VoicePersistService()

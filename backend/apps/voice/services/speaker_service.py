@@ -143,8 +143,7 @@ class SpeakerService:
     async def _retrospective_match(self, user_id: int, gateway_speaker_id: str, name: str) -> None:
         """After speaker registration, match unknown historical messages to this user."""
         from core.redis import get_async_redis_client
-        from apps.chat.models import Message
-        from asgiref.sync import sync_to_async
+        from apps.chat.repositories import message_repo
         redis = await get_async_redis_client()
         key_map = "voice:unknown_speakers"
         all_entries = await redis.hgetall(key_map)
@@ -156,11 +155,7 @@ class SpeakerService:
             label = label_raw if isinstance(label_raw, str) else label_raw.decode()
             emb_key = emb_hash if isinstance(emb_hash, str) else emb_hash.decode()
             # Update all messages with this unknown label to the new user
-            count = await sync_to_async(
-                lambda lbl=label: Message.objects.filter(speaker_id=lbl, is_voice=True).update(
-                    speaker_id=str(user_id), user_id=user_id
-                )
-            )()
+            count = await message_repo.reassign_speaker_messages(label, user_id)
             if count > 0:
                 matched_labels.append(emb_key)
                 logger.info("Retrospective match: label=%s → user=%s, updated=%d", label, user_id, count)
