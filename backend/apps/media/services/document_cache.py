@@ -49,6 +49,7 @@ async def save_parsed_result(attachment: "MediaAttachment", content: str) -> boo
 
     from django.utils import timezone as tz
 
+    updated = 0
     try:
         updated = await media_attachment_repo.update_parsed_cache(
             attachment_id=attachment.attachment_id,
@@ -64,12 +65,14 @@ async def save_parsed_result(attachment: "MediaAttachment", content: str) -> boo
         minio_service.delete_file(bucket=settings.MINIO_BUCKET_MEDIA, object_name=minio_path)
         return False
 
-    try:
-        from apps.media.tasks import generate_document_embeddings
-        generate_document_embeddings.delay(attachment.attachment_id)
-        logger.info("Doc cache saved + embedding dispatched: attachment=%d, size=%d", attachment.attachment_id, len(content_bytes))
-    except Exception as e:
-        logger.warning("Doc embedding dispatch failed (non-blocking): attachment=%d, err=%s", attachment.attachment_id, e)
+    # rowcount 是「该 attachment 行此刻是否存在」的权威证据；行不存在则不派发孤儿嵌入任务
+    if updated > 0:
+        try:
+            from apps.media.tasks import generate_document_embeddings
+            generate_document_embeddings.delay(attachment.attachment_id)
+            logger.info("Doc cache saved + embedding dispatched: attachment=%d, size=%d", attachment.attachment_id, len(content_bytes))
+        except Exception as e:
+            logger.warning("Doc embedding dispatch failed (non-blocking): attachment=%d, err=%s", attachment.attachment_id, e)
 
     return True
 

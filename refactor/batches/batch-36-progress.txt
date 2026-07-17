@@ -12,9 +12,19 @@
 - Status: WAITING_FOR_REVIEW
 
 ## Phase 2b: Executor
-- (尚未开始)
+- Started: 2026-07-17
+- 改动 3.1 document_cache.py: updated 提到 try 外初始化=0；派发 gate on `if updated > 0`（复用 update_parsed_cache rowcount，零新增查询），行不存在则不派发孤儿嵌入任务。返回值仍 True（保持既有 updated==0 行为）。嵌入业务逻辑与 worker 早返回 guard 未改。
+- 改动 3.2 tasks.py:56: attachment not-found WARNING → DEBUG（早返回 return 不变）。L60 no parsed_content / L77 no chunks 保持 WARNING（异常态，非本次噪声源）。
+- 改动 3.3 test_document_cache.py: test_dual_write_success 追加 @patch delay + assert_called_once_with(1)（铲除真发布共享 broker 的 ×23 污染源）；新增 test_orphan_dispatch_gated_on_rowcount（rowcount=0 → delay 未调用 + 返回 True）。
+- 精简: 3 文件均 <200 行、无 F401/裸except/注释代码 → 未触发精简。
+- 验证:
+  - ruff check 3 文件全通过
+  - pytest tests/media/ -q → 32 passed（test_document_cache.py 11 passed，含新增 gate 用例）
+  - pytest tests/apps/graph/test_document_agent.py -q → 17 passed（唯一生产派发方，跨 app 无破坏）
+  - rg 核验 generate_document_embeddings.delay 在 `if updated > 0:` 块内（L69 guard / L72 delay）
+- backlog: 2h 窗口线上观察 "attachment not found id=1" WARNING 归零（无人值守不执行，交安琳线上验证）
 
 ## Phase 2c: Validator
 - (尚未开始)
 
-STATUS: PLAN_READY
+STATUS: EXECUTED

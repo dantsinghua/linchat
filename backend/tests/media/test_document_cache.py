@@ -64,15 +64,28 @@ class TestGetCachedResult:
 class TestSaveParsedResult:
     """save_parsed_result 测试"""
 
+    @patch("apps.media.tasks.generate_document_embeddings.delay")
     @patch("apps.common.storage.minio_service.minio_service")
     @patch("apps.media.repositories.media_attachment_repo.update_parsed_cache", new_callable=AsyncMock, return_value=1)
-    def test_dual_write_success(self, mock_update, mock_minio):
-        """双写成功 — MinIO + DB 都成功"""
+    def test_dual_write_success(self, mock_update, mock_minio, mock_delay):
+        """双写成功 — MinIO + DB 都成功；rowcount>0 才派发 embedding（mock delay 防真发布共享 broker）"""
         att = _make_attachment()
         result = run_async(save_parsed_result(att, "# Content"))
         assert result is True
         mock_minio.upload_bytes.assert_called_once()
         mock_update.assert_called_once()
+        mock_delay.assert_called_once_with(1)
+
+    @patch("apps.media.tasks.generate_document_embeddings.delay")
+    @patch("apps.common.storage.minio_service.minio_service")
+    @patch("apps.media.repositories.media_attachment_repo.update_parsed_cache", new_callable=AsyncMock, return_value=0)
+    def test_orphan_dispatch_gated_on_rowcount(self, mock_update, mock_minio, mock_delay):
+        """DB update 返回 0 行（attachment 不存在）→ 不派发 embedding，返回值仍为 True"""
+        att = _make_attachment()
+        result = run_async(save_parsed_result(att, "# Content"))
+        assert result is True
+        mock_update.assert_called_once()
+        mock_delay.assert_not_called()
 
     @patch("apps.common.storage.minio_service.minio_service")
     def test_minio_upload_fail_skips_db(self, mock_minio):
