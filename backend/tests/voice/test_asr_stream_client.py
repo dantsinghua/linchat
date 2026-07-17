@@ -6,7 +6,7 @@
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import websockets.exceptions
@@ -286,3 +286,41 @@ class TestASRStreamClientDisconnect:
         ]
         assert len(error_calls) >= 1
         assert error_calls[0][0][0]["code"] == "CONNECTION_CLOSED"
+
+
+class TestCleanupWSConnectionCloseOrder:
+    """batch-10：ASR/TTS 共用的 cleanup_ws_connection 关闭顺序回归。
+
+    修复前先 cancel recv_task 再 ws.close()（无 code），握手读不到对端 echo →
+    code=1006 强关。修复后先 ws.close(code=1000) 完成握手，再拆 recv_task。
+    """
+
+    @pytest.mark.asyncio
+    async def test_disconnect_closes_before_recv_teardown(self):
+        from apps.voice.services.ws_client_base import cleanup_ws_connection
+
+        order: list[str] = []
+        ws = AsyncMock()
+        ws.close = AsyncMock(side_effect=lambda **kw: order.append("close"))
+
+        async def _loop():
+            try:
+                await asyncio.sleep(100)
+            except asyncio.CancelledError:
+                order.append("recv_cancel")
+                raise
+
+        recv_task = asyncio.create_task(_loop())
+        await asyncio.sleep(0)  # 让接收循环进入 sleep
+
+        await cleanup_ws_connection(ws, recv_task)
+
+        assert order == ["close", "recv_cancel"]
+
+    @pytest.mark.asyncio
+    async def test_disconnect_sends_normal_close_code(self):
+        from apps.voice.services.ws_client_base import cleanup_ws_connection
+
+        ws = AsyncMock()
+        await cleanup_ws_connection(ws, None)
+        ws.close.assert_called_once_with(code=1000, reason="")

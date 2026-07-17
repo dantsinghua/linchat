@@ -1,0 +1,35 @@
+# Batch batch-10 Progress
+# Type: refactor | Priority: P1 | Risk: high
+# Title: TTS WebSocket 连接复用/预连接
+# blocks_slo: voice_end_to_end_5s
+
+## Phase 2a: Initializer
+- Started: 2026-07-17 12:08
+- Depends: batch-07 = COMPLETED (batch-04~09+28 全部 COMPLETED)
+- Plan generated: refactor/batches/batch-10-plan.md (208 lines)
+- 现状核实：batch-09 已实现常驻流式会话；本 batch 仅需增量
+  ① 预连接提前到 pipeline 起点（并行 Agent 推理）
+  ② ws_client_base 关闭顺序修复（1006→1000）
+- 待安琳确认：6 项（见 plan 第7节：settings 开关 / ASR 测试 scope / 1006 运行时佐证 /
+  收益压测 / 测试超限债务 / 会话级连接池取舍）
+- Status: WAITING_FOR_REVIEW
+
+## Phase 2b: Executor (started 2026-07-17)
+- 分支：refactor/batch-10（起始 HEAD=44fd700）
+- 无人值守 6 项决策已拍板：①新增 PRECONNECT 开关默认off ②ASR回归纳入scope
+  ③1006根因延后backlog(按反转方案执行) ④收益压测延后backlog(跳过baseline)
+  ⑤测试超限登记债务 ⑥只做begin_stream提前的最小增量
+- 拆两个 commit：A=关闭顺序修复(可独立上线) B=预连接提前(flag默认off)
+
+### Commit A — 4.1 关闭顺序修复（目标②，可独立上线）
+- [x] 改完 ws_client_base.py：cleanup_ws_connection 反转顺序（先 ws.close(code=1000) 再拆 recv_task）+6 -4
+- [x] 新增 ASR 回归测试 test_asr_stream_client.py：2 个（关闭顺序 + code=1000 断言）
+- [x] 顺带删除既有未用 import MagicMock（精简规则1）
+- 验证：ruff OK；ASR 11 passed（+2）；TTS stream/pipeline/incremental 39 passed（共用零回归）
+- 既存债务（非本改动引入）：ws_client_base.py 第32/69行 mypy(websockets16移除WebSocketClientProtocol)；
+  该文件旧日志行超black88行宽（plan未涉及，不越界改）
+
+## Phase 2c: Validator
+- (尚未开始)
+
+STATUS: EXECUTING
