@@ -38,3 +38,5 @@ STATUS: EXECUTING_INTERRUPTED  # 2026-07-17 13:10 账号月度消费上限（mon
 - 性能 baseline：无 before.json 且禁启停服务 → 跳过 before/after 采集（并行化为纯 IO 并发优化，无行为契约变更）。
 
 STATUS: EXECUTED  # 2026-07-17 续作验证全绿
+
+STATUS: COMPLETED  # loopctl 2026-07-17 14:34:39
