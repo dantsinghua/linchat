@@ -60,14 +60,33 @@ class ResponseDecisionService:
             return DecisionResult.RESPOND, "exact_wake_word"
         if self._check_fuzzy_wake_word(text, wake_words):
             return DecisionResult.RESPOND, "fuzzy_wake_word"
-        if mode == "ambient":
-            from django.conf import settings as django_settings
-            if django_settings.VOICE_DECISION_USE_LLM:
+        from django.conf import settings as django_settings
+        if getattr(django_settings, "VOICE_DECISION_SHORTCIRCUIT_ENABLED", False):
+            # batch-30：高置信规则先短路 RESPOND，跳过 LLM（移出 ambient 关键路径）；
+            # 仅非唤醒/非活跃/非疑问的歧义声明句才降级到末位 LLM 兜底。
+            if await voice_session_service.is_active_conversation(user_id):
+                return DecisionResult.RESPOND, "active_conversation"
+            if not speaker_identified:
+                recent = await self._get_recent_speaker_count(user_id)
+                if recent >= 2:
+                    return DecisionResult.RECORD_ONLY, "multi_speaker"
+            if self._check_question_features(text):
+                return DecisionResult.RESPOND, "question_detected"
+            if mode == "ambient" and django_settings.VOICE_DECISION_USE_LLM:
                 llm_result = await self._classify_intent_llm(text, user_id)
                 if llm_result is not None:
                     decision, reason, confidence = llm_result
                     if confidence >= django_settings.VOICE_DECISION_LLM_THRESHOLD:
                         return decision, f"llm_{reason}"
+            return DecisionResult.RECORD_ONLY, "default"
+
+        # flag=false（默认 dark-launch）：保持旧顺序，LLM 先于规则，行为逐字节不变。
+        if mode == "ambient" and django_settings.VOICE_DECISION_USE_LLM:
+            llm_result = await self._classify_intent_llm(text, user_id)
+            if llm_result is not None:
+                decision, reason, confidence = llm_result
+                if confidence >= django_settings.VOICE_DECISION_LLM_THRESHOLD:
+                    return decision, f"llm_{reason}"
         if await voice_session_service.is_active_conversation(user_id):
             return DecisionResult.RESPOND, "active_conversation"
         if not speaker_identified:

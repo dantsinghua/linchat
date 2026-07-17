@@ -1461,3 +1461,115 @@ class TestPromptContainsContext:
             await service._classify_intent_llm("帮我开灯", user_id=0)
 
         mock_fetch.assert_not_called()
+
+
+# ============ batch-30: flag=true 短路双轨（对照上方 flag=false 守护用例） ============
+
+
+class TestShortCircuitFlagOn:
+    """batch-30 VOICE_DECISION_SHORTCIRCUIT_ENABLED=True 时的 LLM 调用行为（真实 httpx mock）。
+
+    对照组：本文件上方 TestLLM* / TestLLMLowConfidence* 用例默认 flag=false（现状守护）。
+    本类断言 flag=true 下 active_conversation / question 先短路、httpx 不被调用，
+    仅歧义声明句仍调 LLM（§8.2 M3/M5 对照 + BC1/BC2/BC4）。
+    """
+
+    @pytest.mark.asyncio
+    async def test_question_shortcircuits_llm_not_called(
+        self, service, mock_model_config
+    ):
+        """flag=true: 疑问句「你吃了吗？」→ question_detected RESPOND，httpx 不调用
+        （对照 test_llm_record_only_high_confidence_skips_rule_engine 的旧顺序）。"""
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.post = AsyncMock(return_value=_build_llm_response("RECORD_ONLY", 0.95, "与他人交谈"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        base = _patch_base_dependencies(wake_words=["小鱼"], is_active=False, speaker_count=0)
+        with (
+            base["repo"],
+            base["active"],
+            base["redis"],
+            base["context"],
+            patch("django.conf.settings.VOICE_DECISION_SHORTCIRCUIT_ENABLED", True),
+            patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
+            patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
+            patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
+            patch(
+                "apps.models.services.model_service.get_active_model",
+                MagicMock(return_value=mock_model_config),
+            ),
+            patch("httpx.AsyncClient", return_value=mock_client),
+        ):
+            result, reason = await service.decide("你吃了吗？", None, 1, mode="ambient")
+
+        assert result == DecisionResult.RESPOND
+        assert reason == "question_detected"
+        mock_client.post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_active_conv_shortcircuits_llm_not_called(
+        self, service, mock_model_config
+    ):
+        """flag=true: 活跃对话内声明句 → active_conversation RESPOND，httpx 不调用
+        （对照 test_timeout_returns_record_only_even_with_active_conv 的旧顺序）。"""
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        base = _patch_base_dependencies(wake_words=["小鱼"], is_active=True, speaker_count=0)
+        with (
+            base["repo"],
+            base["active"],
+            base["redis"],
+            base["context"],
+            patch("django.conf.settings.VOICE_DECISION_SHORTCIRCUIT_ENABLED", True),
+            patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
+            patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
+            patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
+            patch(
+                "apps.models.services.model_service.get_active_model",
+                MagicMock(return_value=mock_model_config),
+            ),
+            patch("httpx.AsyncClient", return_value=mock_client),
+        ):
+            result, reason = await service.decide("好的我知道了", None, 1, mode="ambient")
+
+        assert result == DecisionResult.RESPOND
+        assert reason == "active_conversation"
+        mock_client.post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_declarative_still_calls_llm_flag_on(
+        self, service, mock_model_config
+    ):
+        """flag=true: 非疑问声明句「今天天气不错」+ 已识别单说话人 + 非活跃 → LLM 仍被调用（BC4 末位兜底）。"""
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.post = AsyncMock(return_value=_build_llm_response("RESPOND", 0.9, "指令"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        base = _patch_base_dependencies(wake_words=["小鱼"], is_active=False, speaker_count=0)
+        with (
+            base["repo"],
+            base["active"],
+            base["redis"],
+            base["context"],
+            patch("django.conf.settings.VOICE_DECISION_SHORTCIRCUIT_ENABLED", True),
+            patch("django.conf.settings.VOICE_DECISION_USE_LLM", True),
+            patch("django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.7),
+            patch("django.conf.settings.VOICE_DECISION_LLM_TIMEOUT", 1.0),
+            patch(
+                "apps.models.services.model_service.get_active_model",
+                MagicMock(return_value=mock_model_config),
+            ),
+            patch("httpx.AsyncClient", return_value=mock_client),
+        ):
+            result, reason = await service.decide(
+                "今天天气不错", None, 1, mode="ambient", speaker_identified=True
+            )
+
+        assert result == DecisionResult.RESPOND
+        assert reason == "llm_指令"
+        mock_client.post.assert_called_once()

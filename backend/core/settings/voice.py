@@ -119,6 +119,12 @@ VOICE_DECISION_LLM_THRESHOLD = float(
 VOICE_DECISION_LLM_TIMEOUT = float(
     os.getenv("VOICE_DECISION_LLM_TIMEOUT", "2.0")
 )  # LLM 分类超时（秒）(5.0→2.0, 加快响应)
+# batch-30：高置信规则短路——active_conversation / question 先直接 RESPOND，
+# LLM 意图分类下移为歧义声明句兜底，移出 ambient 关键路径。
+# 关=保持旧顺序（LLM 先于规则，行为完全不变），首选灰度回滚手段（dark-launch，默认 false）。
+VOICE_DECISION_SHORTCIRCUIT_ENABLED = (
+    os.getenv("VOICE_DECISION_SHORTCIRCUIT_ENABLED", "false").lower() == "true"
+)
 
 # 说话人识别 (017-ambient-speaker-id)
 VOICE_SPEAKER_IDENTIFICATION_ENABLED = (

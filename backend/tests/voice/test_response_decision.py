@@ -1169,3 +1169,122 @@ class TestTtsEchoFilter:
         # Should reach emergency_stop level (not DISCARD)
         assert result == DecisionResult.STOP
         assert reason == "emergency_stop"
+
+
+# ============ batch-30: 高置信规则短路矩阵 (VOICE_DECISION_SHORTCIRCUIT_ENABLED) ============
+
+
+class TestShortCircuitMatrix:
+    """batch-30 决策 LLM 移出关键路径的短路行为矩阵（§8.2 M1/M2/M4/M7/M8）。
+
+    flag=true：active_conversation / question 先短路 RESPOND，跳过 LLM；
+    flag=false（默认 dark-launch）：保持旧顺序（LLM 先于规则），行为与现状 identical。
+    用 _classify_intent_llm spy 断言 LLM 是否被调用，避免依赖真实 httpx/DB。
+    """
+
+    def _spy_llm(self, decision=DecisionResult.RESPOND, reason="rule", confidence=0.9):
+        """构造 _classify_intent_llm 的 AsyncMock spy。"""
+        return AsyncMock(return_value=(decision, reason, confidence))
+
+    def test_m1_question_shortcircuits_without_llm(self, service):
+        """M1: 疑问句 + 非活跃 + 单说话人 + flag=true → question_detected RESPOND，LLM 未调用"""
+        patches = _patch_dependencies(is_active=False, speaker_count=0)
+        spy = self._spy_llm()
+        with patches["repo"], patches["active"], patches["redis"], patch(
+            "django.conf.settings.VOICE_DECISION_SHORTCIRCUIT_ENABLED", True
+        ), patch.object(ResponseDecisionService, "_classify_intent_llm", new=spy):
+            result, reason = run_async(
+                service.decide("今天天气怎么样？", None, 1, mode="ambient")
+            )
+        assert (result, reason) == (DecisionResult.RESPOND, "question_detected")
+        spy.assert_not_called()
+
+    def test_m2_active_conv_shortcircuits_without_llm(self, service):
+        """M2: 活跃对话 + flag=true → active_conversation RESPOND，LLM 未调用"""
+        patches = _patch_dependencies(is_active=True, speaker_count=0)
+        spy = self._spy_llm()
+        with patches["repo"], patches["active"], patches["redis"], patch(
+            "django.conf.settings.VOICE_DECISION_SHORTCIRCUIT_ENABLED", True
+        ), patch.object(ResponseDecisionService, "_classify_intent_llm", new=spy):
+            result, reason = run_async(
+                service.decide("好的我知道了", None, 1, mode="ambient")
+            )
+        assert (result, reason) == (DecisionResult.RESPOND, "active_conversation")
+        spy.assert_not_called()
+
+    def test_m4_multi_speaker_shortcircuits_without_llm(self, service):
+        """M4: 未识别说话人 + recent>=2 + flag=true → multi_speaker RECORD_ONLY，LLM 未调用（设计 A）"""
+        patches = _patch_dependencies(is_active=False, speaker_count=3)
+        spy = self._spy_llm()
+        with patches["repo"], patches["active"], patches["redis"], patch(
+            "django.conf.settings.VOICE_DECISION_SHORTCIRCUIT_ENABLED", True
+        ), patch.object(ResponseDecisionService, "_classify_intent_llm", new=spy):
+            result, reason = run_async(
+                service.decide("今天吃什么", None, 1, mode="ambient", speaker_identified=False)
+            )
+        assert (result, reason) == (DecisionResult.RECORD_ONLY, "multi_speaker")
+        spy.assert_not_called()
+
+    def test_m3_declarative_still_calls_llm(self, service):
+        """M3: 非疑问声明句 + 非活跃 + 单说话人 + flag=true → LLM 仍被调用（末位兜底，BC4）"""
+        patches = _patch_dependencies(is_active=False, speaker_count=0)
+        spy = self._spy_llm(
+            decision=DecisionResult.RESPOND, reason="指令", confidence=0.9
+        )
+        with patches["repo"], patches["active"], patches["redis"], patch(
+            "django.conf.settings.VOICE_DECISION_SHORTCIRCUIT_ENABLED", True
+        ), patch("django.conf.settings.VOICE_DECISION_USE_LLM", True), patch(
+            "django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.75
+        ), patch.object(ResponseDecisionService, "_classify_intent_llm", new=spy):
+            result, reason = run_async(
+                service.decide("把客厅灯关了", None, 1, mode="ambient", speaker_identified=True)
+            )
+        assert (result, reason) == (DecisionResult.RESPOND, "llm_指令")
+        spy.assert_awaited_once()
+
+    def test_m7_echo_not_bypassed_by_shortcircuit(self, service):
+        """M7: flag=true 不绕过 echo 前置门 → DISCARD tts_echo_detected"""
+        patches = _patch_dependencies(is_active=True, speaker_count=0)
+        spy = self._spy_llm()
+        with patches["repo"], patches["active"], patches["redis"], patch.object(
+            ResponseDecisionService, "_is_tts_echo", new=AsyncMock(return_value=True)
+        ), patch(
+            "django.conf.settings.VOICE_DECISION_SHORTCIRCUIT_ENABLED", True
+        ), patch.object(ResponseDecisionService, "_classify_intent_llm", new=spy):
+            result, reason = run_async(
+                service.decide("你好呀今天天气不错", None, 1, mode="ambient")
+            )
+        assert (result, reason) == (DecisionResult.DISCARD, "tts_echo_detected")
+        spy.assert_not_called()
+
+    def test_m8_wake_word_not_affected_by_shortcircuit(self, service):
+        """M8: flag=true 不影响唤醒词前置门 → exact_wake_word RESPOND，LLM 未调用"""
+        patches = _patch_dependencies(wake_words=["小鱼"], is_active=False, speaker_count=0)
+        spy = self._spy_llm()
+        with patches["repo"], patches["active"], patches["redis"], patch(
+            "django.conf.settings.VOICE_DECISION_SHORTCIRCUIT_ENABLED", True
+        ), patch.object(ResponseDecisionService, "_classify_intent_llm", new=spy):
+            result, reason = run_async(
+                service.decide("小鱼你好", None, 1, mode="ambient")
+            )
+        assert (result, reason) == (DecisionResult.RESPOND, "exact_wake_word")
+        spy.assert_not_called()
+
+    def test_flag_false_keeps_old_order_llm_before_question(self, service):
+        """守护（§7③）: flag=false 时疑问句仍先走 LLM（旧顺序），LLM 被调用且其结果压过 question。"""
+        patches = _patch_dependencies(is_active=False, speaker_count=0)
+        # 旧行为：LLM 高置信 RECORD_ONLY 压过 question 规则
+        spy = self._spy_llm(
+            decision=DecisionResult.RECORD_ONLY, reason="与他人交谈", confidence=0.95
+        )
+        with patches["repo"], patches["active"], patches["redis"], patch(
+            "django.conf.settings.VOICE_DECISION_SHORTCIRCUIT_ENABLED", False
+        ), patch("django.conf.settings.VOICE_DECISION_USE_LLM", True), patch(
+            "django.conf.settings.VOICE_DECISION_LLM_THRESHOLD", 0.75
+        ), patch.object(ResponseDecisionService, "_classify_intent_llm", new=spy):
+            result, reason = run_async(
+                service.decide("你吃了吗？", None, 1, mode="ambient")
+            )
+        # flag=false：LLM 先判并压过 question → RECORD_ONLY（现状行为）
+        assert (result, reason) == (DecisionResult.RECORD_ONLY, "llm_与他人交谈")
+        spy.assert_awaited_once()
