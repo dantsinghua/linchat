@@ -28,3 +28,9 @@
 ## batch-28（2026-07-17 全新执行）
 - 运行时验证待人工/延后：celery worker 重启后触发 daily_summary，grep 日志确认 trace_id 与发起者一致；beat 周期任务 trace_id 为 32hex UUID；signal 在 threads/gevent 池下的 _trace_tokens 行为复核（当前 prefork）。
 - celery beat/worker 未重启，新 signal 代码需下次服务重启后才生效。
+
+## batch-08（2026-07-17 全新执行，P1 blocks_slo）
+- 无人值守拍板项待安琳 review：D1 新建 ambient_light_service.py；D3 ambient 轻量路径不做记忆召回（按 plan 条目原意）。
+- 性能主指标待真实语音流量验证：ambient 会话 LLM 推理 P50 预期 6.3s→1.5-2s；latency.summary 数据积累后跑 perf_bench.sh 对比 baseline 10828ms。
+- 回滚开关：VOICE_AMBIENT_LIGHT_ENABLED=false（settings.py）。
+- 环境事故记录：batch-08 executor 运行期间全服务栈被停 + frontend/.next 被删（归因未明，已恢复），后续 executor 提示词已需加强"禁止停服/清理"约束。
