@@ -34,3 +34,9 @@
 - 性能主指标待真实语音流量验证：ambient 会话 LLM 推理 P50 预期 6.3s→1.5-2s；latency.summary 数据积累后跑 perf_bench.sh 对比 baseline 10828ms。
 - 回滚开关：VOICE_AMBIENT_LIGHT_ENABLED=false（settings.py）。
 - 环境事故记录：batch-08 executor 运行期间全服务栈被停 + frontend/.next 被删（归因未明，已恢复），后续 executor 提示词已需加强"禁止停服/清理"约束。
+
+## batch-09（2026-07-17 全新执行，P1 blocks_slo）
+- 无人值守拍板项待安琳 review：单条常驻 TTS 流式会话设计；tts_synth 埋点口径在增量模式下含 LLM 重叠时间（代码注释已标注）。
+- 性能收益待真实语音流量验证（预期 TTS 与 LLM 重叠节省 1-2s）。
+- 回滚开关：VOICE_TTS_INCREMENTAL_ENABLED=false（回退整体 enqueue 旧路径）。
+- barge-in/comfort/shutdown 状态机与流式会话的交互建议真实设备抽查。
